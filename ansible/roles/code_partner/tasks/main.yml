@@ -1,0 +1,200 @@
+---
+# code_partner -- DOMO's code partner on code-01 (IaC/docs/CODE_PARTNER.md).
+# systemd + venv, no Docker: the unit pins egress to gpu-01, git-01 and web-01.
+
+- name: "[code_partner] Pull Vault -- Forgejo key (bot domo-coder)"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ vault_code_partner_forgejo_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: "secret"
+  register: _cp_forgejo
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[code_partner] Pull Vault -- router key (shared with domo-router)"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ vault_code_partner_router_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: "secret"
+  register: _cp_router
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[code_partner] Packages"
+  ansible.builtin.apt:
+    name: [git, python3-venv, python3-pip, bash, acl]   # acl: become_user to the service user
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: "[code_partner] Service user"
+  ansible.builtin.user:
+    name: "{{ code_partner_user }}"
+    system: true
+    home: "{{ code_partner_home }}"
+    shell: /usr/sbin/nologin
+    create_home: true
+
+- name: "[code_partner] Writable dirs (service user)"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ code_partner_user }}"
+    group: "{{ code_partner_user }}"
+    mode: "0750"
+  loop: ["{{ code_partner_home }}", "{{ code_partner_state_dir }}", "{{ code_partner_log_dir }}"]
+
+- name: "[code_partner] Read-only dirs (root)"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ code_partner_app_dir }}", group: root, mode: "0755"}
+    - {path: "{{ code_partner_conf_dir }}", group: "{{ code_partner_user }}", mode: "0750"}
+
+- name: "[code_partner] App files (root-owned; the agent may not edit them, see policy)"
+  ansible.builtin.copy:
+    src: "{{ code_partner_src }}/{{ item }}"
+    dest: "{{ code_partner_app_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [code_partner.py, code_partner_policy.yml, code_partner_ui.html]
+  notify: Restart code-partner
+
+# DOMO's voice from nas-02, never from the internet (on-premise rule, same as
+# domo-gateway). The controller keeps a cache; the checksum must match.
+- name: "[code_partner] Voice dir"
+  ansible.builtin.file:
+    path: "{{ code_partner_app_dir }}/voices"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "[code_partner] Voice already here?"
+  ansible.builtin.stat:
+    path: "{{ code_partner_app_dir }}/voices/{{ code_partner_voice }}.onnx"
+    checksum_algorithm: sha256
+  register: _cp_voice
+
+- name: "[code_partner] Fetch the voice from nas-02 to the controller"
+  ansible.builtin.fetch:
+    src: "{{ code_partner_voice_source }}/{{ code_partner_voice }}{{ item }}"
+    dest: "{{ lookup('env', 'HOME') }}/.cache/domo-voices/"
+    flat: true
+  loop: [".onnx", ".onnx.json"]
+  delegate_to: nas-02
+  become: true
+  when: not _cp_voice.stat.exists or _cp_voice.stat.checksum != code_partner_voice_sha256
+
+- name: "[code_partner] Copy the voice"
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.cache/domo-voices/{{ code_partner_voice }}{{ item }}"
+    dest: "{{ code_partner_app_dir }}/voices/{{ code_partner_voice }}{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [".onnx", ".onnx.json"]
+  when: not _cp_voice.stat.exists or _cp_voice.stat.checksum != code_partner_voice_sha256
+  notify: Restart code-partner
+
+- name: "[code_partner] Check the voice"
+  ansible.builtin.stat:
+    path: "{{ code_partner_app_dir }}/voices/{{ code_partner_voice }}.onnx"
+    checksum_algorithm: sha256
+  register: _cp_voice
+
+- name: "[code_partner] Refuse a voice that isn't the nas-02 master"
+  ansible.builtin.assert:
+    that: _cp_voice.stat.exists and _cp_voice.stat.checksum == code_partner_voice_sha256
+    fail_msg: "{{ code_partner_voice }} on code-01 doesn't match the nas-02 master copy"
+
+- name: "[code_partner] venv"
+  ansible.builtin.pip:
+    name: "{{ code_partner_pip }}"
+    virtualenv: "{{ code_partner_app_dir }}/venv"
+    virtualenv_command: python3 -m venv
+  notify: Restart code-partner
+
+- name: "[code_partner] Forgejo key file"
+  ansible.builtin.copy:
+    content: "{{ _cp_forgejo.secret.forgejo_key }}\n"
+    dest: "{{ code_partner_conf_dir }}/forgejo_key"
+    owner: root
+    group: "{{ code_partner_user }}"
+    mode: "0440"
+  no_log: true
+  notify: Restart code-partner
+
+- name: "[code_partner] Environment file"
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ code_partner_conf_dir }}/env"
+    owner: root
+    group: "{{ code_partner_user }}"
+    mode: "0440"
+  no_log: true
+  notify: Restart code-partner
+
+# Partial clone: full history, blobs fetched on checkout (the pack is ~313 MB).
+- name: "[code_partner] Clone the repo (first run only)"
+  ansible.builtin.command:
+    argv: [git, clone, --quiet, --filter=blob:none, --branch, master, "{{ code_partner_repo_url }}",
+           "{{ code_partner_home }}/repo"]
+    creates: "{{ code_partner_home }}/repo/.git"
+  become_user: "{{ code_partner_user }}"
+  environment:
+    GIT_TERMINAL_PROMPT: "0"
+    GIT_CONFIG_COUNT: "1"
+    GIT_CONFIG_KEY_0: "http.extraHeader"
+    GIT_CONFIG_VALUE_0: "Authorization: token {{ _cp_forgejo.secret.forgejo_key }}"
+  no_log: true
+
+# The key is sent per command by code_partner.py (env, never on a command line or
+# in .git/config); fetches need it too because the repo is private.
+- name: "[code_partner] Fetch uses the key file"
+  community.general.git_config:
+    scope: local
+    repo: "{{ code_partner_home }}/repo"
+    name: credential.helper
+    value: "!f() { test \"$1\" = get && echo username=domo-coder && echo password=$(cat {{ code_partner_conf_dir }}/forgejo_key); }; f"
+  become_user: "{{ code_partner_user }}"
+
+- name: "[code_partner] systemd unit"
+  ansible.builtin.template:
+    src: code-partner.service.j2
+    dest: /etc/systemd/system/code-partner.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart code-partner
+
+- name: "[code_partner] Enable and start"
+  ansible.builtin.systemd:
+    name: code-partner
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: "[code_partner] Flush handlers"
+  ansible.builtin.meta: flush_handlers
+
+- name: "[code_partner] Wait for /health"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ code_partner_port }}/health"
+  register: _cp_health
+  until: _cp_health.status == 200 and _cp_health.json.repo
+  retries: 10
+  delay: 3

@@ -1,0 +1,257 @@
+---
+# =============================================================================
+# Elementary Particle: traefik
+# File: IaC/services/platform/traefik/service.yaml
+#
+# Role in the stack:
+#   Single entry-point for ALL internal HTTPS traffic.
+#   Runs on web-01 (10.0.30.10) as a Docker container with:
+#     - Docker provider  → auto-discovers containers on web-01 via Docker socket
+#     - File provider    → hot-reloadable YAML files for cross-VM backends
+#                          (gpu-01, vpn-01, etc.)
+#   Pairs with Authelia (forwardauth middleware) for SSO on protected routes.
+#
+# Dynamic route registration (cross-VM):
+#   When any service particle with traefik_router: true is deployed on a
+#   REMOTE VM, the traefik_register Ansible role writes a route file to
+#   /etc/traefik/dynamic/ on web-01. Traefik file-provider watches that dir
+#   and hot-reloads within 5s — no container restart required.
+# =============================================================================
+
+apiVersion: particles/v1
+kind: Service
+metadata:
+  name: traefik
+  version: "3.1"
+  tier: platform
+  hosts_on: web-01
+  ip: "10.0.30.10"
+  vlan: vlan30
+
+tags:
+  expose: "false"      # Traefik itself is not proxied by another reverse proxy
+  ingress: "false"
+  auth: "none"
+  network: "vlan30"
+  dns: "true"
+  tier: "platform"
+  category: "Proxy"
+  sla: "critical"
+  backup: "config-only"
+
+deployment:
+  platform: docker
+  deployment_target: web-01
+  compose_file: IaC/services/platform/traefik/docker-compose.yml
+  static_config: IaC/services/platform/traefik/traefik.yml
+  dynamic_config_dir: /etc/traefik/dynamic/   # watched by file provider
+  certs_dir: /etc/traefik/certs/
+
+# --------------------------------------------------------------------------
+# Providers
+# --------------------------------------------------------------------------
+providers:
+  docker:
+    enabled: true
+    network: traefik                  # Docker bridge network shared with local containers
+    expose_by_default: false          # containers must opt in via traefik.enable=true label
+  file:
+    enabled: true
+    directory: /etc/traefik/dynamic/  # one YAML per remote service
+    watch: true                       # hot-reload without container restart
+
+# --------------------------------------------------------------------------
+# Entry points
+# --------------------------------------------------------------------------
+entrypoints:
+  web:
+    port: 80
+    redirect_to: websecure            # force HTTPS
+  websecure:
+    port: 443
+    tls: true
+  traefik_api:
+    port: 8080
+    internal_only: true               # not exposed outside vlan30
+
+# --------------------------------------------------------------------------
+# TLS / certificates
+# --------------------------------------------------------------------------
+tls:
+  # --- Internal CA (always active) ---
+  # Self-signed wildcard for *.internal domains.
+  strategy: dual                    # dual = internal_ca + acme coexist
+  default_cert: /etc/traefik/certs/wildcard.internal.crt
+  default_key:  /etc/traefik/certs/wildcard.internal.key
+
+  # --- ACME via IONOS DNS-01 challenge (activated by traefik_acme_enabled=true) ---
+  # Produces: yourdomain.com + *.yourdomain.com (SANs)
+  # Traefik renews automatically 30 days before expiry — no cron needed.
+  # cert storage: /etc/traefik/acme/acme.json  (mode 0600)
+  # Auth provider: IONOS Developer API — https://developer.hosting.ionos.com/keys
+  acme:
+    enabled: false                  # set traefik_acme_enabled=true in inventory
+    email_secret: secret/traefik/acme   # key: acme_email
+    ionos_api_key_secret: secret/traefik/acme  # key: ionos_api_key (format: prefix.secret)
+    staging: false                  # true = LE staging CA (for testing)
+    dns_delay: 10                   # seconds after TXT record set before check
+    resolver_name: letsencrypt
+    storage: /etc/traefik/acme/acme.json
+
+# --------------------------------------------------------------------------
+# Middlewares (shared — referenced by all route files)
+# --------------------------------------------------------------------------
+middlewares:
+  - name: authelia
+    type: forwardauth
+    address: "http://authelia:9091/api/verify?rd=https://auth.internal"
+    trust_forward_header: true
+    auth_response_headers: ["Remote-User", "Remote-Groups", "Remote-Name", "Remote-Email"]
+    notes: "Injected by Authelia container on Docker provider; referenced as authelia@docker"
+
+  - name: secure-headers
+    type: headers
+    notes: "HSTS, X-Frame-Options, CSP — applied to all websecure routers"
+
+  - name: rate-limit-api
+    type: rateLimit
+    average: 100
+    burst: 50
+    notes: "Applied to Ollama API and other inference endpoints"
+
+# --------------------------------------------------------------------------
+# Secrets (Vault)
+# --------------------------------------------------------------------------
+secrets:
+  - path: secret/traefik/dashboard
+    keys: [username, password_hash]
+  - path: secret/traefik/certs
+    keys: [wildcard_crt, wildcard_key]
+    notes: "Internal CA wildcard cert for *.internal domains"
+  - path: secret/traefik/acme
+    keys: [ionos_api_key, acme_email]
+    notes: "IONOS DNS-01 API key (format: public_prefix.secret from developer.hosting.ionos.com/keys). Only needed when traefik_acme_enabled=true."
+  #   keys: [email]
+  # - path: secret/traefik/cloudflare
+  #   keys: [api_token]
+
+# --------------------------------------------------------------------------
+# Services (containers on this particle)
+# --------------------------------------------------------------------------
+services:
+  - name: traefik
+    image: "traefik:v3.1"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "127.0.0.1:8080:8080"    # dashboard — loopback only
+
+interfaces:
+  - name: "http"
+    protocol: "tcp"
+    port: 80
+    internal_port: 80
+    
+  - name: "https"
+    protocol: "tcp"
+    port: 443
+    internal_port: 443
+    
+  - name: "api"
+    protocol: "tcp"
+    port: 8080
+    internal_port: 8080
+
+dependencies: []
+
+provides:
+  - interface: "tcp:80"
+    for_services: ["all"]
+    contract: "HTTP Reverse Proxy"
+    documentation: "https://doc.traefik.io/traefik/"
+    
+  - interface: "tcp:443"
+    for_services: ["all"]
+    contract: "HTTPS Reverse Proxy with TLS"
+    documentation: "https://doc.traefik.io/traefik/"
+    
+  - interface: "tcp:8080"
+    for_services: ["admin"]
+    contract: "Traefik Dashboard API"
+    documentation: "https://doc.traefik.io/traefik/operations/dashboard/"
+
+secrets:
+  - name: "TRAEFIK_DASHBOARD_PASSWORD"
+    vault_path: "secrets/traefik/dashboard"
+  - name: "ACME_EMAIL"
+    vault_path: "secrets/traefik/acme"
+  - name: "CLOUDFLARE_API_KEY"
+    vault_path: "secrets/traefik/cloudflare"
+
+monitoring:
+  health_check: "curl -f http://localhost:8080/ping || exit 1"
+  health_check_interval: "30s"
+  health_check_timeout: "5s"
+  unhealthy_threshold: 3
+  metrics_endpoint: "http://localhost:8080/metrics"
+  alert_rules:
+    - name: "traefik_unavailable"
+      condition: "traefik_up == 0"
+      severity: "critical"
+    - name: "high_error_rate"
+      condition: "http_request_errors_total > 100"
+      severity: "warning"
+    - name: "certificate_expiry_warning"
+      condition: "certificate_expiry < 604800"
+      severity: "warning"
+
+backup:
+  enabled: true
+  schedule: "0 3 * * *"
+  retention: "30d"
+  target: "s3:http://nas-01.internal:9000/restic/traefik"
+  backup_configs: true
+
+networking:
+  vlan: "vlan30"
+  dns_enabled: true
+  dns_names:
+    - "traefik.internal"
+    - "traefik-api.internal"
+  internal_access_only: false
+  accept_external: true
+
+metadata:
+  data_classification: "internal"
+  cost_center: "infrastructure"
+  business_impact: "critical"
+  backup_required: true
+  service_suite: "platform-layer"
+  tls_termination: true
+  acme_provider: "letsencrypt"
+  certificate_renewal_days: 30
+
+traefik_config:
+  dashboard_enabled: true
+  api_enabled: true
+  metrics_enabled: true
+  access_logs: true
+  tracing_enabled: false
+  rate_limiting: true
+  max_requests_per_second: 1000
+  entrypoints:
+    - name: "web"
+      port: 80
+      redirect_to: "websecure"
+    - name: "websecure"
+      port: 443
+      tls_enabled: true
+  middleware:
+    - name: "auth"
+      type: "oidc"
+      provider: "authelia"
+    - name: "compression"
+      type: "gzip"
+    - name: "rate-limit"
+      type: "rate-limit"
+      requests_per_second: 1000

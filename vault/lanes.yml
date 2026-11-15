@@ -1,0 +1,111 @@
+# =============================================================================
+# Vault lanes -- who may READ which secret (IaC/docs/AGENT_ACCESS_LANES.md)
+#
+# Every top-level path under secret/ is in exactly one lane. scripts/vault_lanes.py
+# --check fails when Vault has a path this file doesn't name, so a new secret
+# can't silently land in Claude Code's reach.
+#
+#   infra    -- the machinery: hypervisors, firewall, DNS, proxy, git, monitoring.
+#               Claude Code (policy claude-iac) reads these.
+#   runner   -- opens household data, or every other secret: databases, backups,
+#               storage, identity, app stacks. Only the deploy runner reads them
+#               (policy deploy-runner, run by owner; sudo needs his password).
+#   household -- one family service's own credential (photos, notes, mail,
+#               health, finance, calendars, journals, cameras). Runner only, and
+#               a service may get its own narrow policy later.
+#
+# Writing: claude-iac may CREATE any new secret (seeding a new service is
+# allowed without asking, see feedback_vault_secret_creation) but never read,
+# update or delete one outside the infra lane.
+# =============================================================================
+
+lanes:
+  infra:
+    claude: [read, list, create, update]
+  runner:
+    claude: [create]
+  household:
+    claude: [create]
+
+paths:
+  # ── infra ──
+  proxmox: infra              # leaf (old) + proxmox/api/pve-0N
+  opnsense: infra
+  pihole: infra
+  homelab: infra              # n8n?, opnsense, pihole, proxmox, ssh -- see overrides
+  ssh: infra
+  dynu: infra
+  ionos-vps: infra
+  vpn: infra                  # wg-easy admin; peer configs stay the user's job (guardrail 9)
+  traefik: infra              # ACME + dashboard
+  netbox: infra
+  grafana: infra
+  forgejo: infra              # admin opens PRs; code-partner has its own path
+  iac: infra
+  crowdsec: infra
+  litellm: infra
+  claude: infra
+  homepage: infra
+  nordlynx: infra             # VPN account for VLAN60 egress
+
+  # ── runner: opens data, or opens other secrets ──
+  postgres: runner            # pg-01 superuser + app_user: every database
+  docker: runner              # web-01/dl-01 env bundles: many app secrets in one place
+  n8n: runner                 # n8n holds stored credentials for most flows
+  restic: runner              # repo passwords decrypt every backup
+  backrest: runner
+  minio: runner               # backup object store root
+  nas-01: runner              # NAS admin + service accounts: every file share
+  nas-02: runner              # + LUKS keys
+  elasticsearch: runner       # es-01 = OSemSearch document index, es-02 = Diskover file index
+  authelia: runner            # identity: OIDC client secrets, SMTP
+  ep: runner                  # env-import bundles
+  atlassian: runner           # retired, kept for the archive
+  gitlab: runner              # retired
+  code-partner: runner        # deploys copy it to code-01; nobody else needs it
+
+  # ── household ──
+  adventurelog: household
+  apple-health-bridge: household
+  calibre-web: household
+  concierge-audit: household
+  diskover: household
+  domo: household             # phone tokens = who is speaking
+  download-catalog: household
+  family-messaging: household
+  firefly: household
+  frigate: household
+  home-assistant: household   # HA token: locks, alarm, cameras, presence
+  immich: household
+  jellyfin: household
+  jev: household
+  hometown-news: household
+  mail: household             # mail DB role passwords (2026-11-05); runner/deploy only
+  IONOS: household            # IONOS/Mail: mailbox logins, entered by owner 2026-11-05
+  matrix: household
+  music-studio: household
+  news-bot: household
+  nextcloud: household
+  openclaw: household
+  outline: household
+  paperless: household
+  pi3-photosensor: household
+  plex: household
+  podcast: household
+  pulse: household
+  relationship-tracker: household
+  research_brain: household
+  scout: household
+  serge: household
+  skylab: household
+  tandoor: household
+  travel: household
+  tunebridge: household
+  wanderer: household
+  wger: household
+
+# More specific than the top level (Vault: the longest matching path wins).
+overrides:
+  homelab/podcast: household
+  homelab/n8n: runner
+  home-assistant/deadman: infra   # Alertmanager dead man's switch webhook, no HA access

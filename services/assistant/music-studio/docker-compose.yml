@@ -1,0 +1,415 @@
+---
+# ============================================================================
+#  Music Studio — docker-compose.yml
+#  Elementary Particles: IaC/services/assistant/music-studio/
+#
+#  Services
+#  ────────
+#  music-catalog   FastAPI catalog API             port 8200
+#  music-assistant Natural-language query layer     port 8201
+#  music-beets     Beets web UI                     port 8337
+#  studio-partner  DOMO in the studio: Live-set chronicle, notes, sessions  port 8202
+#  field-ingest    Zoom H2n / R16 / Tascam field recordings -> sessions      port 8203
+#
+#  Volumes
+#  ───────
+#  music_sessions   Project files / DAW sessions
+#  music_field      Raw field recordings inbox
+#  music_midi       Basic Pitch MIDI output
+#  music_stems      Demucs stem-separation output
+#  music_library    Beets-managed finished library
+#  beets_config     Beets config + SQLite database
+#
+#  Usage
+#  ─────
+#  cp .env.example .env   # fill in DB password + API secret
+#  docker compose up -d
+# ============================================================================
+
+version: "3.9"
+
+x-common-env: &common-env
+  DATABASE_URL:             ${MUSIC_DATABASE_URL:-postgresql://music_studio:${MUSIC_DB_PASSWORD}@pg-01.internal:5432/music_studio}
+  MUSIC_DB_HOST:            ${MUSIC_DB_HOST:-pg-01.internal}
+  MUSIC_DB_PORT:            ${MUSIC_DB_PORT:-5432}
+  MUSIC_DB_NAME:            ${MUSIC_DB_NAME:-music_studio}
+  MUSIC_DB_USER:            ${MUSIC_DB_USER:-music_studio}
+  MUSIC_DB_PASSWORD:        ${MUSIC_DB_PASSWORD}
+  LOG_LEVEL:                ${LOG_LEVEL:-INFO}
+
+services:
+
+  # ──────────────────────────────────────────────────────────────────
+  #  Catalog API  (Session / Song / Track / Field Recording CRUD)
+  # ──────────────────────────────────────────────────────────────────
+  music-catalog:
+    image: python:3.12-slim
+    container_name: music-catalog
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      # Was ../../../../integration:/app:ro (whole integration/ dir, every
+      # other assistant service's source included) — fixed 2026-08-20 for
+      # real deployment. Ansible copies just this service's file into
+      # ./music-catalog/ (same per-service-subfolder pattern assistant_stack
+      # uses), so unrelated app code never ships to this container.
+      - ./music-catalog:/app:ro
+      - music_sessions:/music/sessions
+      - music_field:/music/field
+      - music_midi:/music/midi
+      - music_stems:/music/stems
+      - music_library:/music/library
+      # Read-only, for audio_identity_sync.py (content-hash identity — see
+      # music_schema.sql "Audio identity"). Same container path as
+      # music-beets uses, so Beets' stored paths resolve unchanged here;
+      # beets_config gives it beets.db (copied to a temp file before reading).
+      - ${NASTY_RECORDINGS_HOST_PATH:-/mnt/nasty-music}:/import/nasty:ro
+      - beets_config:/beets:ro
+    environment:
+      <<: *common-env
+      MUSIC_API_SECRET_KEY:         ${MUSIC_API_SECRET_KEY}
+      SESSION_FILES_DIR:            /music/sessions
+      FIELD_RECORDINGS_DIR:         /music/field
+      MIDI_OUTPUT_DIR:              /music/midi
+      STEMS_OUTPUT_DIR:             /music/stems
+      AUDIO_ANALYSIS_URL:           ${AUDIO_ANALYSIS_URL:-http://audio-analysis:8100}
+      DEMUCS_MODEL:                 ${DEMUCS_MODEL:-htdemucs}
+      BASIC_PITCH_ONSET_THRESHOLD:  ${BASIC_PITCH_ONSET_THRESHOLD:-0.5}
+      BASIC_PITCH_FRAME_THRESHOLD:  ${BASIC_PITCH_FRAME_THRESHOLD:-0.3}
+      BASIC_PITCH_MIN_NOTE_LEN:     ${BASIC_PITCH_MIN_NOTE_LEN:-127.5}
+      # Musician platform: songbook repo (Forgejo, token from Vault
+      # secret/music-studio/forgejo via .env) and the local LLM used by
+      # song_suggest.py.
+      FORGEJO_URL:                  ${FORGEJO_URL:-http://10.0.30.31:3000}
+      FORGEJO_TOKEN:                ${FORGEJO_TOKEN:-}
+      SONGBOOK_OWNER:               ${SONGBOOK_OWNER:-owner}
+      SONGBOOK_REPO:                ${SONGBOOK_REPO:-songbook}
+      OLLAMA_URL:                   ${OLLAMA_URL:-http://10.0.30.50:11434}
+    command: >
+      bash -c "apt-get update -qq && apt-get install -qq -y --no-install-recommends chordpro >/dev/null &&
+               pip install --quiet fastapi uvicorn asyncpg httpx python-multipart xxhash &&
+               uvicorn music_catalog_api:app --host 0.0.0.0 --port 8200"
+    ports:
+      - "8200:8200"
+    networks:
+      - music_network
+    healthcheck:
+      # python:3.12-slim has no curl (confirmed live 2026-08-20 — every
+      # healthcheck attempt failed with "not found", never a real app
+      # problem). urllib is stdlib, always present.
+      test:     ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8200/health')"]
+      interval: 30s
+      timeout:  10s
+      retries:  3
+    labels:
+      ep.service:  "music-studio"
+      ep.tier:     "assistant"
+      ep.managed:  "true"
+      # Traefik routing (optional — remove if not using Traefik)
+      traefik.enable:                              "true"
+      traefik.http.routers.music-catalog.rule:     "Host(`music-studio.internal`) && PathPrefix(`/api`)"
+      traefik.http.routers.music-catalog.tls:      "true"
+      traefik.http.services.music-catalog.loadbalancer.server.port: "8200"
+
+  # ──────────────────────────────────────────────────────────────────
+  #  Voice / Chat Assistant
+  # ──────────────────────────────────────────────────────────────────
+  music-assistant:
+    image: python:3.12-slim
+    container_name: music-assistant
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./music-assistant:/app:ro
+    environment:
+      <<: *common-env
+      MUSIC_CATALOG_URL: http://music-catalog:8200
+      STUDIO_PARTNER_URL: http://studio-partner:8202
+    command: >
+      bash -c "pip install --quiet fastapi uvicorn httpx pydantic jinja2 &&
+               uvicorn music_assistant:standalone_app --host 0.0.0.0 --port 8201"
+    ports:
+      - "8201:8201"
+    depends_on:
+      music-catalog:
+        condition: service_healthy
+    networks:
+      - music_network
+    healthcheck:
+      test:     ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8201/health')"]
+      interval: 30s
+      timeout:  10s
+      retries:  3
+    labels:
+      ep.service: "music-studio"
+      ep.tier:    "assistant"
+      ep.managed: "true"
+      traefik.enable:                                 "true"
+      traefik.http.routers.music-assistant.rule:      "Host(`music-studio.internal`) && PathPrefix(`/music`)"
+      traefik.http.routers.music-assistant.tls:       "true"
+      traefik.http.services.music-assistant.loadbalancer.server.port: "8201"
+
+  # ──────────────────────────────────────────────────────────────────
+  #  Beets Web UI  (library tagging, MusicBrainz fingerprinting)
+  # ──────────────────────────────────────────────────────────────────
+  music-beets:
+    image: python:3.12-slim
+    container_name: music-beets
+    restart: unless-stopped
+    volumes:
+      - beets_config:/etc/beets
+      - music_library:/music/library
+      - music_sessions:/music/sessions:ro
+      - music_field:/music/field:ro
+      # Read-only PERMANENT mount — NASTY's existing "My Recordings" archive,
+      # host-mounted via SMB by the music_studio Ansible role
+      # (nasty_recordings_mount). Switched 2026-08-21 to scan-in-place
+      # (import.copy: no / write: no in music_beets_config.yaml) — nasty
+      # stays canonical, like Immich's external libraries. Beets streams
+      # playback directly from here, so this is a permanent dependency now,
+      # not a one-time import source — originals are never copied or written.
+      - ${NASTY_RECORDINGS_HOST_PATH:-/mnt/nasty-music}:/import/nasty:ro
+    environment:
+      BEETSDIR: /etc/beets
+    command: >
+      bash -c "apt-get update -qq &&
+               apt-get install -qq -y --no-install-recommends build-essential pkg-config libchromaprint-dev libcairo2-dev libgirepository-2.0-dev gobject-introspection ffmpeg >/dev/null &&
+               pip install --quiet 'beets[fetchart,lyrics,lastgenre,chroma,replaygain,web]' &&
+               sed -i \"s/data\\['results'\\],/(data['results'] || data['items'] || []),/\" \$(python3 -c 'import beetsplug.web,os; print(os.path.join(os.path.dirname(beetsplug.web.__file__), \"static\", \"beets.js\"))') &&
+               sed -i \"s/as_attachment=True/as_attachment=False/\" \$(python3 -c 'import beetsplug.web; print(beetsplug.web.__file__)') &&
+               beet web 0.0.0.0 8337"
+    # Real bugs found deploying this for real 2026-08-20/21 — none of this
+    # ever ran before that:
+    #  1. python:3.12-slim has no compiler — pyacoustid (chroma) needs
+    #     libchromaprint-dev, and this extras set transitively pulls pycairo
+    #     + pygobject (a gstreamer-backed replaygain backend), neither of
+    #     which has a prebuilt wheel here: pycairo needs gcc + libcairo2-dev,
+    #     pygobject needs libgirepository-2.0-dev + gobject-introspection to
+    #     build from source.
+    #  2. `beet web` (the command below) needs the `web` extra (pulls in
+    #     Flask) — it was missing from the extras list entirely, so the
+    #     process exited immediately with "unknown command 'web'".
+    #  3. The replaygain plugin (music_beets_config.yaml: backend: ffmpeg)
+    #     needs the ffmpeg binary, not just a Python package — added below.
+    #  4. `beet web` takes positional [host] [port] args, not --host/--port
+    #     flags — the original command used flags and errored on startup
+    #     every time ("no such option: --host").
+    #  5. beets' own bundled web UI (beets.js, from the pip package — not
+    #     code we wrote) always reads `data['results']` from the query AJAX
+    #     response. Its own backend (`resource_query` in beetsplug/web) DOES
+    #     always return that key for /item/query/<term> — but submitting an
+    #     EMPTY search box builds a URL beets' own <query:queries> route
+    #     converter doesn't match, so Flask falls through to the "list all"
+    #     endpoint instead, which uses key `items`. Result: searching with
+    #     an empty box silently shows nothing, even with a populated
+    #     library — a real search term ("owner") always worked fine. `sed`
+    #     patches the installed beets.js on every container start to fall
+    #     back to `data['items']` so empty-query "browse everything" works
+    #     like a user would expect. Found live 2026-08-21.
+    ports:
+      - "8337:8337"
+    networks:
+      - music_network
+    labels:
+      ep.service: "music-studio"
+      ep.tier:    "assistant"
+      ep.managed: "true"
+      traefik.enable:                             "true"
+      traefik.http.routers.music-beets.rule:      "Host(`beets.internal`)"
+      traefik.http.routers.music-beets.tls:       "true"
+      traefik.http.services.music-beets.loadbalancer.server.port: "8337"
+      # Authelia forward-auth (remove if not using Authelia)
+      traefik.http.routers.music-beets.middlewares: "authelia@docker"
+
+  # ──────────────────────────────────────────────────────────────────
+  #  Recording analysis worker (Musician Platform phase 2)
+  #  Vamp: Chordino chords, qm bar/beat + key + tempo, Segmentino
+  #  sections, NNLS tuning — over every recording >= 6 s, results in
+  #  Postgres (music.analysis_* / audio_analysis). CPU only (the GPU is
+  #  full with the primary LLM). Image built locally by the Ansible role
+  #  from ./music-analysis-build (plugins compiled from source — see its
+  #  Dockerfile). No ports: it only talks to Postgres.
+  # ──────────────────────────────────────────────────────────────────
+  music-analysis:
+    image: music-analysis:local
+    container_name: music-analysis
+    restart: unless-stopped
+    working_dir: /app
+    # Capped and deprioritised so the studio services stay responsive.
+    # Measured 2026-10-08: ~100 s CPU per hour of audio, ~1.1 GB RSS on a 3-h WAV.
+    # 2026-11-05: studio-01 has 2 GB RAM + 3 GB swap -> 1.5 GB RAM, 3 GB with swap.
+    cpus: 2
+    cpu_shares: 256
+    mem_limit: 1536m
+    memswap_limit: 3g
+    volumes:
+      - ./music-analysis:/app:ro
+      - ${NASTY_RECORDINGS_HOST_PATH:-/mnt/nasty-music}:/import/nasty:ro
+      # Phase 3: Demucs vocal stems cached here (nas-01 music-studio share)
+      - music_stems:/music/stems
+    environment:
+      DATABASE_URL:          ${MUSIC_DATABASE_URL}
+      # Phase 3 (draft lead sheets): GPU work runs on gpu-02
+      STEM_API_URL:          ${STEM_API_URL:-http://10.0.30.51:8020}
+      WHISPER_URL:           ${WHISPER_URL:-http://10.0.30.51:5000}
+      STEMS_DIR:             /music/stems
+      ANALYSIS_VERSION:      ${ANALYSIS_VERSION:-v1}
+      ANALYSIS_CONCURRENCY:  ${ANALYSIS_CONCURRENCY:-2}
+      MUSIC_MIN_SECONDS:     ${MUSIC_MIN_SECONDS:-6}
+    command: python3 -u /app/music_analysis_worker.py
+    networks:
+      - music_network
+    labels:
+      ep.service: "music-studio"
+      ep.tier:    "assistant"
+      ep.managed: "true"
+
+  # ──────────────────────────────────────────────────────────────────
+  #  Studio partner (2026-10-24) — DOMO in the studio. Watches every Live
+  #  set under My Recordings (read-only), chronicles each save, files notes
+  #  and ideas, and runs "studio session" conversations on gpu01-primary.
+  #  domo-router (web-01) calls it on :8202; music-assistant shows /ui/studio.
+  #  Reads + suggests only: it never writes to a Live set (decision 2026-10-24).
+  # ──────────────────────────────────────────────────────────────────
+  studio-partner:
+    image: python:3.12-slim
+    container_name: studio-partner
+    restart: unless-stopped
+    working_dir: /app
+    mem_limit: 384m
+    cpu_shares: 512
+    volumes:
+      - ./studio-partner:/app:ro
+      - ${NASTY_RECORDINGS_HOST_PATH:-/mnt/nasty-music}:/import/nasty:ro
+    environment:
+      DATABASE_URL:          ${MUSIC_DATABASE_URL}
+      API_PORT:              "8202"
+      STUDIO_ROOT:           /import/nasty
+      STUDIO_DATAGRID_PATH:  "/DATAGRID/Multimedia/Music/My Recordings"
+      STUDIO_PEOPLE_JSON:    '["owner"]'
+      OLLAMA_URL:            ${OLLAMA_URL:-http://10.0.30.50:11434}
+      STUDIO_LLM_MODEL:      gpu01-primary
+      STUDIO_LLM_NUM_CTX:    "16384"
+      TZ:                    Europe/Berlin
+    command: >
+      bash -c "pip install --quiet fastapi==0.115.0 'uvicorn[standard]==0.30.6' asyncpg==0.29.0 httpx==0.27.2 pydantic==2.9.2 &&
+               python studio_partner.py"
+    ports:
+      - "8202:8202"
+    networks:
+      - music_network
+    healthcheck:
+      test:     ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8202/health')"]
+      interval: 60s
+      timeout:  10s
+      retries:  3
+      start_period: 90s
+    labels:
+      ep.service: "studio-partner"
+      ep.tier:    "assistant"
+      ep.managed: "true"
+
+  # ──────────────────────────────────────────────────────────────────
+  #  Field ingest (2026-10-25) — field recorders into Music Studio. Reads
+  #  My Recordings (read-only): "Field Recordings/" (new imports via the Mac's
+  #  `field import` + Syncthing) and, as backfill, ZOOM/, FieldRecordings/, the
+  #  R16 projects. Hands new batches to Beets through ./field-triggers (a host
+  #  unit runs the safe import; this container never writes audio_locations).
+  #  Spoken notes: Whisper on gpu-02. The Mac's `field` script calls :8203.
+  # ──────────────────────────────────────────────────────────────────
+  field-ingest:
+    # The music-analysis image (built by the role): python 3.12 + asyncpg + httpx + ffmpeg --
+    # ffmpeg trims iPhone Voice Memos (m4a) for the spoken note (2026-10-25).
+    image: music-analysis:local
+    container_name: field-ingest
+    restart: unless-stopped
+    working_dir: /app
+    mem_limit: 384m
+    cpu_shares: 256
+    volumes:
+      - ./field-ingest:/app:ro
+      - ./field-triggers:/triggers
+      - ${NASTY_RECORDINGS_HOST_PATH:-/mnt/nasty-music}:/import/nasty:ro
+    environment:
+      DATABASE_URL:     ${MUSIC_DATABASE_URL}
+      API_PORT:         "8203"
+      RECORDINGS_ROOT:  /import/nasty
+      FIELD_DIR:        "Field Recordings"
+      TRIGGER_DIR:      /triggers
+      WHISPER_URL:      ${WHISPER_URL:-http://10.0.30.51:5000}
+      SESSION_GAP_MIN:  "30"
+      TZ:               Europe/Berlin
+    command: >
+      bash -c "pip install --quiet fastapi==0.115.0 'uvicorn[standard]==0.30.6' &&
+               python field_ingest.py"
+    ports:
+      - "8203:8203"
+    networks:
+      - music_network
+    healthcheck:
+      test:     ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8203/health')"]
+      interval: 60s
+      timeout:  10s
+      retries:  3
+      start_period: 90s
+    labels:
+      ep.service: "field-ingest"
+      ep.tier:    "assistant"
+      ep.managed: "true"
+
+# ============================================================================
+#  Volumes
+# ============================================================================
+
+volumes:
+  music_sessions:
+    driver: local
+    driver_opts:
+      type:   none
+      o:      bind
+      device: ${MUSIC_SESSIONS_HOST_PATH:-/data/music/sessions}
+
+  music_field:
+    driver: local
+    driver_opts:
+      type:   none
+      o:      bind
+      device: ${MUSIC_FIELD_HOST_PATH:-/data/music/field}
+
+  music_midi:
+    driver: local
+    driver_opts:
+      type:   none
+      o:      bind
+      device: ${MUSIC_MIDI_HOST_PATH:-/data/music/midi}
+
+  music_stems:
+    driver: local
+    driver_opts:
+      type:   none
+      o:      bind
+      device: ${MUSIC_STEMS_HOST_PATH:-/data/music/stems}
+
+  music_library:
+    driver: local
+    driver_opts:
+      type:   none
+      o:      bind
+      device: ${MUSIC_LIBRARY_HOST_PATH:-/data/music/library}
+
+  beets_config:
+    driver: local
+    driver_opts:
+      type:   none
+      o:      bind
+      device: ${BEETS_CONFIG_HOST_PATH:-/data/music/beets}
+
+# ============================================================================
+#  Networks
+# ============================================================================
+
+networks:
+  music_network:
+    name: music_network
+    driver: bridge
+    external: false

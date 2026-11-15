@@ -1,0 +1,54 @@
+---
+# =============================================================================
+# Role: node_exporter
+# Installs the Debian/Ubuntu prometheus-node-exporter package and points it at
+# a textfile collector directory, so ad-hoc scripts (snapshot jobs, restic
+# checks, etc.) can drop .prom files for Prometheus to pick up alongside the
+# standard host metrics (memory, swap, disk, cpu).
+#
+# This did not exist anywhere in the repo before 2026-08-04 despite every
+# Prometheus scrape config assuming node_exporter was already running on
+# :9100 fleet-wide — that assumption was never true.
+# =============================================================================
+
+- name: Install prometheus-node-exporter package
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+    update_cache: true
+  tags: [node_exporter]
+
+- name: Ensure textfile collector directory exists
+  ansible.builtin.file:
+    path: "{{ node_exporter_textfile_dir }}"
+    state: directory
+    owner: prometheus
+    group: prometheus
+    mode: "0755"
+  tags: [node_exporter]
+
+- name: Configure node_exporter to enable the textfile + systemd collectors
+  ansible.builtin.copy:
+    dest: /etc/default/prometheus-node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      ARGS="--collector.textfile.directory={{ node_exporter_textfile_dir }} --collector.systemd"
+  notify: restart node_exporter
+  tags: [node_exporter]
+  # --collector.systemd added 2026-09-13, fleet-wide (not just the IaC
+  # VM) -- exposes node_systemd_unit_state, needed for real alerting on a
+  # service reaching systemd's "failed" state (as opposed to just
+  # process-alive/scrape-up checks, which miss exactly this case -- see
+  # incident_iac_api_n8n_cascade_2026-09-13 memory: iac-api sat "failed"
+  # for days with zero alert since nothing watched systemd state
+  # anywhere). No extra privilege needed -- node_exporter talks to
+  # systemd over the same D-Bus interface `systemctl status` itself uses.
+
+- name: Ensure node_exporter service is enabled and running
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+  tags: [node_exporter]

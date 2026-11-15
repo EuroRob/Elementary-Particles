@@ -1,0 +1,112 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: n8n-matrix
+  group_by: ["alertname"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # Dead man's switch (2026-10-22). Always-firing Watchdog -> HA webhook
+    # every repeat_interval; HA's "Alerting deadman alarm" automation pages
+    # the phone when it stops. Must stay FIRST and continue: false so the
+    # heartbeat never reaches the normal receivers.
+    - matchers:
+        - alertname="Watchdog"
+      receiver: ha-deadman
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: {{ alertmanager_deadman_repeat_interval }}
+      continue: false
+
+    # PostgresRestarted goes DIRECTLY to iac-api, NOT through n8n — added
+    # 2026-09-06. n8n is one of the containers pg-01's restart can leave
+    # wedged (confirmed live 2026-09-05, see
+    # feedback_pg01_restart_orphans_app_connections memory), so the trigger
+    # path for "go fix n8n (among others)" can't itself depend on n8n being
+    # up to relay it. iac-api runs on the IaC VM, independent of web-01.
+    - match:
+        alertname: PostgresRestarted
+      receiver: iac-api-pg01-restart
+      # This alert is self-contained (iac-api does its own Matrix
+      # notification once the restart finishes) — don't also duplicate it
+      # through the normal n8n-matrix receiver.
+      continue: false
+
+    # Added 2026-09-13, same reasoning as PostgresRestarted above: iac-api
+    # going down is exactly the alert that must NOT depend on n8n to be
+    # delivered — n8n itself got stuck as a downstream consequence of
+    # this same real incident (see incident_iac_api_n8n_cascade_2026-09-13
+    # memory). Routes directly to the Home Assistant bridge only.
+    - match:
+        alertname: IacApiDown
+      receiver: ha-bridge-only
+      continue: false
+
+    # Suppress per-camera Frigate alerts for all cameras except doorcam.
+    # Rewritten 2026-09-29: the previous version could never match (regex
+    # under `match:`, label `camera` instead of Frigate's `camera_name`) and
+    # its `(?!doorcam$)` lookahead isn't valid RE2 — `amtool check-config`
+    # FAILED on the rendered file, so the next Alertmanager restart would have
+    # taken down ALL alerting. `camera_name=~".+"` keeps fleet-wide Frigate
+    # alerts (no camera_name label, e.g. FrigateDetectionStalled) out of the
+    # drop, since `!=` also matches a missing label. doorcam falls through to
+    # the default receiver.
+    - matchers:
+        - alertname=~"Frigate.*"
+        - camera_name=~".+"
+        - camera_name!="doorcam"
+      receiver: drop-receiver
+      continue: false
+
+    # Informational Frigate warnings: Matrix only, no phone push via HA.
+    - matchers:
+        - alertname="FrigateDoorcamNoDetections"
+      receiver: n8n-matrix-only
+      continue: false
+
+receivers:
+  # ha-bridge added as a SECOND webhook here 2026-09-13 — every normal
+  # alert now fans out to both Matrix (via n8n) and a Home Assistant
+  # phone push in parallel, so a problem with either single path doesn't
+  # leave every alert silently undelivered.
+  - name: n8n-matrix
+    webhook_configs:
+      - url: "{{ alertmanager_n8n_webhook_url }}"
+        send_resolved: true
+      - url: "{{ alertmanager_ha_bridge_webhook_url }}"
+        send_resolved: true
+
+  - name: n8n-matrix-only
+    webhook_configs:
+      - url: "{{ alertmanager_n8n_webhook_url }}"
+        send_resolved: true
+
+  - name: ha-bridge-only
+    webhook_configs:
+      - url: "{{ alertmanager_ha_bridge_webhook_url }}"
+        send_resolved: true
+
+  - name: iac-api-pg01-restart
+    webhook_configs:
+      - url: "{{ alertmanager_iac_api_webhook_url }}"
+        send_resolved: false
+        http_config:
+          authorization:
+            credentials: "{{ _iac_api_vault.secret.token }}"
+          # iac-api's cert is self-signed (see api_server.py — "Starting
+          # with SSL/TLS"), same as every n8n HTTP Request node calling it
+          # already sets allowUnauthorizedCerts for.
+          tls_config:
+            insecure_skip_verify: true
+
+  # HA webhook trigger, NOT the ha-bridge: the bridge runs on web-01 next to
+  # Alertmanager, the point here is a receiver that survives web-01 dying.
+  - name: ha-deadman
+    webhook_configs:
+      - url: "{{ _ha_vault.secret.url }}/api/webhook/{{ _deadman_vault.secret.webhook_id }}"
+        send_resolved: false
+
+  # Drop receiver — silently suppresses matched alerts (no webhooks configured)
+  - name: drop-receiver

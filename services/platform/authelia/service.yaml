@@ -1,0 +1,126 @@
+---
+name: authelia
+version: "4.37"
+tier: "platform"
+description: "Authelia - Single Sign-On (SSO) and Authorization Server"
+owner: "platform-team"
+runbook: "https://docs.internal/authelia-runbook"
+
+tags:
+  expose: "true"
+  ingress: "https"
+  auth: "none"
+  network: "vlan30"
+  dns: "true"
+  tier: "platform"
+  category: "Authentication"
+  icon: "shield-account"
+  color: "#1db954"
+  sla: "critical"
+  backup: "daily"
+  owner: "platform"
+  environment: "production"
+  data_classification: "sensitive"
+  authentication_provider: "true"
+
+deployment:
+  platform: "docker"
+  deployment_target: "web-vm"
+  namespace: "authelia"
+  replicas: 1
+  resources:
+    cpu: "2"
+    memory: "2Gi"
+    storage: "5Gi"
+  image: "authelia/authelia:v4.37"
+
+services:
+  - name: "authelia"
+    image: "authelia/authelia:v4.37"
+    port: 9091
+    description: "Single Sign-On Authentication Server"
+
+interfaces:
+  - name: "web"
+    protocol: "http"
+    port: 9091
+    internal_port: 9091
+
+dependencies:
+  - name: "postgres"
+    role: "session-store"
+    required: true
+  - name: "redis"
+    role: "session-cache"
+    required: false
+
+provides:
+  - interface: "tcp:9091"
+    for_services: ["traefik", "protected-apps"]
+    contract: "OIDC Authentication Provider"
+    documentation: "https://www.authelia.com/"
+
+secrets:
+  - name: "AUTHELIA_JWT_SECRET"
+    vault_path: "secrets/authelia/jwt"
+  - name: "AUTHELIA_SESSION_SECRET"
+    vault_path: "secrets/authelia/session"
+  - name: "AUTHELIA_STORAGE_POSTGRES_PASSWORD"
+    vault_path: "secrets/authelia/postgres"
+  - name: "AUTHELIA_NOTIFIER_SMTP_PASSWORD"
+    vault_path: "secrets/authelia/smtp"
+  - name: "OIDC_ISSUER_PRIVATE_KEY"
+    vault_path: "secrets/authelia/oidc"
+
+monitoring:
+  health_check: "curl -f http://localhost:9091/health/ready || exit 1"
+  health_check_interval: "30s"
+  health_check_timeout: "5s"
+  unhealthy_threshold: 3
+  metrics_endpoint: "http://localhost:9091/metrics"
+  alert_rules:
+    - name: "authelia_unavailable"
+      condition: "authelia_up == 0"
+      severity: "critical"
+    - name: "authentication_failures_high"
+      condition: "authelia_failed_auth_total > 50"
+      severity: "warning"
+    - name: "session_timeout_errors"
+      condition: "authelia_session_errors_total > 10"
+      severity: "warning"
+
+backup:
+  enabled: true
+  schedule: "0 3 * * *"
+  retention: "30d"
+  target: "s3:http://nas-01.internal:9000/restic/authelia"
+
+networking:
+  vlan: "vlan30"
+  dns_enabled: true
+  dns_names:
+    - "authelia.internal"
+    - "auth.internal"
+    - "sso.internal"
+  internal_access_only: true
+
+metadata:
+  data_classification: "sensitive"
+  cost_center: "infrastructure"
+  business_impact: "critical"
+  backup_required: true
+  service_suite: "platform-layer"
+  mfa_enabled: true
+  session_timeout_minutes: 60
+
+authelia_config:
+  oidc_enabled: true
+  mfa_required: false
+  remember_me_duration: "1month"
+  session_timeout: "1h"
+  inactivity_timeout: "30m"
+  ldap_provider: "active-directory"
+  smtp_notifications: true
+  totp_enabled: true
+  duo_enabled: false
+  webauthn_enabled: true

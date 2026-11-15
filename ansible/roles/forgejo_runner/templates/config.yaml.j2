@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+# forgejo-runner, host mode: job steps run as {{ forgejo_runner_user }} on this VM.
+log:
+  level: info
+
+runner:
+  file: {{ forgejo_runner_state_dir }}/.runner
+  capacity: {{ forgejo_runner_capacity }}
+  timeout: {{ forgejo_runner_job_timeout }}
+  insecure: false
+  fetch_timeout: 5s
+  fetch_interval: 2s
+  labels:
+{% for l in forgejo_runner_labels %}
+    - "{{ l }}"
+{% endfor %}
+  envs:
+    PATH: {{ ci_tools_dir }}/venv/bin:{{ ci_tools_dir }}/bin:/usr/local/bin:/usr/bin:/bin
+    CI_TOOLS: {{ ci_tools_dir }}
+    ANSIBLE_COLLECTIONS_PATH: {{ ci_tools_dir }}/collections
+    PIP_NO_INPUT: "1"
+
+cache:
+  enabled: false
+
+host:
+  workdir_parent: {{ forgejo_runner_state_dir }}/work

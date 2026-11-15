@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}{{ song.title }} — Music Studio{% endblock %}
+{% block content %}
+<p><a href="/ui/songs?user={{ current_user }}">&larr; all songs</a></p>
+<h2 style="margin-bottom:0.2rem">{{ song.title }}</h2>
+<div class="meta">
+  {% if song.project %}{{ song.project }} · {% endif %}
+  {% if song.kind %}<span class="badge {{ song.kind }}">{{ song.kind }}</span>{% endif %}
+  {% if song.key_signature %}key {{ song.key_signature }} · {% endif %}
+  {% if song.tempo_bpm %}{{ song.tempo_bpm | float | round(0) | int }} bpm · {% endif %}
+  {{ song.recordings | length }} recording{{ '' if song.recordings | length == 1 else 's' }}
+  {% if song.songbook_url %} · <a href="{{ song.songbook_url }}" target="_blank" rel="noopener">songbook repo</a>{% endif %}
+</div>
+
+<div class="card">
+  <div class="row-actions" style="justify-content:space-between; margin-bottom:0.6rem">
+    <h3 style="margin:0">Song sheet</h3>
+    <div class="row-actions">
+      <span class="muted">Transpose</span>
+      <button type="button" id="tr-down">−</button>
+      <span id="tr-val" style="min-width:2.2rem; text-align:center">0</span>
+      <button type="button" id="tr-up">+</button>
+      <a id="pdf-link" href="/api/songs/{{ song.id }}/pdf" target="_blank" rel="noopener">PDF</a>
+      <button type="button" id="edit-toggle">Edit</button>
+    </div>
+  </div>
+  <div id="sheet-status" class="muted"></div>
+  <div id="sheet" class="sheet"></div>
+
+  <div id="editor" style="display:none; margin-top:0.8rem">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.8rem">
+      <textarea id="cho" spellcheck="false" style="width:100%; min-height:28rem; font-family:ui-monospace,Menlo,monospace; font-size:0.85rem; box-sizing:border-box"></textarea>
+      <div id="preview" class="sheet" style="border:1px solid var(--border-soft); border-radius:6px; padding:0.6rem; overflow:auto; max-height:30rem"></div>
+    </div>
+    <div class="row-actions" style="margin-top:0.6rem">
+      <input type="text" id="commit-msg" placeholder="What changed? (commit message, optional)" style="flex:1">
+      <button type="button" id="save">Save to songbook</button>
+      <button type="button" id="cancel" style="background:transparent">Cancel</button>
+      <span id="save-result" class="muted"></span>
+    </div>
+    <p class="muted" style="margin-bottom:0">ChordPro: <code>{title: …}</code>, <code>{key: Am}</code>, <code>{tempo: 96}</code>,
+      chords inline as <code>[Am]word</code>, sections with <code>{start_of_verse: Verse 1}</code> … <code>{end_of_verse}</code>.
+      Keep the <code>{meta: song_id …}</code> line — it links the file to this page.</p>
+  </div>
+</div>
+
+{% set ana_media = none %}
+{% set ana_items = [] %}
+{% for r in song.recordings %}{% if r.play_url %}
+  {% set _ = ana_items.append({'audio_id': r.audio_id, 'label': r.role ~ ' — ' ~ r.name, 'play_url': r.play_url}) %}
+{% endif %}{% endfor %}
+{% include "_analysis.html" %}
+
+<div class="card" id="harmony-card">
+  <div class="row-actions" style="justify-content:space-between">
+    <h3 style="margin:0">Harmony</h3>
+    <button type="button" id="harmony-refresh" title="Recompute from the sheet / recordings now">Refresh</button>
+  </div>
+  {% if harmony and harmony.source %}
+  <div class="meta">
+    {% if harmony.key %}key <b>{{ harmony.key }}</b> · {% endif %}
+    {% if harmony.meter %}<b>{{ harmony.meter }}</b> <span class="muted">({{ 'from the sheet' if harmony.meter_source == 'sheet' else 'detected — set {time: …} in the sheet to fix it' }})</span> · {% else %}meter undecided · {% endif %}
+    from {{ 'your sheet' if harmony.source == 'sheet' else 'the best recording (no chords in the sheet yet)' }}
+  </div>
+  <table class="files">
+    {% for sec in harmony.sections if sec.roman %}
+    <tr>
+      <td class="muted" style="white-space:nowrap">{{ sec.label or '—' }}</td>
+      <td>{{ (sec.roman[:12] | join(' ')) }}{{ ' …' if sec.roman | length > 12 }}<br>
+          <span class="muted">{{ (sec.chords[:12] | join(' ')) }}{{ ' …' if sec.chords | length > 12 }}</span></td>
+      <td>{% for l in sec.loops %}<a class="chip" style="font-size:0.75rem" href="/ui/progression?pattern={{ l | join('–') | urlencode }}&user={{ current_user }}">{{ l | join('–') }}</a> {% endfor %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Not computed yet — it appears once a recording of this song is analysed, or the sheet has chords. <span id="harmony-hint"></span></p>
+  {% endif %}
+  <span id="harmony-result" class="muted"></span>
+</div>
+<script>
+document.getElementById('harmony-refresh').onclick = async () => {
+  const out = document.getElementById('harmony-result'); out.textContent = 'recomputing…';
+  const r = await fetch('/api/harmony/rebuild?song_id={{ song.id }}', {method: 'POST'});
+  const d = await r.json().catch(() => ({}));
+  if (r.ok) location.reload(); else out.textContent = d.detail || ('error ' + r.status);
+};
+</script>
+
+<div class="card" id="drafts-card">
+  <div class="row-actions" style="justify-content:space-between">
+    <h3 style="margin:0">Draft lead sheet</h3>
+    <div class="row-actions">
+      <select id="draft-rec">
+        {% for r in song.recordings %}<option value="{{ r.audio_id }}">{{ r.role }} — {{ r.name }}</option>{% endfor %}
+      </select>
+      <button type="button" id="draft-go" {{ 'disabled' if not song.recordings else '' }}>Make draft</button>
+    </div>
+  </div>
+  <p class="muted" style="margin:0.4rem 0">Separates the vocals (Demucs), transcribes them with word timings (Whisper) — both on
+    gpu-02 — and puts the detected chords on the words where they change, in the detected sections. A starting point to
+    correct, not a finished sheet. Takes about a minute per song.</p>
+  <div id="draft-list"></div>
+</div>
+
+<div class="card">
+  <h3>Recordings</h3>
+  {% if song.recordings %}
+  <table class="files">
+    {% for r in song.recordings %}
+    <tr>
+      <td><span class="badge">{{ r.role }}</span></td>
+      <td style="width:100%">
+        {% if r.beets_item_id %}<a href="/ui/track/{{ r.beets_item_id }}?user={{ current_user }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}
+        <div class="muted" title="content hash = labcat full_hash">{{ r.labcat_path or r.path }}</div>
+      </td>
+      <td class="muted" style="white-space:nowrap">{{ r.detected_key or '' }}{% if r.detected_tempo %} · {{ r.detected_tempo | round(0) | int }} bpm{% endif %}</td>
+      <td class="muted">{{ '%d:%02d' % ((r.duration_sec or 0) // 60, (r.duration_sec or 0) % 60) }}</td>
+      <td>{% if r.play_url %}<audio controls preload="none" src="{{ r.play_url }}" style="height:2rem; width:14rem"></audio>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No recordings linked yet.</p>
+  {% endif %}
+</div>
+
+<script src="/static/chordsheetjs-18.0.0.min.js"></script>
+<script>
+(function () {
+  const C = window.ChordSheetJS;
+  const songId = {{ song.id | tojson }};
+  const sheetEl = document.getElementById('sheet'), statusEl = document.getElementById('sheet-status');
+  const editor = document.getElementById('editor'), cho = document.getElementById('cho');
+  const preview = document.getElementById('preview'), saveResult = document.getElementById('save-result');
+  let text = '', sha = null, transpose = 0;
+
+  function render(target, source, steps) {
+    try {
+      let s = new C.ChordProParser().parse(source);
+      if (steps) s = s.transpose(steps);
+      target.innerHTML = new C.HtmlDivFormatter().format(s);
+      return s;
+    } catch (e) {
+      target.innerHTML = '<p class="err">Can\'t parse this ChordPro yet: ' + (e.message || e) + '</p>';
+      return null;
+    }
+  }
+  function show() {
+    const s = render(sheetEl, text, transpose);
+    document.getElementById('tr-val').textContent = (transpose > 0 ? '+' : '') + transpose + (s && s.key ? ' (' + s.key + ')' : '');
+    document.getElementById('pdf-link').href = '/api/songs/' + songId + '/pdf?transpose=' + transpose;
+  }
+  async function load() {
+    const r = await fetch('/api/songs/' + songId + '/chordpro');
+    const d = await r.json();
+    if (!r.ok) { statusEl.textContent = d.detail || 'could not load sheet'; return; }
+    text = d.content; sha = d.sha;
+    statusEl.textContent = d.exists ? '' : 'No sheet in the songbook yet — Edit and Save to create songs/…/song.cho.';
+    show();
+  }
+  document.getElementById('tr-up').onclick = () => { transpose = (transpose + 1 + 11) % 23 - 11; show(); };
+  document.getElementById('tr-down').onclick = () => { transpose = (transpose - 1 + 11 + 23) % 23 - 11; show(); };
+  document.getElementById('edit-toggle').onclick = () => {
+    cho.value = text; render(preview, text, 0);
+    editor.style.display = 'block'; sheetEl.style.display = 'none'; saveResult.textContent = '';
+  };
+  document.getElementById('cancel').onclick = () => { editor.style.display = 'none'; sheetEl.style.display = 'block'; };
+  // used by the draft card: put a draft into the editor; the human's Save is the commit
+  window.studioOpenEditor = (draftText) => {
+    cho.value = draftText; render(preview, draftText, 0);
+    editor.style.display = 'block'; sheetEl.style.display = 'none';
+    document.getElementById('commit-msg').value = 'Lead sheet from automatic draft';
+    saveResult.className = 'muted';
+    saveResult.textContent = sha ? 'This replaces the current sheet when you save — the old version stays in git history.' : '';
+    editor.scrollIntoView({behavior: 'smooth'});
+  };
+  let t = null;
+  cho.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => render(preview, cho.value, 0), 200); });
+  document.getElementById('save').onclick = async () => {
+    saveResult.className = 'muted'; saveResult.textContent = 'saving…';
+    const r = await fetch('/api/songs/' + songId + '/chordpro', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content: cho.value, sha, message: document.getElementById('commit-msg').value || null})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { saveResult.className = 'err'; saveResult.textContent = d.detail || ('error ' + r.status); return; }
+    saveResult.className = 'ok'; saveResult.textContent = 'saved · commit ' + d.commit.slice(0, 8);
+    await load(); editor.style.display = 'none'; sheetEl.style.display = 'block';
+  };
+  load();
+})();
+</script>
+<script>
+(function () {
+  const songId = {{ song.id | tojson }};
+  const list = document.getElementById('draft-list');
+  let timer = null;
+  const STAGES = {start: 'starting', analyse: 'analysing chords', separate: 'separating vocals (gpu-02)',
+                  transcribe: 'transcribing (gpu-02)', align: 'aligning'};
+  async function refresh() {
+    const r = await fetch('/api/songs/' + songId + '/drafts');
+    if (!r.ok) return;
+    const drafts = await r.json();
+    list.innerHTML = '';
+    let active = false;
+    drafts.forEach(d => {
+      const div = document.createElement('div');
+      div.className = 'annotation';
+      const when = (d.finished_at || d.created_at || '').replace('T', ' ').slice(0, 16);
+      let status = d.status;
+      if (d.status === 'running') { status = STAGES[d.stage] || d.stage || 'running'; active = true; }
+      if (d.status === 'queued') { status = 'queued' + (d.ahead ? ` (${d.ahead} ahead)` : ''); active = true; }
+      const extra = d.status === 'done'
+        ? (d.voiced_share < 0.03 ? ' · no vocals detected — chords only' : ` · vocals ${Math.round(d.voiced_share * 100)}%` + (d.language ? ', ' + d.language : ''))
+        : '';
+      div.innerHTML = `<div class="meta">${when} · <b>${d.name}</b> · <span class="${d.status === 'failed' ? 'err' : ''}">${status}</span>${extra}</div>`;
+      if (d.status === 'failed') {
+        div.insertAdjacentHTML('beforeend', `<div class="err" style="font-size:0.85rem">${(d.error || '').replace(/</g, '&lt;')}</div>`);
+      }
+      if (d.status === 'done' && d.chordpro) {
+        const prev = document.createElement('div'); prev.className = 'sheet';
+        prev.style.cssText = 'max-height:16rem; overflow:auto; border:1px solid var(--border-soft); border-radius:6px; padding:0.5rem; margin:0.3rem 0';
+        try { prev.innerHTML = new ChordSheetJS.HtmlDivFormatter().format(new ChordSheetJS.ChordProParser().parse(d.chordpro)); }
+        catch (e) { prev.textContent = d.chordpro; }
+        const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = 'Open in editor';
+        btn.onclick = () => window.studioOpenEditor(d.chordpro);
+        div.appendChild(prev); div.appendChild(btn);
+      }
+      list.appendChild(div);
+    });
+    if (!drafts.length) list.innerHTML = '<p class="muted">No drafts yet.</p>';
+    clearTimeout(timer);
+    if (active) timer = setTimeout(refresh, 4000);
+  }
+  document.getElementById('draft-go').onclick = async () => {
+    const r = await fetch('/api/songs/' + songId + '/drafts', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({audio_id: document.getElementById('draft-rec').value})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { list.insertAdjacentHTML('afterbegin', `<p class="err">${d.detail || 'error ' + r.status}</p>`); return; }
+    refresh();
+  };
+  refresh();
+})();
+</script>
+{% endblock %}

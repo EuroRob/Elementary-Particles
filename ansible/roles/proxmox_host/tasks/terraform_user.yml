@@ -1,0 +1,162 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/terraform_user.yml
+#
+# Creates a dedicated Proxmox API user and token for Terraform.
+# Token is stored in Vault at secret/proxmox/api/<pve_hostname>.
+#
+# Design decision: ONE user per Proxmox host (not shared), each with its own
+# API token. This limits blast radius if a token is compromised, and allows
+# per-host token rotation without affecting other hosts.
+#
+# The user 'terraform-pve@pve' + role 'TerraformProv' is the standard pattern.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# 1. Create the Terraform PVE role (if not exists)
+# ---------------------------------------------------------------------------
+- name: "TF-USER: Check if TerraformProv role exists"
+  ansible.builtin.command:
+    cmd: pveum role list --output-format json
+  register: pve_roles_raw
+  changed_when: false
+  tags: [terraform, users]
+
+- name: "TF-USER: Parse role list"
+  ansible.builtin.set_fact:
+    pve_roles: "{{ pve_roles_raw.stdout | from_json | map(attribute='roleid') | list }}"
+  tags: [terraform, users]
+
+- name: "TF-USER: Create TerraformProv role with minimal PVE privileges"
+  ansible.builtin.command:
+    cmd: >-
+      pveum role add {{ pve_terraform_role }}
+      -privs "{{ pve_terraform_privs | regex_replace('\n', ' ') | trim }}"
+  when: pve_terraform_role not in pve_roles
+  register: role_create
+  changed_when: role_create.rc == 0
+  tags: [terraform, users]
+
+# ---------------------------------------------------------------------------
+# 2. Create the Terraform PVE user
+# ---------------------------------------------------------------------------
+- name: "TF-USER: Check if user {{ pve_terraform_user }}@pve exists"
+  ansible.builtin.command:
+    cmd: pveum user list --output-format json
+  register: pve_users_raw
+  changed_when: false
+  tags: [terraform, users]
+
+- name: "TF-USER: Parse user list"
+  ansible.builtin.set_fact:
+    pve_users: >-
+      {{
+        pve_users_raw.stdout
+        | from_json
+        | map(attribute='userid')
+        | list
+      }}
+  tags: [terraform, users]
+
+- name: "TF-USER: Create Terraform PVE user"
+  ansible.builtin.command:
+    cmd: >-
+      pveum user add {{ pve_terraform_user }}@pve
+      --comment "Terraform service account (managed by Ansible)"
+      --enable 1
+  when: "pve_terraform_user + '@pve' not in pve_users"
+  register: user_create
+  changed_when: user_create.rc == 0
+  tags: [terraform, users]
+
+# ---------------------------------------------------------------------------
+# 3. Assign TerraformProv role on the root path
+# ---------------------------------------------------------------------------
+- name: "TF-USER: Assign TerraformProv role to Terraform user"
+  ansible.builtin.command:
+    cmd: >-
+      pveum aclmod /
+      --user {{ pve_terraform_user }}@pve
+      --role {{ pve_terraform_role }}
+  register: acl_set
+  changed_when: acl_set.rc == 0
+  failed_when: false   # idempotent — re-setting the same ACL is fine
+  tags: [terraform, users]
+
+# ---------------------------------------------------------------------------
+# 4. Create API token (privilege separation off = token inherits user role)
+# ---------------------------------------------------------------------------
+- name: "TF-USER: Check if API token already exists"
+  ansible.builtin.command:
+    cmd: >-
+      pveum user token list {{ pve_terraform_user }}@pve
+      --output-format json
+  register: token_list_raw
+  changed_when: false
+  tags: [terraform, users]
+
+- name: "TF-USER: Parse token list"
+  ansible.builtin.set_fact:
+    existing_tokens: >-
+      {{
+        token_list_raw.stdout
+        | from_json
+        | map(attribute='tokenid')
+        | list
+      }}
+  tags: [terraform, users]
+
+- name: "TF-USER: Create API token '{{ pve_terraform_token_name }}'"
+  ansible.builtin.command:
+    cmd: >-
+      pveum user token add {{ pve_terraform_user }}@pve {{ pve_terraform_token_name }}
+      --privsep 0
+      --comment "Terraform token for {{ pve_hostname }} (created by Ansible {{ ansible_date_time.date }})"
+      --output-format json
+  register: token_create
+  when: pve_terraform_token_name not in existing_tokens
+  changed_when: token_create.rc == 0
+  tags: [terraform, users]
+
+# ---------------------------------------------------------------------------
+# 5. Write token to Vault
+# ---------------------------------------------------------------------------
+- name: "TF-USER: Extract token value"
+  ansible.builtin.set_fact:
+    tf_token_data: "{{ token_create.stdout | from_json }}"
+  when:
+    - token_create is not skipped
+    - token_create.rc == 0
+  no_log: true
+  tags: [terraform, users]
+
+- name: "TF-USER: Store API token in Vault"
+  community.hashi_vault.vault_kv2_write:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "proxmox/api/{{ pve_hostname }}"
+    data:
+      # Raw IP, not pve_fqdn — nothing resolves "*.homelab.local" anywhere in
+      # this environment (Pi-hole only serves .internal/home.example.org), and every
+      # other Proxmox api_url in use (CLAUDE.md, gpu-02 tfvars, ...) is a raw
+      # IP. Using the FQDN here would write an unreachable value to Vault.
+      api_url:      "https://{{ pve_mgmt_ip.split('/')[0] }}:8006"
+      token_id:     "{{ pve_terraform_user }}@pve!{{ pve_terraform_token_name }}"
+      token_secret: "{{ tf_token_data.value }}"
+      node:         "{{ pve_hostname }}"
+  when:
+    - tf_token_data is defined
+  no_log: true
+  tags: [terraform, users, vault]
+
+- name: "TF-USER: Print setup summary"
+  ansible.builtin.debug:
+    msg:
+      - "Terraform user:  {{ pve_terraform_user }}@pve"
+      - "Terraform role:  {{ pve_terraform_role }}"
+      - "API token ID:    {{ pve_terraform_user }}@pve!{{ pve_terraform_token_name }}"
+      - "Vault path:      secret/proxmox/api/{{ pve_hostname }}"
+      - "{{ 'Token NEWLY CREATED — stored in Vault.' if (tf_token_data is defined) else 'Token already existed — no change.' }}"
+  tags: [terraform, users]

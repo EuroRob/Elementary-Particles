@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Field — Music Studio{% endblock %}
+{% block content %}
+<h2>Field recordings</h2>
+<p class="muted">Takes from the Zoom H2n, the Zoom R16 and the Tascam, grouped into sessions: handheld takes start a new
+  session after 30 minutes without recording; an R16 project is a live session of its own, and a handheld session can
+  join one (never the other way round). New cards come in with <code>field import</code> on the Mac.
+  “Spoken notes” are the first words Whisper heard in each take.</p>
+{% if error %}<p class="err">{{ error }}</p>{% endif %}
+<table>
+  <tr><th>Session</th><th>Files</th><th>Spoken notes</th></tr>
+  {% for s in sessions %}
+  <tr>
+    <td><a href="/ui/field/session?key={{ s.key | urlencode }}&user={{ current_user }}"><b>{{ s.title }}</b></a>
+      {% if s.attached_to %}<br><span class="muted" style="font-size:0.8rem">part of {{ titles.get(s.attached_to, s.attached_to) }}</span>{% endif %}</td>
+    <td>{{ s.files }}</td>
+    <td class="muted" style="font-size:0.85rem">{{ (s.notes or '')[15:160] }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" class="muted">No field recordings yet.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

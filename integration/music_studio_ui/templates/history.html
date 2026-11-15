@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}History — Music Studio{% endblock %}
+{% block content %}
+<h2>History</h2>
+<p style="opacity:0.7; font-size:0.9rem; margin-top:-0.5rem">
+  Every note, rating, and status update across the household, most recent first.
+</p>
+
+<div class="chips">
+  <a class="chip {{ 'active' if status_filter == 'all' else '' }}" href="/ui/history?user={{ current_user }}">All</a>
+  <a class="chip {{ 'active' if status_filter == 'reviewing' else '' }}" href="/ui/history?status=reviewing&user={{ current_user }}">Reviewing</a>
+  <a class="chip {{ 'active' if status_filter == 'needs_work' else '' }}" href="/ui/history?status=needs_work&user={{ current_user }}">Needs Work</a>
+  <a class="chip {{ 'active' if status_filter == 'approved' else '' }}" href="/ui/history?status=approved&user={{ current_user }}">Approved</a>
+</div>
+
+{% if not entries %}
+<p style="opacity:0.7">No entries yet{{ ' for this status' if status_filter != 'all' else '' }}.</p>
+{% else %}
+<div style="overflow-x:auto">
+<table>
+  <thead>
+    <tr>
+      <th>Track</th>
+      <th>User</th>
+      <th>Status</th>
+      <th>Rating</th>
+      <th>Notes</th>
+      <th>Updated</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td><a href="/ui/track/{{ e.item_id }}?user={{ e.user_id }}">{{ e.title }}</a></td>
+      <td class="user-tag">{{ e.user_id | capitalize }}</td>
+      <td><span class="status-{{ e.status }}">{{ e.status | replace('_', ' ') | title }}</span></td>
+      <td>{{ (e.rating ~ '★') if e.rating else '—' }}</td>
+      <td style="max-width:320px; white-space:pre-wrap">{{ e.notes or '—' }}</td>
+      <td class="meta" style="margin:0; white-space:nowrap">{{ e.updated_at[:16] if e.updated_at else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

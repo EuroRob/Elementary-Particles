@@ -1,0 +1,182 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/network_bridges.yml
+#
+# Configures Proxmox network bridges on /etc/network/interfaces.
+# Uses blockinfile to maintain idempotency — each block is marked.
+#
+# Bridge layout:
+#   vmbr0  — management bridge (carries host management IP, VLAN-tagged)
+#   vmbr1  — VLAN-aware internal trunk on 10gb NIC
+#   vmbr2  — WAN/DMZ bridge on 1gb NIC (pve-01 only; skip if pve_wan_nic empty)
+#
+# IMPORTANT: changes take effect after 'ifreload -a' (applied via handler).
+# A manual reboot is recommended after first-run to confirm bridging is stable.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Optional: pin a NIC name to a PCI slot path via systemd .link, instead of
+# relying on the kernel's MAC-fallback name. Use when a slot's occupant may
+# change over time (e.g. a hardware NIC swap) and downstream config
+# (bridge-ports, Terraform, etc.) shouldn't have to change with it. Only
+# renames on next boot/udev re-trigger — writing this file is inert on a
+# running system, never auto-reloads. Guarded by pve_link_overrides being
+# non-empty; most hosts don't need this (their mgmt NIC's kernel name is
+# stable enough as-is).
+# ---------------------------------------------------------------------------
+- name: "NET: Write PCI-slot-path .link overrides"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/network/{{ item.filename | default('10-' + item.name + '.link') }}"
+    content: |
+      # Managed by Ansible (proxmox_host role, pve_link_overrides).
+      # {{ item.comment | default('') }}
+      [Match]
+      Path={{ item.path }}
+      Type=ether
+
+      [Link]
+      Name={{ item.name }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ pve_link_overrides | default([]) }}"
+  tags: [network]
+
+# ---------------------------------------------------------------------------
+# Determine WAN bridge name:
+#   pve_trunk_nic == "" → 2-NIC layout → WAN bridge is vmbr1
+#   pve_trunk_nic != "" → 3-NIC layout → WAN bridge is vmbr2 (behind trunk vmbr1)
+# ---------------------------------------------------------------------------
+- name: "NET: Compute WAN bridge name based on NIC layout"
+  ansible.builtin.set_fact:
+    pve_wan_bridge: "{{ 'vmbr1' if pve_trunk_nic == '' else 'vmbr2' }}"
+  tags: [network]
+
+# ---------------------------------------------------------------------------
+# Detect NICs
+# ---------------------------------------------------------------------------
+- name: "NET: Verify management NIC exists"
+  ansible.builtin.command: "ip link show {{ pve_mgmt_nic }}"
+  register: mgmt_nic_check
+  changed_when: false
+  failed_when: mgmt_nic_check.rc != 0
+  tags: [network]
+
+- name: "NET: Verify trunk NIC exists (vmbr1)"
+  ansible.builtin.command: "ip link show {{ pve_trunk_nic }}"
+  register: trunk_nic_check
+  changed_when: false
+  failed_when: trunk_nic_check.rc != 0
+  when: pve_trunk_nic != ""
+  tags: [network]
+
+- name: "NET: Verify WAN NIC exists (vmbr2)"
+  ansible.builtin.command: "ip link show {{ pve_wan_nic }}"
+  register: wan_nic_check
+  changed_when: false
+  failed_when: false   # non-fatal — vmbr2 is optional
+  when: pve_wan_nic != ""
+  tags: [network]
+
+# ---------------------------------------------------------------------------
+# vmbr0 — management bridge (carries host IP)
+# Trunk mode: VLAN-aware, host IP on native VLAN (VLAN 10).
+# ---------------------------------------------------------------------------
+- name: "NET: Configure vmbr0 (management bridge with host IP)"
+  ansible.builtin.blockinfile:
+    path: /etc/network/interfaces
+    marker: "# {mark} vmbr0 — management bridge (Ansible managed)"
+    block: |
+      auto {{ pve_mgmt_nic }}
+      iface {{ pve_mgmt_nic }} inet manual
+
+      auto vmbr0
+      iface vmbr0 inet static
+              address {{ pve_mgmt_ip }}
+              gateway {{ pve_mgmt_gw }}
+              bridge-ports {{ pve_mgmt_nic }}
+              bridge-stp off
+              bridge-fd 0
+              bridge-vlan-aware yes
+              bridge-vids 2-4094
+  notify: reload_proxmox_networking
+  tags: [network, vmbr0]
+
+# ---------------------------------------------------------------------------
+# vmbr1 — internal VLAN trunk (10 Gbps NIC)
+# All VM NICs on internal VLANs (10/30/40/50) use this bridge.
+# ---------------------------------------------------------------------------
+- name: "NET: Configure vmbr1 (10gb internal VLAN trunk)"
+  ansible.builtin.blockinfile:
+    path: /etc/network/interfaces
+    marker: "# {mark} vmbr1 — 10gb internal VLAN trunk (Ansible managed)"
+    block: |
+      auto {{ pve_trunk_nic }}
+      iface {{ pve_trunk_nic }} inet manual
+
+      auto vmbr1
+      iface vmbr1 inet manual
+              bridge-ports {{ pve_trunk_nic }}
+              bridge-stp off
+              bridge-fd 0
+              bridge-vlan-aware yes
+              bridge-vids 2-4094
+  when: pve_trunk_nic != ""
+  notify: reload_proxmox_networking
+  tags: [network, vmbr1]
+
+# ---------------------------------------------------------------------------
+# WAN/DMZ bridge — pve-01 only
+# Name is dynamic: vmbr1 in 2-NIC layout (no trunk), vmbr2 in 3-NIC layout.
+# fw-01's vtnet0 (WAN VLAN99) and vtnet5 (DMZ VLAN200) attach here.
+# ---------------------------------------------------------------------------
+- name: "NET: Configure WAN/DMZ bridge ({{ pve_wan_bridge }})"
+  ansible.builtin.blockinfile:
+    path: /etc/network/interfaces
+    marker: "# {mark} {{ pve_wan_bridge }} — WAN/DMZ bridge (Ansible managed)"
+    block: |
+      auto {{ pve_wan_nic }}
+      iface {{ pve_wan_nic }} inet manual
+
+      auto {{ pve_wan_bridge }}
+      iface {{ pve_wan_bridge }} inet manual
+              bridge-ports {{ pve_wan_nic }}
+              bridge-stp off
+              bridge-fd 0
+              bridge-vlan-aware yes
+              bridge-vids 2-4094
+  when:
+    - pve_wan_nic != ""
+    - wan_nic_check.rc == 0
+  notify: reload_proxmox_networking
+  tags: [network, wan, dmz]
+
+# ---------------------------------------------------------------------------
+# DNS resolver configuration
+# ---------------------------------------------------------------------------
+- name: "NET: Set DNS resolver (resolv.conf)"
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    content: |
+      # Managed by Ansible (proxmox_host role)
+      nameserver {{ pve_mgmt_dns }}
+      nameserver 9.9.9.9
+      search internal
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [network, dns]
+
+# ---------------------------------------------------------------------------
+# Verify bridge state post-configuration
+# ---------------------------------------------------------------------------
+- name: "NET: Show bridge list"
+  ansible.builtin.command: brctl show
+  register: bridge_list
+  changed_when: false
+  tags: [network, verify]
+
+- name: "NET: Display bridge list"
+  ansible.builtin.debug:
+    msg: "{{ bridge_list.stdout_lines }}"
+  tags: [network, verify]

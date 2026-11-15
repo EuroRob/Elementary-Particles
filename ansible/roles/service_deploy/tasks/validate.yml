@@ -1,0 +1,50 @@
+- name: Validate service definition
+  assert:
+    that:
+      - service_name is defined
+      - service_name | length > 0
+
+      - service_port is defined
+      - service_port | int > 0
+      - service_port | int < 65536
+
+      - service_domain is defined
+      - service_domain | length > 0
+
+      - deploy_method is defined
+      - deploy_method in ['docker', 'native']
+
+    fail_msg: "Invalid service definition in {{ service_path }}"
+
+- name: Validate docker requirements
+  assert:
+    that:
+      - service_image is defined
+  when: deploy_method == "docker"
+
+- name: Check docker-compose exists
+  stat:
+    path: "{{ service_path }}/docker-compose.yml"
+  register: compose_file
+
+- name: Fail if compose file missing
+  fail:
+    msg: "docker-compose.yml missing for {{ service_name }}"
+  when:
+    - deploy_method == "docker"
+    - not compose_file.stat.exists
+
+- name: Validate domain format
+  assert:
+    that:
+      - service_domain is match("^[a-z0-9.-]+$")
+
+- name: Track used ports
+  set_fact:
+    used_ports: "{{ used_ports | default([]) + [service_port] }}"
+
+- name: Check for duplicate ports
+  assert:
+    that:
+      - used_ports | unique | length == used_ports | length
+    fail_msg: "Duplicate port detected: {{ service_port }}"

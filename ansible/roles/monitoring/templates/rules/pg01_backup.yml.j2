@@ -1,0 +1,81 @@
+{# pg-01 WAL archiving + pgBackRest health (added 2026-10-23). Metrics come from
+   Roles/postgres/files/pgbackrest_textfile.sh via node_exporter's textfile
+   collector on pg-01. raw: Prometheus {{ $value }} templating, not Jinja.
+   Background: archiving failed silently for two months and WAL filled the disk
+   on 2026-09-02; nothing alerted. #}
+{% raw %}
+groups:
+  - name: pg01_backup
+    rules:
+      - alert: PostgresWalArchiveFailing
+        expr: increase(pg_archiver_failed_total[30m]) > 0 and pg_archiver_last_failed_timestamp_seconds > pg_archiver_last_archived_timestamp_seconds
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "pg-01 WAL archiving is failing"
+          description: "pg_stat_archiver shows new failures and no success since. WAL is kept until it archives; this is how the disk filled on 2026-09-02. On pg-01: `sudo tail -50 /var/log/pgbackrest/pg-01-archive-push-async.log`, then `sudo -u postgres pgbackrest --stanza=pg-01 check`."
+
+      - alert: PostgresWalArchiveStale
+        expr: pg_archiver_archive_mode_on == 1 and (time() - pg_archiver_last_archived_timestamp_seconds) > 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "pg-01 hasn't archived WAL for over an hour"
+          description: "archive_timeout is 15min, so even an idle DB archives at least every 15 minutes. PITR coverage is falling behind."
+
+      - alert: PostgresWalArchivingOff
+        expr: pg_archiver_archive_mode_on == 0
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "pg-01 archive_mode is off -- no point-in-time recovery"
+          description: "Worst-case loss falls back to the last nightly dump/vzdump (up to 24 h). archive_mode only changes on a restart."
+
+      - alert: PgBackRestSpoolGrowing
+        expr: pgbackrest_spool_bytes > 536870912
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "pgBackRest archive spool on pg-01 is {{ $value | humanize1024 }}B"
+          description: "WAL is queueing locally, so the repo (nas-01 NFS /var/lib/pgbackrest) is probably unreachable. At 4 GiB pgBackRest starts DROPPING WAL (a PITR gap) to protect the disk."
+
+      - alert: PostgresWalDirLarge
+        expr: pg_wal_dir_bytes > 8589934592
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "pg_wal on pg-01 is {{ $value | humanize1024 }}B (disk is 20 GB)"
+          description: "max_wal_size is 4GB; this much WAL means archiving or a replication slot is holding it back. Check PostgresWalArchive* alerts and `select * from pg_replication_slots`."
+
+      - alert: PgBackRestBackupStale
+        expr: pgbackrest_backups > 0 and (time() - pgbackrest_last_backup_timestamp_seconds{type="any"}) > 108000
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No pgBackRest backup of pg-01 for over 30 h"
+          description: "Incrementals run daily at 04:30 UTC, full on Sunday. On pg-01: `sudo -u postgres pgbackrest --stanza=pg-01 info` and /var/log/pgbackrest/pg-01-backup.log."
+
+      - alert: PgBackRestNoBackups
+        expr: pgbackrest_backups == 0
+        for: 48h
+        labels:
+          severity: warning
+        annotations:
+          summary: "pgBackRest repo for pg-01 has no backups"
+          description: "The stanza exists but no backup ever completed."
+
+      - alert: PgBackRestMetricsStale
+        expr: (time() - pgbackrest_textfile_timestamp_seconds) > 1800 or absent(pgbackrest_textfile_timestamp_seconds)
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "pgBackRest health metrics on pg-01 are stale"
+          description: "pgbackrest-textfile.timer stopped writing (or node_exporter on pg-01 is down), so the other pg01_backup alerts can't fire. `systemctl status pgbackrest-textfile.timer` on pg-01."
+{% endraw %}

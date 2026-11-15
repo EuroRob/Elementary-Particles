@@ -1,0 +1,285 @@
+groups:
+  - name: critical_infra
+    rules:
+      # Added 2026-09-13 after a real multi-day incident: iac-api crashed
+      # (missing psycopg2 dependency), systemd's Restart=on-failure
+      # correctly gave up after 5 failures in 5 minutes (StartLimitBurst),
+      # and NOTHING alerted -- the IaC VM had zero Prometheus coverage at
+      # all until this same incident (see
+      # incident_iac_api_n8n_cascade_2026-09-13 memory). Routes DIRECTLY
+      # to the Home Assistant bridge, bypassing n8n entirely -- same
+      # reasoning as PostgresRestarted below: iac-api going down is
+      # exactly the kind of failure where routing the alert through a
+      # dependent automation chain (n8n) risks it never landing.
+      # Requires node_exporter's --collector.systemd (see Roles/
+      # node_exporter/tasks/main.yml).
+      - alert: IacApiDown
+        expr: node_systemd_unit_state{name="iac-api.service", state="failed"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "iac-api is down"
+          description: "iac-api.service is in a failed state on the IaC VM. Every n8n workflow calling iac-api (Proxmox/Ansible/Terraform relay, VM shutdown/start, OSemSearch query) will fail silently until this is fixed. Check: systemctl status iac-api, then run it in the foreground to see the real traceback if journalctl access isn't available interactively."
+
+      # Source of truth is the Proxmox "always-on" tag on each VM (not a hardcoded vmid list) —
+      # to add/remove a VM from this alert, just edit its tag in Proxmox, no rule change needed.
+      # Currently tagged (2026-07-28): fw-01, HomeAss, vpn-01, dns-01, pg-01, web-01, gpu-01, comms-01.
+      - alert: CriticalVMDown
+        expr: |
+          (pve_up == 0)
+          * on(id) group_left(name, tags) pve_guest_info{tags=~".*always-on.*"}
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ '{{' }} $labels.name {{ '}}' }} ({{ '{{' }} $labels.id {{ '}}' }}) is down"
+          description: "Proxmox reports {{ '{{' }} $labels.name {{ '}}' }} as stopped for 3+ minutes. This VM is expected to be always-on — check Proxmox for a failed start or accidental shutdown."
+
+      - alert: ProxmoxNodeLowFreeMemory
+        expr: (1 - (pve_memory_usage_bytes{id="node/pve-01"} / pve_memory_size_bytes{id="node/pve-01"})) < 0.06
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "pve-01 free memory below 6%"
+          description: "Free RAM on the pve-01 Proxmox node is critically low ({{ '{{' }} $value | humanizePercentage {{ '}}' }} free). Threshold lowered to 6% on 2026-08-06 (was 15%, alarming too often given how well-optimized RAM usage runs on this node). Starting or restarting VMs may fail until memory is freed (this is what caused gpu-01's failed start on 2026-07-28)."
+
+      # Covers any host reporting node_exporter's root filesystem metric — no per-host list to
+      # maintain, new hosts get covered automatically once node_exporter is installed on them.
+      # Added 2026-08-03 after web-01 and nas-01 both hit 100% full with zero warning during the
+      # Paperless-ngx deployment (see docs/DISK_SPACE_MONITORING.md).
+      #
+      # Extended 2026-09-05 to also match "/ETBs" — nas-01's ZFS pool root.
+      # This rule only ever checked mountpoint="/" (nas-01's own boot disk),
+      # so the ETBs pool itself hit 97% full (128GB free on 5.45TB, driven by
+      # unpruned daily vzdump backups) with zero alert. Deliberately matches
+      # only the pool ROOT, not every child dataset (/ETBs/backups,
+      # /ETBs/paperless, ...) — ZFS datasets all report the same pool-level
+      # avail bytes, so alerting per-dataset would just fire the identical
+      # alert N times over.
+      - alert: HostLowDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint=~"^(/|/ETBs)$",fstype!="tmpfs"} / node_filesystem_size_bytes{mountpoint=~"^(/|/ETBs)$",fstype!="tmpfs"}) < 0.20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ '{{' }} $labels.instance {{ '}}' }} ({{ '{{' }} $labels.mountpoint {{ '}}' }}) below 20% free"
+          description: "Filesystem {{ '{{' }} $labels.mountpoint {{ '}}' }} on {{ '{{' }} $labels.instance {{ '}}' }} has {{ '{{' }} $value | humanizePercentage {{ '}}' }} free. Clear space soon — Docker image pulls, large file writes, or (on nas-01) vzdump backups may start failing."
+
+      - alert: HostCriticalDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint=~"^(/|/ETBs)$",fstype!="tmpfs"} / node_filesystem_size_bytes{mountpoint=~"^(/|/ETBs)$",fstype!="tmpfs"}) < 0.10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ '{{' }} $labels.instance {{ '}}' }} ({{ '{{' }} $labels.mountpoint {{ '}}' }}) below 10% free"
+          description: "Filesystem {{ '{{' }} $labels.mountpoint {{ '}}' }} on {{ '{{' }} $labels.instance {{ '}}' }} has only {{ '{{' }} $value | humanizePercentage {{ '}}' }} free. This is what filled web-01's disk and crashed the Paperless celery worker on 2026-08-02, and what dropped nas-01's ETBs pool to 128GB free on 2026-09-05 — act now."
+
+      # Reworked 2026-10-12. The original rules (memory > 90%, swap > 70%) fired on a
+      # steady state, not on trouble: a hypervisor whose VMs are sized to fill it sits
+      # above 90% by design, and pve-01 hovered at the 70% swap line for weeks, so the
+      # alerts repeated every 4h and came and went with nothing wrong. These four
+      # fire on distress instead: work stalling on memory, sustained swap-in, nowhere
+      # left to put memory (the gpu-01 hang of 2026-08-04), and the kernel killing.
+      - alert: HostMemoryPressure
+        expr: rate(node_pressure_memory_waiting_seconds_total[10m]) > 0.20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ '{{' }} $labels.instance {{ '}}' }} is stalling on memory"
+          description: "Processes on {{ '{{' }} $labels.instance {{ '}}' }} spent {{ '{{' }} $value | humanizePercentage {{ '}}' }} of the last 10 minutes waiting for memory, for 15 minutes running. It is short of RAM right now: find what grew, or give it more."
+
+      - alert: HostSwapThrashing
+        expr: rate(node_vmstat_pswpin[10m]) > 500
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ '{{' }} $labels.instance {{ '}}' }} is swapping heavily"
+          description: "{{ '{{' }} $labels.instance {{ '}}' }} has read {{ '{{' }} $value | humanize {{ '}}' }} pages per second back from swap for 15 minutes. Swap being full is harmless; swap being read constantly means the working set no longer fits in RAM."
+
+      # Early warning (2026-11-05): pve-01 sat at 90% swap for weeks with RAM still looking fine
+      # (cold VM pages). Harmless until the next squeeze (03:00 backups), which then has
+      # nowhere to go and the kernel kills the biggest VM (gpu-01). HostMemoryExhausted
+      # below only fires once RAM is gone too, which is too late to act.
+      - alert: HostSwapNearlyFull
+        expr: (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes < 0.15) and (node_memory_SwapTotal_bytes > 0)
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ '{{' }} $labels.instance {{ '}}' }} has little swap left"
+          description: "Only {{ '{{' }} $value | humanizePercentage {{ '}}' }} of swap is free on {{ '{{' }} $labels.instance {{ '}}' }}. The next memory spike has nowhere to go, and the kernel would kill a VM. Free RAM (lower the ZFS ARC cap, shrink a VM), then drain a swap device with swapoff/swapon while enough RAM is available."
+
+      - alert: HostMemoryExhausted
+        expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.05) and ((node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes < 0.10) or (node_memory_SwapTotal_bytes == 0))
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ '{{' }} $labels.instance {{ '}}' }} is almost out of memory and swap"
+          description: "{{ '{{' }} $labels.instance {{ '}}' }} has less than 5% of its memory available and no swap left to fall back on. The next step is the kernel killing processes or the host hanging."
+
+      # Hypervisors only: there every kill is a VM or a host service. Inside the VMs
+      # the same counter also counts a container hitting its own mem_limit (131 in a
+      # week on gpu-01, all the music-analysis container), which is that app's
+      # business, not a host emergency.
+      - alert: HypervisorOomKill
+        expr: increase(node_vmstat_oom_kill{instance=~"({{ groups['proxmox_hosts'] | map('extract', hostvars, 'ansible_host') | join('|') }}):9100"}[30m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ '{{' }} $labels.instance {{ '}}' }}: the kernel killed a process for lack of memory"
+          description: "{{ '{{' }} $value | humanize {{ '}}' }} out-of-memory kill(s) on {{ '{{' }} $labels.instance {{ '}}' }} in the last 30 minutes. On a Proxmox host that is usually a VM. See `dmesg -T | grep -i oom` there for which."
+
+      # Added 2026-09-06 after finding postgres-exporter's DSN had been
+      # silently broken since deployment (unescaped '/' in the password —
+      # same class of bug as feedback_jinja_urlencode_dsn_gotcha), so pg_up
+      # was permanently stuck at 0 and this alert would never have fired
+      # for a REAL outage either. Fixed; this is the first real signal.
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "pg-01 is down"
+          description: "postgres-exporter cannot reach pg-01. Every app sharing it (n8n, NetBox, Grafana, Authelia, Outline, Synapse, Tandoor, dl-01's catalog-api) will be degraded or down."
+
+      # Routes DIRECTLY to iac-api, not n8n — see alertmanager.yml.j2's
+      # route block. Fires once per restart (changes() over the postmaster
+      # start-time gauge, which jumps to a new value on every restart —
+      # requires --collector.postmaster explicitly enabled on
+      # postgres-exporter, off by default in this exporter version).
+      - alert: PostgresRestarted
+        expr: changes(pg_postmaster_start_time_seconds[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "pg-01 was restarted"
+          description: "pg-01's postmaster start time changed — Postgres restarted (or the whole VM did). iac-api auto-restarts every dependent container (n8n, NetBox, Grafana, Authelia, Outline, Synapse, Tandoor, catalog-api) in response; see feedback_pg01_restart_orphans_app_connections memory for why that's needed."
+
+      # Added 2026-09-07 after a shm_size-starved Frigate silently stopped
+      # feeding 3 of 5 cameras' frames into object detection for days
+      # with nothing in the System Alerts room — Frigate itself stayed
+      # "Up (healthy)" the whole time, so a plain container/service-down
+      # check would never have caught it. `up` still matters for the case
+      # where the container or the whole scrape target is gone.
+      - alert: FrigateDown
+        expr: up{job="frigate"} == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Frigate is unreachable on gpu-01"
+          description: "Prometheus can't scrape Frigate's /api/metrics on gpu-01 for 3+ minutes — the container is down, crash-looping, or gpu-01 itself is unreachable. All camera recording and detection is affected."
+
+      # This is the actual signal that caught the real 2026-09-07 incident
+      # (feefcam offline, and separately terracecam/doorcam/logicam frames
+      # arriving but never reaching the detector) — frigate_camera_fps is
+      # per-camera and hits exactly 0 when a camera stops delivering video,
+      # regardless of whether the container as a whole looks healthy.
+      # Deliberately keyed on camera_fps (raw frames in), not detection_fps
+      # — a camera pointed at a static scene can legitimately show 0
+      # detection_fps for a long time with nothing wrong (see logicam).
+      #
+      # terracecam EXCLUDED 2026-09-11 per explicit user request: it's on
+      # WiFi (unlike the other cameras) and its connection drops out
+      # periodically on its own — confirmed independently the same week via
+      # real ffmpeg/watchdog crash-loop log lines for terracecam (Connection
+      # timed out / "ffmpeg process crashed unexpectedly", see
+      # project_frigate_deployment memory) that Frigate's own watchdog
+      # already recovers from within seconds every time. This is expected,
+      # self-healing flakiness for this specific camera, not an incident -
+      # alerting on it was pure noise. If terracecam's WiFi is ever replaced
+      # with a wired connection, remove this exclusion.
+      - alert: FrigateCameraOffline
+        expr: frigate_camera_fps{camera_name!="terracecam"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ '{{' }} $labels.camera_name {{ '}}' }} camera has no frames"
+          description: "Frigate's {{ '{{' }} $labels.camera_name {{ '}}' }} camera has reported 0 fps for 5+ minutes — check power/network on the camera itself first (this is what feefcam being physically off the network looked like on 2026-09-07), then `docker logs frigate` on gpu-01 for ffmpeg/RTSP errors."
+
+      # Added 2026-09-08 after a second, DIFFERENT stall: doorcam's
+      # detection silently hit 0 fps for an unknown period while
+      # camera_fps stayed healthy (frames arriving fine) — this is exactly
+      # what FrigateCameraOffline above can't catch, since that one is
+      # deliberately keyed on camera_fps. Found only because a real
+      # doorbell auto-unlock test failed and got investigated by hand; the
+      # container itself stayed "Up (healthy)" the whole time and Frigate's
+      # own docker logs showed a continuous "Too many unprocessed recording
+      # segments" warning for the stalled camera(s) — that message isn't
+      # exposed as a Prometheus metric at all (checked live via
+      # /api/metrics, only frigate_skipped_fps exists and it doesn't
+      # capture this), so this rule falls back to the same camera_fps +
+      # detection_fps combination already used to diagnose it by hand.
+      # logicam is EXCLUDED on purpose: it's a static desk-mounted camera
+      # confirmed (2026-09-07) to legitimately sit at 0 detection_fps for
+      # long stretches with nothing wrong, since nothing moves in frame -
+      # including it here would just make this noisy without ever imaging
+      # a real logicam stall differently from a quiet one.
+      #
+      # REWORKED 2026-09-29: the per-camera "camera_fps > 0 and
+      # detection_fps == 0 for 15m" version fired every quiet night — 30
+      # days of real data: doorcam's normal zero-detection runs are nights
+      # up to ~9 h (fired 39 h in one week), feefcam sat at 0 for 10 days
+      # straight, terracecam ~22 h/day. Frigate only runs detection where
+      # it sees motion, so an empty scene legitimately reads 0, and
+      # process_fps doesn't help either (it stayed at 5 through the real
+      # 2026-09-08 stall). The one real stall in the same 30 days
+      # (2026-09-20 → 09-22) hit EVERY camera at once — doorcam 53 h,
+      # boyscam 52 h, terracecam 32 h — and boyscam never reads 0
+      # otherwise, so "the whole fleet detects nothing" is the clean signal.
+      - alert: FrigateDetectionStalled
+        expr: sum(frigate_detection_fps) == 0 and sum(frigate_camera_fps) > 0
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Frigate detection is stalled on all cameras"
+          description: "Frigate is receiving frames but no camera has produced a single detection for 30+ minutes — the detector itself is stuck even though the container looks healthy (what happened 2026-09-08 and 2026-09-20). Fix confirmed live: `docker restart frigate` on gpu-01."
+
+      # doorcam-only backstop for a stall that hits just that camera: no
+      # detection at all for 12 h is longer than any normal night (max ~9 h
+      # over 30 days). Warning only — routed to Matrix, NOT the phone.
+      - alert: FrigateDoorcamNoDetections
+        expr: max_over_time(frigate_detection_fps{camera_name="doorcam"}[12h]) == 0 and frigate_camera_fps{camera_name="doorcam"} > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "doorcam has detected nothing for 12 hours"
+          description: "doorcam is delivering frames but Frigate hasn't detected anything on it for 12+ hours — longer than any normal quiet night. Walk past the door to test; if still nothing, `docker restart frigate` on gpu-01 (doorbell auto-unlock depends on it)."
+
+  # Added 2026-10-22: Alertmanager sat dead for 3 days after web-01's
+  # unclean reboot (Docker skipped its unless-stopped restart) and nothing
+  # said so. Alerts about the alerting pipeline can't be delivered BY it,
+  # hence the dead man's switch below + tasks/watchdog.yml self-heal.
+  - name: alerting_pipeline
+    rules:
+      # Always firing BY DESIGN. Routed only to the ha-deadman receiver
+      # (alertmanager.yml.j2); HA pages when these heartbeats STOP.
+      # Never silence this -- a silence looks exactly like an outage.
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Dead man's switch heartbeat (always firing by design)"
+          description: "Sent to Home Assistant every ~2 min; HA automation 'Alerting deadman alarm' pages if it stops for >10 min. Do not silence."
+
+      # A receiver failing repeatedly (e.g. n8n -> Matrix down for hours, as
+      # on 2026-10-03) -- goes out via the default receiver, which fans out
+      # to BOTH n8n-matrix and ha-bridge, so one broken path still delivers.
+      - alert: AlertmanagerNotificationsFailing
+        expr: sum by (integration) (increase(alertmanager_notifications_failed_total[30m])) > 2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alertmanager notifications are failing"
+          description: "Some notifications via a webhook receiver failed in the last 30 min. Check `docker logs alertmanager` on web-01 for which receiver (n8n-matrix / ha-bridge / ha-deadman / iac-api)."

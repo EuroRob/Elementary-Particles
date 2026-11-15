@@ -1,0 +1,2431 @@
+---
+# Ansible Inventory - SINGLE SOURCE OF TRUTH
+# All VMs and services defined here
+# This file is the source, not a generated artifact — scripts/sync_netbox.py
+# reads it directly to register/update VMs in NetBox (corrected 2026-08-17;
+# the old note here had the relationship backwards).
+
+all:
+  ungrouped: {}
+  
+  children:
+
+    #########################################
+    # TIER-0: NETWORK / FIREWALL
+    # OPNSense is managed via REST API from the
+    # Ansible control node (ansible_connection: local).
+    # fw-01 never receives a direct SSH connection.
+    #########################################
+    firewall:
+      hosts:
+        fw-01:
+          ansible_host: 10.0.0.1           # Current IP (pre-VLAN migration). Target: 10.0.10.1 after VLAN10 is configured.
+          ansible_connection: local         # All tasks use uri module → OPNSense REST API
+          opnsense_host: 10.0.0.1
+          opnsense_api_port: 443
+          proxmox_node: pve-01
+          proxmox_vm_id: 100
+          vm_vlan: vlan10
+          tier: network
+          criticality: critical
+          service: opnsense
+          vault_opnsense_path: secret/homelab/opnsense
+
+    #########################################
+    # TIER-0b: MANAGEMENT / CONTROL PLANE
+    # The IaC VM itself -- runs Vault + iac-api + this whole Ansible
+    # control node. Added 2026-09-13: this host was NEVER in inventory at
+    # all (only present as Pi-hole DNS records for vault.internal/
+    # iac.internal) -- the classic "control machine manages everything
+    # except itself" gap. Real consequence: zero Prometheus/node_exporter
+    # coverage on the one host running Vault and iac-api, which is why a
+    # multi-day iac-api outage went completely undetected (see
+    # incident_iac_api_n8n_cascade_2026-09-13 memory). ansible_connection:
+    # local, same pattern as fw-01 above -- this machine manages itself,
+    # no SSH hop needed.
+    #########################################
+    management:
+      hosts:
+        iac-vm:
+          # Real Proxmox identity confirmed live 2026-09-13 (user provided,
+          # verified against the real API): named "Netsible" in Proxmox
+          # itself, VM 103 on pve-01. Corrects IaC/CLAUDE.md's own Node Map,
+          # which listed this host as "bare-metal" -- it's a real Proxmox
+          # VM like everything else, just never tracked as one anywhere.
+          # Inventory key stays "iac-vm" (not renamed to "Netsible") to
+          # match the SSH config alias / doc references already using that
+          # name for this same machine (macbook_bootstrap.sh, IAC_ORCHESTRATION
+          # docs) -- this comment is the cross-reference.
+          ansible_host: 10.0.0.15
+          ansible_connection: local
+          proxmox_node: pve-01
+          proxmox_vm_id: 103
+          vm_tier: management
+          criticality: critical
+          service: iac-api
+          tier: management
+
+    #########################################
+    # TIER-1: CORE INFRASTRUCTURE
+    #########################################
+    tier1_core:
+      hosts:
+        dns-01:
+          ansible_host: 10.0.30.10
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          # Bootstrap proxy: route via Proxmox until OPNSense has VLAN30 routing.
+          # Remove after: opnsense role configures vtnet0 VLAN30 interface + fw rules.
+          ansible_ssh_common_args: >-
+            -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_ansible
+            -o StrictHostKeyChecking=no root@10.0.0.11"
+            -o StrictHostKeyChecking=no
+          vm_tier: core
+          vm_vlan: vlan30
+          proxmox_node: pve-01
+          proxmox_vm_id: 220
+          health_check_port: 80        # Pihole web UI
+          health_check_url: "http://10.0.30.10/admin/"
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/pihole
+          pihole_web_port: 80
+          pihole_dns_port: 53
+          vault_pihole_path: secret/pihole/api
+          tier: core
+          criticality: critical
+          service: pihole
+          # Internal DNS overrides — home.example.org services resolve to web-01
+          # Pi-hole intercepts these before they hit public DNS.
+          pihole_dns_records:
+            # Legacy .internal records (needed by Ansible/Terraform/services)
+            - { ip: "10.0.0.15",  name: "vault.internal" }
+            - { ip: "10.0.0.15",  name: "iac.internal" }
+            # home.example.org services → web-01 (Traefik)
+            - { ip: "10.0.30.20", name: "auth.home.example.org" }
+            - { ip: "10.0.30.20", name: "home.home.example.org" }
+            - { ip: "10.0.30.20", name: "traefik.home.example.org" }
+            - { ip: "10.0.30.20", name: "n8n.home.example.org" }
+            - { ip: "10.0.30.20", name: "grafana.home.example.org" }
+            - { ip: "10.0.30.20", name: "netbox.home.example.org" }
+            - { ip: "10.0.30.20", name: "git.home.example.org" }
+            - { ip: "10.0.30.20", name: "wiki.home.example.org" }
+            - { ip: "10.0.30.20", name: "jira.home.example.org" }
+            - { ip: "10.0.30.20", name: "photos.home.example.org" }
+            - { ip: "10.0.30.20", name: "vpn.home.example.org" }
+            - { ip: "10.0.30.20", name: "chat.home.example.org" }
+            - { ip: "10.0.30.20", name: "media.home.example.org" }
+            - { ip: "10.0.30.20", name: "recipes.home.example.org" }
+            - { ip: "10.0.30.20", name: "outline.home.example.org" }
+            - { ip: "10.0.30.20", name: "travel.home.example.org" }
+            - { ip: "10.0.30.20", name: "hike.home.example.org" }
+            - { ip: "10.0.0.15",  name: "vault.home.example.org" }
+            - { ip: "10.0.30.10", name: "pihole.home.example.org" }
+
+        vpn-01:
+          ansible_host: 10.0.10.5
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+          vm_tier: core
+          vm_vlan: vlan10
+          proxmox_node: pve-01
+          proxmox_vm_id: 210
+          health_check_port: 22         # SSH — WireGuard is UDP, not TCP-checkable
+          docker_enabled: "false"
+          wireguard_public_endpoint: "vpn.home.example.org"
+          wireguard_port: 51820
+          wg_easy_port: 51821
+          vault_wg_path: secret/vpn/wireguard
+          vault_wg_easy_path: secret/vpn/wg-easy
+          tier: core
+          criticality: high
+          service: wireguard
+
+    #########################################
+    # TIER-0: PROXMOX HYPERVISORS
+    #########################################
+    proxmox_hosts:
+      hosts:
+        pve-01:
+          ansible_host: 10.0.0.11    # Current: client VLAN. Will move to 10.0.10.11 (MGMT VLAN10) later.
+          ansible_user: root
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          proxmox_node: pve-01
+          always_on: true
+          nic_10g: true
+          role: primary
+        pve-02:
+          ansible_host: 10.0.0.12
+          ansible_user: root
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          proxmox_node: pve-02
+          always_on: false            # WoL-managed — not kept running
+          wol_enabled: true
+          wol_mac: ""                 # auto-populated by wol_setup.yml → host_vars/pve-02.yml
+          wol_broadcast: "10.0.0.255"
+        pve-03:
+          ansible_host: 10.0.0.13
+          ansible_user: root
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          proxmox_node: pve-03          # real Proxmox node name — see IaC/CLAUDE.md
+          always_on: false            # WoL-managed — not kept running
+          wol_enabled: true
+          wol_mac: ""                 # auto-populated by wol_setup.yml → host_vars/pve-03.yml
+          wol_broadcast: "10.0.0.255"
+          comment: >-
+            Dedicated media host. Kept powered off when idle.
+            Wake-on-LAN before media-vm start.
+
+    # Alias groups for playbook targeting
+    proxmox_primary:
+      hosts:
+        pve-01:
+
+    proxmox_burst:
+      hosts:
+        pve-02:
+        pve-03:
+
+    pve_wol_hosts:
+      hosts:
+        pve-02:
+        pve-03:
+
+    #########################################
+    # NAS — OpenMediaVault (both are VMs, not bare-metal — group name is a
+    # stale holdover from before that was corrected, see nas-01's own note
+    # below; left as-is to avoid an unrelated rename mid-build)
+    #########################################
+    nas:
+      hosts:
+        nas-01:
+          ansible_host: 10.0.40.20
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          ansible_python_interpreter: /usr/bin/python3
+          # OpenMediaVault — VM 232 on pve-01, NOT bare-metal (corrected
+          # 2026-08-10, see project_omv7_rpc_quirks memory). proxmox_vm_id
+          # was documented in IaC/CLAUDE.md's Node Map but never actually
+          # added here — found + fixed 2026-08-17 while wiring NetBox sync
+          # to read this file directly.
+          proxmox_node: pve-01
+          proxmox_vm_id: 232
+        nas-02:
+          # Added 2026-09-19 — OpenMediaVault #2, on pve-03, built via
+          # IaC/Terraform/envs/nas-02/ (VM 233), matching nas-01's exact
+          # shape (raw disk passthrough, ZFS mirror built inside the guest).
+          # See project_nas02_zfs_storage_architecture memory.
+          ansible_host: 10.0.40.21
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          ansible_python_interpreter: /usr/bin/python3
+          proxmox_node: pve-03
+          proxmox_vm_id: 233
+          # ---- Backrest (restic web UI, browse/restore only) — added 2026-09-27 ----
+          # Role: Roles/backrest, playbook: deploy_backrest.yml, plan: docs/BACKREST_DEPLOYMENT.md.
+          # Listens on the storage-VLAN IP; only web-01 (Traefik) may reach :9898 (fw rule, tag backrest).
+          # Repos are reached via rest-server --append-only on VLAN 399, never the local path.
+          backrest_listen: "10.0.40.21:9898"
+          backrest_repos:
+            - id: timemachine          # BKP-TM dock drive (pve-03) — offline most of the time
+              uri: "rest:http://172.31.98.2:8000/timemachine/"
+              vault_path: restic/timemachine
+            - id: datagrid             # BKP-DATAGRID dock drive (pve-03) — offline most of the time; rest-server-datagrid :8001
+              uri: "rest:http://172.31.98.2:8001/datagrid/"
+              vault_path: restic/datagrid
+            - id: duo                  # BKP-DUO dock drive (pve-03) — offline most of the time; rest-server-duo :8002
+              uri: "rest:http://172.31.98.2:8002/duo/"
+              vault_path: restic/duo
+
+    #########################################
+    # EXTERNAL / CLOUD — first non-Proxmox host in inventory.
+    # Public IONOS VPS, WireGuard front-door relay for vpn-01.
+    # No proxmox_node/proxmox_vm_id — provisioned manually (IONOS Cloud API
+    # token blocked on account access, see project_ionos_vps_wireguard_frontdoor
+    # memory), not via the ionos-vps Terraform env. OS is Ubuntu 24.04 LTS,
+    # not Debian 12 like the rest of the fleet — watch for Debian-only role
+    # assumptions (bit gpu-02 before).
+    #########################################
+    ionos_vps:
+      hosts:
+        ionos-vps-01:
+          ansible_host: 203.0.113.10
+          ansible_user: ansible   # dedicated sudo user created 2026-08-06, verified working; root SSH being locked down in F2
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          ansible_python_interpreter: /usr/bin/python3
+
+    #########################################
+    # IOT SENSORS — bare-metal Raspberry Pi hardware on VLAN20, NOT Proxmox
+    # VMs (no proxmox_node/proxmox_vm_id, same reason as ionos_vps above).
+    # Distinct from the remote-HA Pis (10.0.20.24 etc) - those run their own
+    # full HAOS Supervisor and are managed via `ha` CLI over SSH directly,
+    # never through Ansible. Hosts here are plain Debian and Ansible-managed
+    # like any other fleet member.
+    #########################################
+    iot_sensors:
+      hosts:
+        photosensor-pi:
+          # SunFounder-kit photoresistor doorbell-light sensor build, see
+          # project_doorbell_detector memory (2026-09-11 architecture
+          # correction: doorcam itself can't host physical sensors, so this
+          # lives inside near the apartment door instead). Bootstrapped
+          # 2026-09-12: fresh Raspberry Pi OS (Debian 13 "trixie", 64-bit),
+          # Pi 3 B, bootstrap creds were a one-time PI3_USER/PI3_PASSWORD in
+          # /opt/vault/.env, now retired -- see secret/pi3-photosensor/ssh
+          # for the still-needed bootstrap creds if this Pi is ever re-imaged.
+          ansible_host: 10.0.20.91
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          ansible_python_interpreter: /usr/bin/python3
+          vm_vlan: vlan20
+          tier: iot
+
+    #########################################
+    # TIER-2: STORAGE & COMPUTE
+    #########################################
+    tier2_storage:
+      hosts:
+        pg-01:
+          # FROM: config/vms/pg-01.yaml
+          ansible_host: 10.0.40.10
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+          
+          # VM specs
+          vm_tier: storage
+          vm_memory_gb: 4
+          vm_cpus: 2
+          vm_datastore: postgres
+          vm_vlan: vlan40
+          proxmox_node: pve-01
+          proxmox_vm_id: 230
+          health_check_port: 5432     # PostgreSQL
+          docker_enabled: "false"
+          
+          # PostgreSQL configuration
+          postgres_version: 15
+          postgres_port: 5432
+          postgres_data_dir: /var/lib/postgresql/15/main
+          postgres_wal_dir: /wal/pg_wal   # STALE for pg-01: real WAL is /var/lib/postgresql/wal (sda), pg_wal symlinked; only deploy_dmz_pg.yml uses this var
+          
+          # Performance tuning
+          postgres_max_connections: 200
+          postgres_shared_buffers: "1GB"
+          postgres_effective_cache_size: "2GB"
+
+          # 2026-10-23 tuning, all reload-only (applied live with pg_reload_conf,
+          # no restart). Baseline: 462 GB WAL since 07-07, mostly full-page
+          # images; 29% of buffer writes done by backends; Immich 119 GB of temp
+          # spills at work_mem=4MB. WAL disk (/dev/sda, 20 GB) has 18 GB free.
+          postgres_checkpoint_timeout: "15min"
+          postgres_max_wal_size: "4GB"
+          postgres_min_wal_size: "1GB"
+          postgres_wal_compression: "lz4"
+          postgres_bgwriter_lru_maxpages: 1000
+          postgres_bgwriter_lru_multiplier: 4.0
+          postgres_log_temp_files: "10MB"
+          postgres_track_io_timing: "on"
+          postgres_database_settings:
+            - {database: immich, name: work_mem, value: "32MB"}
+
+          # Extensions brought up to the newly installed package version after
+          # every patch run (rolling_update.yml Phase 3g), in every database that
+          # has them. 2026-10-19: the patch window took pgvector 0.8.6 -> 0.8.7;
+          # Immich then tried ALTER EXTENSION vector UPDATE itself as the non-owner
+          # immich user and crash-looped 03:34-06:14 UTC.
+          postgres_post_patch_extensions:
+            - vector
+
+          # 2026-10-22: after pg-01 itself is patched, rolling_update.yml restarts every app with a
+          # pg-01 connection pool (playbooks/restart_pg01_dependents.yml), waits for NetBox's API
+          # (its DB lives here) and only then writes patch_status. On 2026-10-19 the write came 27 s
+          # after the Postgres restart, got a 500, and pg-01 stayed in_progress although it was fine.
+          patch_restart_pg_dependents: true
+
+          # WAL Configuration
+          postgres_wal_level: replica
+          postgres_max_wal_senders: 3
+          postgres_wal_keep_size: "500MB"
+          # "off" since 2026-10-23, matching what actually ran: pgBackRest was
+          # designed (docs/PG-01_DEPLOYMENT_GUIDE.md, MinIO on nas-01) but never
+          # installed, so archive_command 'pgbackrest archive-push' failed for
+          # every segment, WAL piled up and filled the disk on 2026-09-02; that
+          # day someone set ALTER SYSTEM archive_mode=off and moved pg_wal to its
+          # own disk. The ALTER SYSTEM override was RESET on 2026-10-23 so file and
+          # running state agree (no restart: effective value stayed off).
+          # Turning this on needs a working archive target AND a restart.
+          # 2026-10-23: pgBackRest built for real (Roles/postgres/tasks/pgbackrest.yml,
+          # repo on nas-01 ETBs/backups/pgbackrest via NFS, async archiving with a
+          # 4 GiB queue cap so an unreachable repo can't fill the WAL disk again).
+          # archive_mode=on takes effect at the restart in the 2026-10-23 18:30 UTC
+          # maintenance window.
+          postgres_archive_mode: "on"
+          postgres_archive_command: "pgbackrest --stanza=pg-01 archive-push %p"
+          postgres_archive_timeout: "15min"   # worst-case loss on a quiet DB
+          postgres_pgbackrest_enabled: true
+          postgres_pgbackrest_stanza: pg-01
+          postgres_pgbackrest_nfs_source: "10.0.40.20:/backups/pgbackrest"   # nas-01 ETBs/backups/pgbackrest (uid 104:110)
+          # pgBackRest covers every day (+ PITR), so the logical dump is a weekly
+          # extra copy in plain SQL (2026-10-23, after the first verified full backup).
+          postgres_simple_backup_weekday: "0"
+          postgres_simple_backup_keep_days: 28
+          
+          # Backup
+          pgbackrest_enabled: true   # NOT USED by any role/playbook (2026-10-23); pgBackRest was never installed
+          pgbackrest_stanza: "pg-01"
+          pgbackrest_repo_type: "s3"
+          pgbackrest_repo_s3_endpoint: "nas-01.internal:9000"
+          pgbackrest_repo_s3_bucket: "postgres-backups"
+          
+          # Vault references
+          vault_postgres_path: secret/postgres/pg-01
+          vault_postgres_password: secret/postgres/pg-01/postgres_password
+          vault_replication_password: secret/postgres/pg-01/replication_user_password
+          vault_backup_s3_key: secret/postgres/pg-01/backup_s3_key
+          vault_backup_s3_secret: secret/postgres/pg-01/backup_s3_secret
+
+          # Restic backup
+          restic_jobs:
+            - name: postgres-dumps
+              type: postgres
+              pg_host: localhost
+              pg_user: postgres
+              pg_port: 5432
+              databases: all          # pg_dump every non-template DB, piped to restic stdin
+              schedule: "01:00"
+            - name: configs
+              type: files
+              paths:
+                - /etc/postgresql
+                - /etc/pgbackrest
+              schedule: "01:15"
+          
+          # Monitoring
+          postgres_exporter_port: 9187
+          prometheus_scrape_interval: "15s"
+          
+          # Tags (for filtering)
+          tier: storage
+          criticality: critical
+          postgres_role: primary
+          wal_enabled: "true"
+          backup_strategy: wal-archiving
+    
+    
+    #########################################
+    # TIER-3: COMPUTE (GPU / LLM / ML)
+    #########################################
+    tier3_compute:
+      hosts:
+        gpu-01:
+          # FROM: config/vms/gpu-01.yaml
+          # Always-on LLM inference — now RTX 4060 Ti 16GB on pve-01
+          # as of the 2026-09-19 GPU host migration (was RTX 2070 8GB —
+          # see project_gpu_host_migration_2026-09-18 memory); this VM
+          # itself never moved hosts, only the physical card changed.
+          ansible_host: 10.0.30.50
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # Added 2026-09-19 while fixing a real bug: whisper.yml's env
+          # vars were silently ignored (wrong var name, see that file's
+          # header) so this VM has actually been running the container
+          # image's own baked-in default (Systran/faster-whisper-large-v3)
+          # this whole time, not the "small" model previously intended.
+          # Documenting that REAL behavior explicitly here rather than
+          # letting the bugfix silently change it to the role's new
+          # "small" default on next deploy.
+          whisper_enabled: true
+          whisper_model: "Systran/faster-whisper-large-v3"
+
+          # VM specs
+          vm_tier: compute
+          vm_memory_gb: 64
+          vm_cpus: 16
+          vm_datastore: zfs-nvme
+          vm_vlan: vlan30
+          proxmox_node: pve-01
+          proxmox_vm_id: 270
+          always_on: true
+
+          # rolling_update.yml wiring
+          health_check_port: 11434              # Ollama
+          health_check_url: "http://10.0.30.50:8080/health"  # open-webui (host network, listens on 8080 not open_webui_port)
+          docker_enabled: "true"
+          gpu_passthrough: true
+          gpu_docker_containers:
+            - whisper
+            - immich-ml
+            - open-webui
+
+          # Added 2026-09-16 -- was NOT set anywhere in inventory despite
+          # admin's OpenClaw instance being live for days; the original
+          # deploy must have used an undocumented `-e openclaw_enabled=true`
+          # CLI flag. Found the hard way while restoring his gateway after
+          # the container_name collision incident (see
+          # project_dual_llm_fable_review memory) -- a plain `--tags
+          # openclaw` redeploy silently skipped all 22 tasks with this
+          # flag unset. Persisting it here so this can't bite again.
+          openclaw_enabled: true
+
+          # scout-mcp, added 2026-09-20 -- the only channel between
+          # Concierge and Scout (isolated research agent, own VM on pve-02).
+          # Persisted here from day one, not left to an undocumented CLI
+          # flag -- exactly the gap that bit openclaw_enabled above.
+          scout_mcp_enabled: true
+
+          # Partner's OpenClaw gateway MOVED here from gpu-02 2026-09-16 (see
+          # project_dual_llm_fable_review memory) — gpu-02 hosting her whole
+          # gateway was a real single point of failure: her account had NO
+          # working fallback at all when gpu-02 slept, since the gateway
+          # process needed to even evaluate the gpu01-ollama fallback didn't
+          # exist on a powered-off VM. Only her MODEL stays on gpu-02 now
+          # (unchanged primary/fallback config in her openclaw.json) — same
+          # decoupled shape admin's instance already had. Distinct ports from
+          # admin's instance (18789/18790) since both gateways now share this
+          # host: 18791/18792.
+          partner_concierge_enabled: true
+          partner_gateway_port: 18791
+          partner_bridge_port: 18792
+
+          # jev-router (2026-09-28): classifies with the local gpu01-primary LLM
+          # (same model as Concierge, already resident -- no extra VRAM, no
+          # reload). Self-hosted jeff was tried first and removed the same day
+          # (33-54% vs 98%, see project_jeff_evaluation memory). Nothing calls it
+          # until the HA custom_component is installed.
+          jev_router_enabled: false   # 2026-10-20 (user): stopped -- never cut over (0 production calls since 2026-09-28; HA voice routes via n8n). Code + image kept; set true + run the gpu role to redeploy.
+          jev_backend: "ollama"
+
+
+          # NVIDIA
+          nvidia_driver_version: "535"
+          nvidia_cuda_version: "12-3"
+          nvidia_persistence_mode: true
+          nvidia_power_limit_watts: 160  # 175W TDP → 160W
+          nvidia_gpu_clocks_enabled: false
+          nvidia_graphics_clock: 0
+          nvidia_memory_clock: 0
+
+          # Ollama tuning (RTX 2070 / 8 GB VRAM)
+          ollama_port: 11434
+          ollama_num_parallel: 2
+          ollama_max_loaded_models: 2
+          ollama_flash_attention: true
+          # Raised 5m -> 20m 2026-08-14 — root-caused the HA voice pipeline's
+          # ~5s latency to repeated cold model loads (load_duration ~2.5s per
+          # call, paid twice per interaction across the classify+respond
+          # calls). GPU confirmed idle otherwise (YOLO/Frigate not currently
+          # running, immich-ml candidate for off-hours scheduling) so the
+          # longer VRAM reservation is low-risk today. Watch for: two models
+          # resident at once (qwen2.5:7b + qwen2.5-coder:7b, ~4.68GB each)
+          # would be ~9.4GB combined if both get used within a 20m window —
+          # over this card's 8GB VRAM. See project_home_assistant memory.
+          # -1 = never unload (2026-10-09). The 20m timeout plus 3 models
+          # competing for 2 slots reloaded gpu01-primary 10x in 6 h, so Echo/Serge/HA
+          # often waited 10-25 s for it. The qwen2.5:7b callers moved to gpu-02, so
+          # only gpu01-primary + nomic-embed-text live here now.
+          ollama_keep_alive: "-1"
+          ollama_num_gpu: "999"
+          ollama_models_dir: /var/lib/ollama/models
+          ollama_models:
+            - "qwen2.5:7b-instruct-q4_K_M"
+            - "qwen2.5-coder:7b-instruct-q4_K_M"
+          ollama_embed_model: "nomic-embed-text:latest"
+          ollama_always_pull_embed: true
+
+          # Services enabled on gpu-01
+          open_webui_enabled: true
+          open_webui_port: 3000
+          open_webui_image: "ghcr.io/open-webui/open-webui:main"
+          open_webui_data_dir: /opt/open-webui/data
+          open_webui_extra_ollama_urls:
+            - "http://10.0.30.51:11434"   # gpu-02 — silently drops when stopped
+          immich_ml_enabled: false   # moved to gpu-02 2026-09-28 (co-located with immich-01 on pve-03)
+          yolo_enabled: true
+
+          # Music Studio moved to studio-01 on 2026-11-01 (docs/STUDIO01_MIGRATION.md).
+
+
+          # Vault
+          vault_gpu_path: secret/gpu/ollama
+          vault_pihole_api_token_path: secret/pihole/api
+
+          # Monitoring
+          nvidia_exporter_port: 9835
+          node_exporter_port: 9100
+
+          # Tags
+          tier: compute
+          criticality: high
+          gpu: "RTX 2070"
+          driver: "535"
+          burst_capable: "false"
+
+          # Restic backup
+          restic_jobs:
+            - name: gpu-data
+              type: files
+              paths:
+                - /opt/open-webui/data   # conversations, uploads, user settings
+                - /etc/systemd/system/ollama.service
+              excludes:
+                - "*.log"
+                - "cache/"
+              schedule: "03:00"
+
+        gpu-02:
+          # FROM: config/vms/gpu-02.yaml
+          # Burst LLM node — now RTX 2070 8GB on pve-03 as of the
+          # 2026-09-19 GPU host migration (was RTX 4060 Ti 16GB on pve-02/
+          # pve-02 — see project_gpu_host_migration_2026-09-18 memory).
+          # This VM's whole disk moved hosts via nas-01 backup/restore,
+          # unlike gpu-01 which stayed put and just got a card swap.
+          ansible_host: 10.0.30.51
+          ansible_user: deploy   # cloud-init user_account.username is "deploy", not "ansible" (see Terraform/envs/gpu-02/main.tf)
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # Docker configuration — "deploy" is the actual cloud-init user (no "ansible" user exists on gpu-02)
+          docker_users:
+            - deploy
+
+          # VM specs
+          vm_tier: compute
+          # Was "32" -- already stale/inaccurate before today (real live
+          # memory was 20GB, not 32). Now genuinely 12GB (2026-09-19,
+          # dropped from 20GB now that the 3B model + whisper fit
+          # comfortably, see the Ollama section below) -- fixed to match
+          # reality rather than carry the drift forward.
+          vm_memory_gb: 12
+          vm_cpus: 8
+          vm_datastore: local-lvm
+          vm_vlan: vlan30
+          # FIXED 2026-09-19: was "pve-02" -- already flagged as wrong in
+          # IaC/CLAUDE.md's Active Constraints before today (should have
+          # been "pve-02"), now doubly wrong since this VM actually moved
+          # to pve-03 in the GPU host migration. "pve-03" is both the correct
+          # fix and the current physical reality.
+          proxmox_node: pve-03
+          # Was previously only in a comment on the patchable_wol_managed group
+          # entry ("gpu-02: {} # pve-02, vm 211") — never an actual field here.
+          # Found + fixed 2026-08-17 alongside the same nas-01 gap.
+          proxmox_vm_id: 211
+          always_on: false
+
+          # rolling_update.yml wiring — gpu-02 is WoL/burst (usually powered off), so it's
+          # NOT included in the scheduled weekly patch cycle for now (that would need WoL
+          # orchestration first). gpu_passthrough is set so a manual/limit-scoped run against
+          # it still gets the nvidia-smi/DKMS validation phase.
+          gpu_passthrough: true
+          # Corrected 2026-09-12: was "false" ("Ollama runs as a native
+          # systemd service here, not Docker") -- true for Ollama, but
+          # Docker itself was found ALREADY installed and working live
+          # (--gpus all confirmed) when deploying diarization-api here.
+          # Unclear when/how it got installed outside this role's own
+          # tracking -- flagging the gap rather than pretending it isn't
+          # there.
+          docker_enabled: "true"
+          diarization_api_enabled: true   # podcast speaker diarization — see Roles/gpu/tasks/diarization_api.yml
+          domo_gateway_enabled: true      # DOMO voice gateway (2026-10-09) — see Roles/gpu/tasks/domo_gateway.yml
+          wyoming_bridge_enabled: true    # HA speech-to-text via this Whisper (2026-10-30) — see Roles/gpu/tasks/wyoming_bridge.yml
+          stem_api_enabled: true          # Demucs vocals for Musician Platform draft lead sheets — Roles/gpu/tasks/stem_api.yml
+          # jeff DISABLED + removed 2026-09-28 after evaluation: 33-54% on voice
+          # routing (vs 98% for gpu01-primary) and ~coin-flip on prompt-injection
+          # detection -- not fit for either role; see project_jeff_evaluation
+          # memory. Code kept in Roles/gpu/tasks/jeff.yml for a future model.
+          jeff_enabled: false
+          # Measured 2026-09-28: 3.43 GiB peak during model load, 3.12 GiB steady,
+          # 2.7 GB VRAM. The first deploy's 3g cap OOM-killed it mid-load.
+          jeff_memory: "4g"
+          # partner_concierge_enabled MOVED to gpu-01 2026-09-16 — see that
+          # host's entry below and incident/decision write-up in
+          # project_dual_llm_fable_review memory. gpu-02 hosting her whole
+          # gateway was a real single point of failure: when this VM sleeps,
+          # the gateway process that would even EVALUATE the gpu01-ollama
+          # fallback doesn't exist to run it. Only her model stays here now.
+
+          # NVIDIA -- was tuned for Ada Lovelace SM 8.9 (needs 545+) when
+          # this was the 4060 Ti; now Turing (the 2070, same architecture
+          # gpu-01 ran for years). 545/12-3 still work fine on Turing, not
+          # changed, but the "needs 545+" reasoning no longer applies to
+          # this specific card.
+          nvidia_driver_version: "545"
+          nvidia_cuda_version: "12-3"
+          nvidia_persistence_mode: true
+          nvidia_power_limit_watts: 0
+          nvidia_gpu_clocks_enabled: false
+          nvidia_graphics_clock: 0
+          nvidia_memory_clock: 0
+
+          # Ollama tuning (RTX 2070 / 8GB VRAM as of 2026-09-19 -- was
+          # RTX 4060 Ti / 16GB). The old 14B models (~9GB each) do not
+          # fit at all anymore -- confirmed live, nvidia-smi shows the
+          # full 8192MiB free. Dropped to a single 3B model per Fable's
+          # recommendation, leaving comfortable headroom alongside
+          # faster-whisper (large-v3-turbo, ~1.5-2.5GB) running on the
+          # same card -- see the whisper_* vars below and
+          # project_gpu_host_migration_2026-09-18 memory's Whisper/
+          # triage-model spec section.
+          ollama_port: 11434
+          # 2 since 2026-10-09: background qwen2.5:7b jobs (podcast, journal, ...)
+          # moved here, and DOMO routing must never queue behind one of them.
+          ollama_num_parallel: 2
+          # One shared copy of qwen2.5:7b: callers that don't send num_ctx get
+          # 4096, and DOMO's router asks for 4096 too (MAX_LOADED_MODELS is 1).
+          ollama_context_length: 4096
+          ollama_max_loaded_models: 1
+          ollama_flash_attention: true
+          ollama_keep_alive: "10m"        # keep model warm longer — reload is slow
+          ollama_num_gpu: "999"
+          ollama_models_dir: /var/lib/ollama/models
+          ollama_models:
+            - "qwen2.5:3b-instruct-q4_K_M"
+          ollama_embed_model: "nomic-embed-text:latest"
+          ollama_always_pull_embed: true
+
+          # Podcast-backlog transcription with GPU acceleration -- added
+          # 2026-09-19, moved here from gpu-01's CPU-only fallback now
+          # that this host has real spare VRAM alongside its 3B model.
+          # See whisper.yml's header for the env-var bug this also fixed.
+          whisper_enabled: true
+          whisper_device: cuda
+          whisper_compute_type: float16
+          whisper_model: "mobiuslabsgmbh/faster-whisper-large-v3-turbo"
+          # 10GB VM: cap whisper so a long episode OOMs only its own container
+          # (2 global OOM kills on gpu-02, 2026-09-23 + 09-28; applied live via docker update).
+          whisper_memory: "7g"
+
+          # Services — gpu-02 is headless inference only
+          open_webui_enabled: false
+          # immich-ml moved here from gpu-01 2026-09-28: pve-03 has far less CPU load, immich-01
+          # lives on pve-03 too, and it's the CPU image (no VRAM contention with ollama/whisper).
+          # Capped because this VM is 10GB (whisper 7g cap shares it).
+          immich_ml_enabled: true
+          immich_ml_memory: "3g"
+          yolo_enabled: false
+
+          # Vault
+          vault_gpu_path: secret/gpu/ollama
+          vault_pihole_api_token_path: secret/pihole/api
+
+          # Monitoring
+          nvidia_exporter_port: 9835
+          node_exporter_port: 9100
+
+          # Tags
+          tier: compute
+          criticality: medium
+          gpu: "RTX 4060 Ti 16GB"
+          driver: "545"
+          burst_capable: "true"
+          idle_shutdown_minutes: 30
+
+    #########################################
+    # TIER-4: APPLICATIONS
+    #########################################
+    tier3_application:
+      hosts:
+        web-01:
+          # FROM: config/vms/web-01.yaml
+          ansible_host: 10.0.30.20
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          # Bootstrap proxy: route via Proxmox until OPNSense has VLAN30 routing.
+          ansible_ssh_common_args: >-
+            -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_ansible
+            -o StrictHostKeyChecking=no root@10.0.0.11"
+            -o StrictHostKeyChecking=no
+
+          # VM specs
+          vm_tier: application
+          # Bumped 8→9GB 2026-08-25 (see incident_web01_memory_exhaustion_2026-08-25
+          # memory note) — freed from immich-01, which was only using 3.6/6GB.
+          # Cut 9→7GB 2026-11-06: pve-01 had 64,076 MB allocated to running VMs on a
+          # 64,086 MB host and its swap filled (incident_pve-01_swap_full_2026-11-06).
+          # web-01: 41 containers use ~4.5 GB; Proxmox peak 8.5 GiB/month incl. cache,
+          # p95 7.0-7.5. Watch guest swap + PSI for a week after the cut.
+          vm_memory_gb: 7
+          vm_cpus: 4
+          vm_datastore: SSDs        # where the live disk is (was "zfs-nvme", wrong; checked 2026-11-06)
+          vm_vlan: vlan30
+          proxmox_node: pve-01
+          proxmox_vm_id: 240
+          # Opt-in container patching (container_update.yml, 2026-09-28). Pinned tag:
+          # usually a no-op unless the tag is re-pushed; real version bumps are repo changes.
+          container_patch_stacks:
+            - name: homepage
+              dir: /opt/homepage
+              health: ["http://localhost:3000/"]
+          health_check_port: 443      # Traefik HTTPS
+          health_check_url: "https://n8n.home.example.org/healthz"   # 2026-10-16 audit: /ping returned 404 (no Traefik ping entrypoint) -- would roll web-01 back
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/traefik
+            - /opt/n8n
+            - /opt/outline
+            - /opt/voice-ai
+          
+          # Docker configuration
+          docker_version: latest
+          docker_compose_version: latest
+          docker_users:
+            - ansible
+          docker_networks:
+            - traefik
+            - backend
+
+          # System tuning
+          docker_system_tunning:
+            fs_file_max: 2097152
+            net_conntrack_max: 2097152
+            net_core_somaxconn: 1024
+          
+          # n8n configuration
+          # ── Domain ──────────────────────────────────────────────────────────
+          base_domain: "home.example.org"
+
+          n8n_version: latest
+          n8n_host: "n8n.home.example.org"
+          n8n_port: 5678
+          n8n_protocol: "https"
+          n8n_data_path: "/data/n8n"
+          
+          # Database connection (postgres backend)
+          n8n_database_type: postgresdb
+          n8n_database_host: "pg-01.internal"
+          n8n_database_port: 5432
+          n8n_database_name: "n8n"
+          n8n_database_user: "n8n"
+          
+          # Vault references
+          vault_docker_path: secret/docker/web-01
+          vault_docker_registry_password: secret/docker/web-01/docker_registry_password
+          vault_n8n_admin_password: secret/docker/web-01/n8n_admin_password
+          vault_n8n_jwt_secret: secret/docker/web-01/n8n_jwt_secret
+          vault_n8n_db_password: secret/docker/web-01/n8n_db_password
+          
+          # Monitoring
+          docker_exporter_port: 9323
+          node_exporter_port: 9100
+          prometheus_scrape_interval: "30s"
+          
+          # Backup
+          backup_type: snapshots
+          backup_docker_volumes: "true"
+          backup_destination: "s3:http://nas-01.internal:9000/restic/web-01"
+          
+          # Tags
+          tier: application
+          criticality: high
+          app_platform: n8n
+          expose: "true"
+          auth: oidc
+          backup_strategy: snapshots
+
+          # Traefik (runs on this host as a Docker container)
+          traefik_version: "3.1"
+          traefik_image: "traefik:v3.7.15"   # live since before 2026-10-18; v3.1 here would have downgraded it
+          traefik_config_dir: /etc/traefik
+          traefik_dynamic_dir: /etc/traefik/dynamic
+          traefik_certs_dir: /etc/traefik/certs
+          traefik_log_dir: /var/log/traefik
+          traefik_compose_dir: /opt/traefik
+          traefik_host: "web-01"
+          traefik_host_ip: "10.0.30.20"
+          traefik_domains:
+            - traefik.home.example.org
+          vault_traefik_certs_path: secret/traefik/certs
+          vault_traefik_dashboard_path: secret/traefik/dashboard
+          # ACME (Let's Encrypt wildcard via IONOS DNS-01)
+          traefik_acme_enabled: true
+          traefik_acme_domain: "home.example.org"
+          traefik_acme_email: "admin@home.example.org"
+          traefik_acme_staging: false
+          # Default cert resolver + domain for all traefik_register calls on this host
+          traefik_cert_resolver: "letsencrypt"
+
+          # Restic backup
+          restic_jobs:
+            - name: docker-volumes
+              type: docker             # pause compose stacks → backup → unpause
+              paths:
+                - /opt/outline
+                - /opt/traefik
+                - /opt/n8n
+                - /opt/voice-ai
+              compose_dirs:
+                - /opt/outline
+                - /opt/voice-ai
+              excludes:
+                - "*.log"
+                - "*.tmp"
+                - "node_modules/"
+              schedule: "02:00"
+            - name: configs
+              type: files
+              paths:
+                - /etc/traefik
+              excludes:
+                - "*.log"
+              schedule: "01:30"
+
+          # Authelia SMTP notifier
+          authelia_smtp_enabled: true
+          authelia_smtp_host:    "smtp.ionos.de"
+          authelia_smtp_port:    587
+          authelia_smtp_user:    "admin@home.example.org"
+          authelia_smtp_sender:  "Homelab <admin@home.example.org>"
+
+
+        web-02:
+          # FROM: config/vms/web-02.yaml
+          ansible_host: 10.0.30.11
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # VM specs
+          # 2026-08-25: bumped 6GB(doc)/5GB(actual live drift) -> 8GB — Confluence
+          # was found consuming a lot of headroom on its own on a fresh boot;
+          # bump gives room for Tandoor (below) plus general "web UI focused
+          # server" headroom the user wants to keep here going forward. See
+          # incident_web01_memory_exhaustion_2026-08-25 memory note.
+          vm_tier: application
+          vm_memory_gb: 8
+          vm_cpus: 4
+          vm_datastore: zfs-nvme
+          vm_vlan: vlan30
+          # Moved from pve-01 to pve-03 2026-08-25 (confirmed live via Proxmox API —
+          # VM 241 now appears under pve-03's /nodes/pve-03/qemu, not pve-01's).
+          proxmox_node: pve-03
+          proxmox_vm_id: 241
+          # Opt-in container patching (container_update.yml, 2026-09-28). hometown-news is
+          # NOT listed: its image is built locally (build:), updated by rebuilding.
+          container_patch_stacks:
+            - name: tandoor
+              dir: /opt/tandoor
+              health: ["http://localhost:8095/"]
+              db: tandoor          # pg_dump on pg-01 before each update
+          health_check_port: 3000     # 2026-10-16 audit: Jira (8080) is gone; Outline listens here
+          health_check_url: "http://10.0.30.11:3000/_health"   # 2026-10-16 audit: the 8080 check rolled web-02 back on its canary
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/jira
+            - /opt/confluence
+            - /opt/tandoor
+            - /opt/paperless
+            - /opt/outline
+
+          # Docker configuration
+          docker_version: latest
+          docker_compose_version: latest
+          docker_users:
+            - ansible
+          docker_networks:
+            - traefik
+            - backend
+
+          # Jira
+          jira_version: latest
+          jira_compose_dir: /opt/jira
+          jira_data_dir: /opt/jira/data
+          jira_host: "jira.home.example.org"
+          jira_port: 8080
+          jira_jvm_min: "1024m"
+          jira_jvm_max: "2048m"
+
+          # Confluence
+          confluence_version: latest
+          confluence_compose_dir: /opt/confluence
+          confluence_data_dir: /opt/confluence/data
+          confluence_host: "wiki.home.example.org"
+          confluence_port: 8090
+          confluence_synchrony_port: 8091
+          confluence_jvm_min: "1024m"
+          confluence_jvm_max: "2048m"
+
+          # Tandoor Recipes — added 2026-08-25 (see project_pending_work /
+          # memory for context: family recipe manager, not Atlassian-related,
+          # just co-located here for the free RAM headroom after the 6->8GB bump)
+          tandoor_port: 8095
+          tandoor_domain: "recipes.home.example.org"
+          # ---- tunebridge (Spotify -> YouTube links) — added 2026-09-29 ----
+          # Roles/tunebridge, playbooks/deploy_tunebridge.yml, docs/Spotify_Youtube.md
+          tunebridge_port: 8099
+          tunebridge_domain: "tunes.home.example.org"
+          # ---- AdventureLog (Travel Concierge web UI) — added 2026-10-03 ----
+          # Roles/adventurelog, playbooks/deploy_adventurelog.yml,
+          # docs/TRAVEL_CONCIERGE_ARCHITECTURE.md
+          adventurelog_port: 8015
+          adventurelog_domain: "travel.home.example.org"
+          # ---- wanderer (hiking trails, linked into AdventureLog) — 2026-10-03 ----
+          # Roles/wanderer, playbooks/deploy_wanderer.yml
+          wanderer_port: 3010
+          wanderer_domain: "hike.home.example.org"
+          tandoor_db_name: "tandoor"
+          tandoor_db_user: "tandoor"
+
+          # Shared Postgres on pg-01
+          atlassian_db_host: "pg-01.internal"
+          atlassian_db_port: 5432
+          jira_db_name: "jira"
+          jira_db_user: "jira"
+          confluence_db_name: "confluence"
+          confluence_db_user: "confluence"
+
+          # Vault references
+          vault_docker_path: secret/docker/web-02
+          vault_jira_db_path: secret/atlassian/jira/db
+          vault_jira_license_path: secret/atlassian/jira/license
+          vault_confluence_db_path: secret/atlassian/confluence/db
+          vault_confluence_license_path: secret/atlassian/confluence/license
+          vault_tandoor_db_path: secret/tandoor/db
+          vault_tandoor_app_path: secret/tandoor/app
+          vault_tandoor_oidc_path: secret/tandoor/oidc
+
+          # Monitoring
+          docker_exporter_port: 9323
+          node_exporter_port: 9100
+          prometheus_scrape_interval: "30s"
+
+          # Backup
+          backup_type: snapshots
+          backup_docker_volumes: "true"
+          backup_destination: "s3:http://nas-01.internal:9000/restic/web-02"
+          restic_jobs:
+            - name: atlassian-data
+              type: files
+              paths:
+                - /opt/jira/data
+                - /opt/confluence/data
+                - /opt/tandoor/data
+              schedule: "03:00"
+
+          # Tags
+          tier: application
+          criticality: medium
+          app_platform: atlassian
+          expose: "true"
+          auth: oidc
+          backup_strategy: snapshots
+          always_on: true
+
+        git-01:
+          # CORRECTED 2026-08-17: this whole block was still the pre-cutover GitLab CE
+          # config, three weeks after the 2026-07-29 Forgejo cutover — wrong IP (10.0.30.30
+          # is git-01-gitlab-decommissioned, not this host), wrong proxmox_vm_id (106 is
+          # OSemSearch, confirmed live via the Proxmox API — real git-01 is VMID 251,
+          # confirmed both by its Proxmox VM *name* and by NetBox independently carrying
+          # the same wrong 106 value, sourced from this same stale inventory), wrong
+          # health check (GitLab's sign-in page, not Forgejo), wrong compose dir. All
+          # values below reconfirmed live via SSH before writing. Found while auditing the
+          # patch pipeline (rolling_update.yml) before activating it — this bug would have
+          # silently snapshotted/patched VM 106 (OSemSearch) while believing it was git-01.
+          ansible_host: 10.0.30.31
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # VM specs
+          vm_tier: application
+          vm_memory_gb: 1.5   # -> 1.5 GB 2026-11-06 (pve-01 overcommit, Terraform envs/git-01, was a stale GitLab-era 8; live was 2)
+          vm_cpus: 4
+          vm_datastore: zfs-nvme
+          vm_vlan: vlan30
+          proxmox_node: pve-01
+          proxmox_vm_id: 251
+          health_check_port: 3000       # Forgejo web (confirmed live: docker port mapping 3000->3000)
+          health_check_url: "http://10.0.30.31:3000/api/healthz"    # confirmed live: HTTP 200
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/forgejo    # confirmed live via docker inspect + find
+          always_on: true
+
+          # Docker configuration
+          docker_version: latest
+          docker_compose_version: latest
+          docker_users:
+            - ansible
+          docker_networks:
+            - traefik
+            - gitlab-internal
+
+          # GitLab
+          gitlab_version: "17.10.0-ce.0"
+          gitlab_compose_dir: /opt/gitlab
+          gitlab_data_base: /srv/gitlab
+          gitlab_host: "gitlab.internal"
+          gitlab_registry_host: "registry.gitlab.internal"
+          gitlab_ssh_port: 2222
+          gitlab_web_port: 80
+          gitlab_registry_port: 5050
+
+          # Vault references
+          vault_gitlab_root_path: secret/gitlab/root
+          vault_gitlab_smtp_path: secret/gitlab/smtp
+          vault_gitlab_oidc_path: secret/gitlab/oidc
+          vault_gitlab_runner_path: secret/gitlab/runner
+
+          # Monitoring
+          docker_exporter_port: 9323
+          node_exporter_port: 9100
+          prometheus_scrape_interval: "60s"
+
+          # Backup
+          backup_type: gitlab-backup
+          backup_destination: "s3:http://nas-01.internal:9000/restic/git-01"
+          backup_schedule: "02:00"
+          backup_retention_days: 14
+          restic_jobs:
+            - name: gitlab-data
+              type: files
+              paths:
+                - /srv/gitlab/data/backups
+                - /srv/gitlab/config
+              schedule: "02:30"    # after gitlab-backup completes
+
+          # Tags
+          tier: application
+          criticality: high
+          app_platform: gitlab
+          expose: "true"
+          auth: saml
+          backup_strategy: gitlab-backup
+          sla: high
+
+        immich-01:
+          ansible_host: 10.0.30.46
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # VM specs
+          # Lighter than the original plan — DB moved to pg-01, ML moved to
+          # gpu-01, so this VM only runs immich-server + redis. Still 4 vCPU
+          # because video transcode jobs run in-process here.
+          vm_tier: application
+          # Trimmed 6→5GB 2026-08-25 — was only using 3.6/6GB; freed 1GB to
+          # web-01 (see incident_web01_memory_exhaustion_2026-08-25 memory note).
+          # Live: 2560 MB since the 2026-09-28 pve-03 memory rebalance (3.5 -> 2.5 GB, see
+          # incident_pve-03_memory_rebalance_2026-09-28). The 5 GB here and the 6 GB of the old
+          # download-vm branch were both stale (reconciled 2026-10-17). sync_netbox.py rounds GB*1024.
+          # 2026-10-22: 3 GB live (5 GB 10-18..10-22 for the iOS ingest + v3.3.4 backlog) -- see Terraform tfvars.
+          # 2026-11-05: 2.5 GB live (no more bulk uploads; ~1.3 GB used), so pve-03 runs gpu-02 too. sync_netbox.py rounds GB*1024.
+          vm_memory_gb: 2.5
+          vm_cpus: 4
+          vm_datastore: zfs-nvme      # real pool name (see Terraform/CLAUDE.md) — was "zfs-nvme-vms", didn't exist
+          vm_vlan: vlan30
+          # Migrated pve-01->pve-03 ad hoc 2026-09-13 (real, live, serving
+          # traffic before Terraform/inventory knew about it — Terraform
+          # reconciled 2026-09-14, see
+          # incident_immich_jellyfin_pve-03_reconciliation_2026-09-14.md;
+          # this file fixed 2026-09-16, same gap as jellyfin-01 — see
+          # incident_jellyfin01_hostpci_conflict_2026-09-16.md). The old
+          # "everything stays on one hypervisor" reasoning below no
+          # longer holds — ML still runs on gpu-01 (pve-01), immich-01
+          # itself is now on pve-03. The stale pre-migration pve-01 VM
+          # (same VMID 280) was deleted 2026-09-16.
+          proxmox_node: pve-03
+          proxmox_vm_id: 280     # 271 taken by comms-01; next free in the 21x/24x/27x service-VM sequence
+          health_check_port: 2283     # Immich API
+          health_check_url: "http://10.0.30.46:2283/api/server/ping"
+
+          # Docker
+          docker_enabled: "true"
+          docker_version: latest
+          docker_users:
+            - ansible
+          compose_dir: /opt/immich
+
+          # ---- Immich application settings -----------------------------------
+          # immich_version: pinned ONCE in inventory/group_vars/all.yml (shared with immich-ml on gpu-02), not here
+          # Thumbnails/encoded-video cache: local NVMe (fast, fully reproducible from originals)
+          immich_cache_dir: /var/lib/immich/cache
+          # Upload location for new assets (mobile backup etc) — moved to NASTY
+          # 2026-08-15 (architecture decision: NASTY is the source of truth, so
+          # new uploads should land there directly, not on local disk needing a
+          # later migration step). Read-write mount, separate from the
+          # read-only Pictures/Videos External Library mounts — see
+          # Roles/immich/tasks/nas_mount.yml. The old local path
+          # (/var/lib/immich/upload) is no longer used by the running
+          # container; its ~18MB of prior content was copied over already.
+          immich_upload_dir: /mnt/nasty-immich-uploads
+
+          # ---- PostgreSQL — pg-01 (NOT bundled) -------------------------------
+          # pg-01 already runs Postgres 15 for every other app. Immich needs the
+          # `pgvector` extension (PGDG-packaged: postgresql-15-pgvector) enabled
+          # ONLY on the immich database — see deploy_immich.yml. pg-01's existing
+          # nightly pg_dumpall (Roles/postgres/tasks/backup.yml) covers this DB
+          # automatically; no per-app Restic job needed.
+          immich_db_host: "10.0.40.10"
+          immich_db_port: 5432
+          immich_db_name: immich
+
+          # ---- Machine Learning — gpu-02 (NOT bundled) ------------------------
+          # immich-ml runs on gpu-02 (Roles/gpu/tasks/immich_ml.yml, immich_ml_enabled
+          # on gpu-02) since 2026-09-28; was gpu-01 before. Same host (pve-03) as immich-01.
+          immich_ml_url: "http://10.0.30.51:3003"
+
+          # ---- NASTY (legacy SMB NAS) — External Library source ----------------
+          # 2TB+ existing library — pointed at directly (no import) per user
+          # decision 2026-08-09. Read-only mounts; Immich's own External
+          # Libraries feature scans these without taking ownership of the
+          # files. When NASTY is eventually retired, repoint these two mounts
+          # at nas-01's pictures/video NFS exports (host_vars/nas-01.yml
+          # already has them ready) — nothing else in this config should need
+          # to change.
+          #
+          # nasty.internal (Pi-hole, added 2026-08-10) resolves to 10.0.40.30 —
+          # NASTY's real, live VLAN40 address. Cutover completed 2026-08-11
+          # (was previously reserved-but-not-live; corrected 2026-08-17 — see
+          # [[project_nasty_nas_migration]]). deploy_immich.yml has already
+          # been run successfully against this address; Immich is in
+          # production use of this mount.
+          # Videos deliberately excluded (removed 2026-08-16): NASTY's Videos
+          # share is a 751GB general media collection (documentaries/music
+          # videos/downloaded clips — only "Home", 357GB, was genuine
+          # personal video), not something a personal photo app should own.
+          # Immich's transcode policy re-encoded nearly all of it on first
+          # scan and filled the OS root disk within a day (see
+          # immich_cache_dir below + Terraform immich01_cache_disk_size for
+          # the disk-isolation half of the fix). That content is Jellyfin's
+          # job now — see [[project_jellyfin_deployment]].
+          # Source is nas-02 NFS since 2026-09-28 (NASTY retired) — the
+          # "nasty" names/paths are historical, see Roles/immich/tasks/nas_mount.yml.
+          nasty_pictures_subpath: "Pictures"
+          nasty_pictures_mount: /mnt/nasty-pictures
+
+          # Vault paths
+          vault_immich_app_path: secret/immich/app     # key: jwt_secret
+          vault_immich_db_path: secret/immich/db       # keys: user, password
+          vault_immich_oidc_path: secret/authelia/oidc.immich_secret
+
+          # Monitoring
+          node_exporter_port: 9100
+          docker_exporter_port: 9323
+          prometheus_scrape_interval: "60s"
+          # Immich exposes /metrics natively (v1.107+):
+          immich_metrics_port: 2283
+
+          # Backup — DB covered centrally by pg-01's nightly pg_dumpall.
+          # Library originals live on NASTY (own backup posture, out of scope
+          # here). Local cache/upload dirs are regenerable — nothing to back up.
+          backup_strategy: none-covered-by-pg01
+
+          # Tags
+          tier: application
+          criticality: medium
+          app_platform: immich
+          expose: "true"
+          auth: oidc
+          sla: medium
+
+        jellyfin-01:
+          # Plex replacement — decided 2026-08-13, originally built on
+          # pve-01/pve-01. Migrated pve-01->pve-03 ad hoc 2026-09-13 (real,
+          # live, serving traffic before Terraform/inventory knew about
+          # it — reconciled in Terraform 2026-09-14, see
+          # incident_immich_jellyfin_pve-03_reconciliation_2026-09-14.md).
+          # proxmox_node fixed here 2026-09-16 after finding this file
+          # was the one place still not updated — the stale pve-01 VM
+          # (same VMID 281, leftover from before the migration) was
+          # deleted the same day; it was still holding a live hostpci0
+          # claim on pve-01's own intel-uhd630 mapping that collided with
+          # gpu-01's. NOT the older media-vm/pve-03 host_vars entry
+          # (media-vm still exists, untouched, still owns tvheadend —
+          # this is a separate, deliberate build, not a relocation of
+          # that one). See [[project_nasty_nas_migration]] for the
+          # Plex-era context.
+          ansible_host: 10.0.30.53
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # VM specs — deliberately light; QSV hardware transcoding (Intel
+          # UHD 630 iGPU passthrough) does the heavy lifting, not the vCPUs.
+          vm_tier: application
+          vm_memory_gb: 6
+          vm_cpus: 4
+          vm_datastore: zfs-nvme
+          vm_vlan: vlan30
+          proxmox_node: pve-03
+          proxmox_vm_id: 281
+          health_check_port: 8096
+          health_check_url: "http://10.0.30.53:8096/health"
+
+          # Docker
+          docker_enabled: "true"
+          docker_version: latest
+          docker_users:
+            - ansible
+          compose_dir: /opt/jellyfin
+
+          # ---- Jellyfin application settings ----------------------------------
+          jellyfin_version: "12.2"   # 2026-10-16: 10.11.11 -> 12.2 via the patch window container pass (6 advisories, 1 critical). Pinned: a major jump needs its own notes check.
+          jellyfin_config_dir: /var/lib/jellyfin/config
+          jellyfin_cache_dir: /var/lib/jellyfin/cache
+          # Dedicated scratch space for transcode segments — separate small
+          # disk (zfs-nvme, fast), not sharing the OS disk. User's own idea
+          # 2026-08-13; a tmpfs alternative was discussed too but this is
+          # what was asked for — durable, no RAM budget to manage.
+          jellyfin_transcode_dir: /var/lib/jellyfin/transcode
+
+          # ---- QSV hardware transcoding (Intel UHD 630 iGPU passthrough) -----
+          # Terraform hostpci block references Proxmox resource mapping
+          # "intel-uhd630" on pve-03 (0000:00:02.0 / 8086:3e92 — CoffeeLake-S;
+          # this is pve-03's iGPU, a different PCI ID than pve-01's, where
+          # gpu-01 separately holds its OWN same-named "intel-uhd630"
+          # mapping for an unrelated device — no cluster, no shared
+          # namespace between hosts). Staged but NOT active yet: needs
+          # pve-03's vfio-pci binding live + a pve-03 reboot the user has
+          # deferred until the Drive Migration scan finishes — see
+          # jellyfin-01/main.tf's hostpci0 comment block for the full
+          # sequence. Container needs /dev/dri passed through once it is
+          # — see docker-compose.yml.
+          jellyfin_qsv_enabled: true
+
+          # ---- Read-only media sources — nas-02 (DATAGRID) over NFSv4.2 --------
+          # NASTY (legacy QNAP) has been offline since 2026-09-27; the same host
+          # paths are NFS mounts from nas-02 (Roles/jellyfin/tasks/nas_mount.yml):
+          # /Multimedia/Videos -> /mnt/nasty-videos, /Multimedia ->
+          # /mnt/nasty.multimedia, /DUO -> /mnt/nasty.duo. Path names are
+          # historical, kept so container paths + library definitions never change.
+          nasty_videos_subpath: "Videos"
+          nasty_videos_mount: /mnt/nasty-videos
+          # DUO — the ex-QNAP external drive (Kiddo Plex/*, Movies, TVShows,
+          # Fit), a separate export, not a Multimedia subfolder. "Kiddo Plex"
+          # has a space in it — don't type it as an unquoted shell path anywhere.
+          nasty_duo_mount: /mnt/nasty.duo
+          # Whole Multimedia share root — overlaps with the Videos-only mount
+          # above (Videos is a subfolder of it) but also covers
+          # Music/AudioBooks/etc for additional libraries as wanted.
+          nasty_multimedia_mount: /mnt/nasty.multimedia
+
+          # Public URL (must match the Traefik route)
+          jellyfin_public_domain: "jellyfin.home.example.org"
+          jellyfin_url: "https://{{ jellyfin_public_domain }}"
+
+          # Monitoring
+          node_exporter_port: 9100
+          docker_exporter_port: 9323
+          prometheus_scrape_interval: "60s"
+
+          # Backup — config dir only (small, has user accounts/watch state);
+          # media originals live on NASTY, own backup posture, out of scope.
+          backup_type: restic
+          backup_destination: "s3:http://nas-01.internal:9000/restic/jellyfin-01"
+          restic_jobs:
+            - name: jellyfin-config
+              type: files
+              paths:
+                - /var/lib/jellyfin/config
+              schedule: "03:30"
+              tags: ["jellyfin", "config"]
+
+          # Tags
+          tier: application
+          criticality: low
+          app_platform: jellyfin
+          expose: "true"
+          auth: none   # Jellyfin has no native OIDC — mobile/TV/Kodi apps auth directly against its own API; Authelia forward-auth would break them
+          sla: low
+
+        es-01:
+          # Relocated from pve-01 to pve-02 2026-07-24 — see IaC/docs/OSEMSEARCH_MIGRATION.md
+          ansible_host: 10.0.30.52
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          # No ProxyCommand needed — pve-02 VMs are directly reachable, same as gpu-02
+
+          # VM specs
+          vm_tier: application
+          vm_memory_gb: 6
+          vm_cpus: 4
+          vm_datastore: zfs-nvme-vms
+          vm_vlan: vlan30
+          proxmox_node: pve-02
+          proxmox_vm_id: 231
+          health_check_port: 9200
+          health_check_url: "http://10.0.30.52:9200/_cluster/health"
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/elasticsearch
+
+          # Elasticsearch
+          elasticsearch_version: "8.13.4"
+          elasticsearch_heap_size: "3g"   # was 4g — trimmed for the 6GB VM on pve-02 (was 8GB on pve-01)
+          elasticsearch_port: 9200
+          elasticsearch_cluster_name: "homelab"
+          elasticsearch_node_name: "es-01"
+
+          # Kibana
+          kibana_version: "8.13.4"
+          kibana_port: 5601
+
+          # Vault
+          vault_elasticsearch_path: secret/elasticsearch/es-01
+
+          # Tags
+          tier: application
+          criticality: medium
+          app_platform: elasticsearch
+          expose: "false"
+          sla: medium
+
+        es-02:
+          # Built 2026-09-19 — dedicated ES backend for Diskover, co-located
+          # with Diskover itself on this same VM (deliberately NOT a separate
+          # diskover-01 host — the two services share a docker network and
+          # are tightly coupled). Kept separate from es-01, which serves only
+          # the news-intelligence pipeline. See project_pending_work item 9
+          # and project_nas02_zfs_storage_architecture memory.
+          ansible_host: 10.0.30.54
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # VM specs
+          vm_tier: application
+          vm_memory_gb: 4
+          vm_cpus: 2
+          vm_datastore: zfs-nvme-vms
+          vm_vlan: vlan30
+          proxmox_node: pve-02
+          proxmox_vm_id: 234
+          health_check_port: 9200
+          health_check_url: "http://10.0.30.54:9200/_cluster/health"
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/elasticsearch
+            - /opt/diskover
+
+          # Elasticsearch
+          elasticsearch_version: "8.13.4"
+          elasticsearch_heap_size: "1500m"   # small index (one NAS share to start), tight 4GB VM
+          elasticsearch_port: 9200
+          elasticsearch_cluster_name: "homelab"
+          elasticsearch_node_name: "es-02"
+          elasticsearch_kibana_enabled: false   # Diskover has its own web UI — skip Kibana here
+
+          # Vault
+          vault_elasticsearch_path: secret/elasticsearch/es-02
+
+          # Diskover (see also playbooks/deploy_diskover.yml)
+          nas_host: nas-02.internal
+          nas_export_path: "/Multimedia"
+          diskover_index_name: "diskover-files"
+          # Tightened from the default daily 02:00 to hourly during the
+          # active QNAP/NASTY migration window (2026-09-19) so newly-landed
+          # batches show up quickly -- revert to daily once migration is
+          # complete and verified. See project_nas02_zfs_storage_architecture
+          # memory for the migration status.
+          crawler_schedule_hour: "*"
+          crawler_schedule_minute: "15"
+
+          # Tags
+          tier: application
+          criticality: low
+          app_platform: elasticsearch
+          expose: "false"
+          sla: low
+
+        scout-01:
+          # Scout's own OpenClaw gateway -- isolated research agent, zero
+          # credentials. Built 2026-09-20 on pve-02 (async/batch design fits
+          # its night-only schedule -- see project_openclaw_agent_
+          # interaction_design memory / the Scout Phase 1 build plan). No
+          # backup section -- the only state that matters (scout.tasks/
+          # findings/findings_clean) lives in pg-01's own backup routine;
+          # this VM itself is stateless/rebuildable from this repo.
+          ansible_host: 10.0.30.58
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          vm_tier: application
+          vm_memory_gb: 8
+          vm_cpus: 2
+          vm_datastore: zfs-nvme-vms
+          proxmox_node: pve-02
+          proxmox_vm_id: 304
+          docker_enabled: "true"
+
+        grid-01:
+          # "The Grid" portal, Phase 1 (schema + skeleton shell) — see
+          # IaC/docs/THE_GRID_PORTAL_ARCHITECTURE.md. Built 2026-09-19 on
+          # pve-02 (8.4GB free RAM at build time vs. pve-01's 2.3GB, see
+          # project_the_grid_portal_architecture memory). No backup section —
+          # the only state that matters (reference_items) lives in pg-01's
+          # own backup routine; this VM itself is stateless/rebuildable from
+          # this repo + cards.yaml.
+          ansible_host: 10.0.30.55
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          # No ProxyCommand needed — pve-02 VMs are directly reachable, same as gpu-02/es-01/es-02
+
+          # VM specs
+          vm_tier: application
+          vm_memory_gb: 2
+          vm_cpus: 2
+          vm_datastore: zfs-nvme-vms
+          vm_vlan: vlan30
+          proxmox_node: pve-02
+          proxmox_vm_id: 302
+          health_check_port: 8090
+          health_check_url: "http://10.0.30.55:8090/health"
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/grid-portal
+
+          # Postgres — reuses the shared elementary_particles credential
+          # (secret/postgres/pg-01), same one catalog-api/music_studio use.
+          # reference_items table created out-of-band directly against pg-01.
+          grid_postgres_host: "10.0.40.10"
+          grid_postgres_db: "elementary_particles"
+          vault_postgres_path: "postgres/pg-01"
+
+          # Monitoring
+          node_exporter_port: 9100
+          docker_exporter_port: 9323
+
+          # Tags
+          tier: application
+          criticality: low
+          app_platform: grid-portal
+          expose: "true"
+          auth: one_factor
+          sla: low
+
+        studio-01:
+          # The music studio's own VM (2026-10-31, VM 283 on pve-03): Chromatone
+          # (theory.home.example.org) and, since 2026-11-01, the music-studio stack moved
+          # from gpu-01 (docs/STUDIO01_MIGRATION.md). Stateless: NFS (nas-01, nas-02)
+          # and pg-01 hold everything; rebuildable from Terraform + deploy_studio01.yml.
+          ansible_host: 10.0.30.59
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # VM specs
+          vm_tier: application
+          vm_memory_gb: 2   # 4 -> 2 on 2026-11-05 (+3 GB swap file), so pve-03 runs gpu-02, immich-01 and studio-01 together
+          vm_cpus: 4
+          vm_datastore: zfs-nvme
+          vm_vlan: vlan30
+          proxmox_node: pve-03
+          proxmox_vm_id: 283
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/music-studio
+            - /opt/chromatone
+
+          # Music Studio — on gpu-01 2026-08-20 → 2026-11-01, here since (it never
+          # used the GPU: Ollama on gpu-01 and Whisper/stem-api on gpu-02 are network
+          # calls). docs/STUDIO01_MIGRATION.md.
+          # Shares the elementary_particles Postgres DB (music schema) like
+          # every other assistant-tier service, rather than the compose
+          # file's standalone music_studio DB default.
+          music_studio_enabled: true
+          music_studio_compose_dir: /opt/music-studio
+          nfs_mounts:
+            - src: "nas-01.internal:/music-studio"   # NFSv4 pseudo-root: /export/music-studio on the server -> /music-studio to clients
+              dest: /mnt/music-studio
+              opts: "rw,nfsvers=4,hard,intr"
+
+          # Read-only PERMANENT mount — NASTY's existing studio archive
+          # (Multimedia/Music/My Recordings: Ableton/Cubase/Reason projects,
+          # ZOOM/VoiceRecordings field captures, MP3'd/Recordings/Rekorder/
+          # WaveLab'd finished mixes). Now NFS from nas-02 (no credentials);
+          # NASTY itself was decommissioned 2026-11-03.
+          # Switched 2026-08-21 to scan-in-place (Beets copy:no/write:no) —
+          # nasty.internal stays canonical, same philosophy as Immich's
+          # external libraries; this mount is a permanent playback
+          # dependency now, not just a one-time import source — do not
+          # remove it once a folder has been scanned.
+          # Pilot 2026-08-21: only the "MP3'd" subfolder actually scanned
+          # into Beets so far — see project_music_studio_deployment memory.
+          # Source is nas-02 NFS since 2026-09-28 (NASTY retired) — the
+          # "nasty" names/paths are historical, see Roles/music_studio/tasks/main.yml.
+          nasty_recordings_subpath: "Music/My Recordings"
+          nasty_recordings_mount: /mnt/nasty-music
+
+          # Vault
+          vault_music_studio_api_path: secret/music-studio/api
+          vault_music_studio_musicbrainz_path: secret/music-studio/musicbrainz
+          vault_music_studio_forgejo_path: secret/music-studio/forgejo   # url, owner, repo, token (songbook repo, write:repository only)
+
+          # Monitoring
+          node_exporter_port: 9100
+
+          # Tags
+          tier: application
+          criticality: low
+          app_platform: music-studio
+          expose: "true"
+          auth: none
+          sla: low
+
+        code-01:
+          # DOMO's code partner (2026-11-05, VM 252 on pve-01): coding sessions on
+          # domo/ branches of this repo, by voice or at code.home.example.org, with
+          # gpu01-primary as the model. Design: IaC/docs/CODE_PARTNER.md.
+          # Holds no infrastructure or household credential: its own Forgejo key
+          # (bot user domo-coder, push to domo/* only) and the router key, nothing else.
+          # NOT in docker_hosts: a systemd service in a venv, egress pinned by the unit.
+          ansible_host: 10.0.30.32
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # VM specs
+          vm_tier: application
+          vm_memory_gb: 1.5   # -> 1.5 GB 2026-11-06 (pve-01 overcommit, Terraform envs/code-01)
+          vm_cpus: 2
+          vm_datastore: zfs-nvme
+          vm_vlan: vlan30
+          proxmox_node: pve-01
+          proxmox_vm_id: 252
+
+          code_partner_enabled: true
+          # Forgejo Actions runner for this repo's checks (.forgejo/workflows/ci.yml), host mode,
+          # network pinned to git-01 by its unit. Role: forgejo_runner, playbook deploy_forgejo_runner.yml. 2026-11-14.
+          forgejo_runner_enabled: true
+          code_partner_port: 8210
+          # Who it may talk to (systemd IPAddressAllow): gpu-01 Ollama, gpu-02 Whisper (browser
+          # mic), git-01 Forgejo, web-01 (Traefik for code.home.example.org + domo-router). Nothing else.
+          code_partner_allowed_ips: ["10.0.30.50", "10.0.30.51", "10.0.30.31", "10.0.30.20"]
+          vault_code_partner_forgejo_path: secret/code-partner/forgejo   # forgejo_key (bot domo-coder)
+          vault_code_partner_router_path: secret/code-partner/router     # router_key (shared with domo-router)
+
+          # Monitoring
+          node_exporter_port: 9100
+          health_check_url: "http://10.0.30.32:8210/health"
+
+          # Tags
+          tier: application
+          criticality: low
+          app_platform: code-partner
+          expose: "true"
+          auth: two_factor
+          sla: low
+          data_classification: internal    # the repo only; no household data
+
+        mail-agent-01:
+          # The mail agent's fetcher (VM 303 on pve-01, built 2026-09-19, first used 2026-11-05):
+          # the ONLY host with mailbox logins (secret/mail/<person>). Read-only IMAP into
+          # pg-01's mail schema; mail-desk on web-01 sorts it. No SMTP anywhere.
+          # Design: IaC/docs/MAIL_AGENT.md.
+          ansible_host: 10.0.30.56
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          vm_tier: application
+          vm_memory_gb: 0.75   # -> 0.75 GB 2026-11-06 (pve-01 overcommit, Terraform envs/mail-agent-01)
+          vm_cpus: 1
+          vm_datastore: zfs-nvme
+          vm_vlan: vlan30
+          proxmox_node: pve-01
+          proxmox_vm_id: 303
+          tier: application
+          criticality: low
+          app_platform: mail-agent
+          expose: "false"
+          data_classification: personal
+
+        home-assistant:
+          # Rebuild target for the standalone/unmanaged EoL appliance (VMID
+          # 101 "HomeAss", Debian 11 bullseye) — see IaC/docs/HOME_ASSISTANT_MIGRATION.md.
+          # CUTOVER DONE 2026-08-17: old VM 101 powered off (kept, not deleted, for a
+          # rollback window), this VM (282) now live on the real production IP.
+          ansible_host: 10.0.30.14
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # VM specs — real current usage (confirmed live 2026-08-16) is only
+          # 2 vCPU/6GB/66GB; these give headroom per the migration doc's
+          # Target Architecture table.
+          # Trimmed 8GB->6GB 2026-08-19 (pve-01-wide memory pressure, see
+          # project_pve-01_swap_memory_incident memory) — HA was only using
+          # ~5GB live, 6GB still leaves ~1GB/17% headroom above that.
+          vm_tier: application
+          vm_memory_gb: 6
+          vm_cpus: 4
+          vm_datastore: zfs-nvme
+          vm_vlan: vlan30
+          proxmox_node: pve-01   # must stay pve-01 — the Zigbee USB dongle is physically attached there
+          proxmox_vm_id: 282    # next free after jellyfin-01 (281), confirmed live 2026-08-16
+          health_check_port: 8123
+          health_check_url: "http://10.0.30.14:8123/"
+          # HA Core needs 2-4 min after a reboot (Supervisor starts it after Docker);
+          # the fleet default of 12 x 10s would roll a healthy patch back.
+          rolling_update_health_retries: 36
+          rolling_update_health_timeout: 360
+
+          # Docker (HA Supervised runs on top of Docker, but is NOT a
+          # docker-compose stack like the other particles — Roles/home_assistant
+          # installs it via the official Supervised installer, not compose_dir)
+          docker_enabled: "true"
+          docker_version: latest
+
+          # ---- HA configuration lives ON THE HOST, not in this repo ----------
+          # /var/lib/homeassistant/homeassistant/ (= /config in the container):
+          # configuration.yaml, secrets, and .storage/ (UI-configured
+          # integrations incl. application_credentials). Kept there on purpose
+          # because these files contain credentials. To change: ssh in, back up
+          # first (`install -m 0600 <file> <file>.bak-<date>`), edit, then
+          # `docker exec homeassistant python -m homeassistant --script
+          # check_config -c /config` before any restart. Never cat/print these
+          # files; redact client_id/client_secret/token lines when viewing.
+          # 2026-09-29: removed the obsolete YAML `spotify:` block (Spotify is
+          # UI-configured; backup configuration.yaml.bak-20260929-spotify).
+          # 2026-10-23: removed the dead AskMixtral intent_script + the first
+          # `rest_command:` block (ask_open_webui -> 10.0.0.12:3000, gone) that
+          # duplicated the key; backup configuration.yaml.bak-20261023005439.
+          ha_config_dir: /var/lib/homeassistant/homeassistant
+
+          # ---- Zigbee coordinator (USB passthrough, configured in Terraform) --
+          # Confirmed live 2026-08-16: Sonoff Zigbee 3.0 USB Dongle Plus,
+          # vendor:product 10c4:ea60, 4 real devices paired via ZHA. See
+          # Terraform/envs/home-assistant/main.tf `usb` block.
+          zigbee_usb_id: "10c4:ea60"
+
+          # ---- GPS / mobile_app — already live on the current instance, this
+          # migration's job is to confirm it survives backup/restore, not to
+          # build it. See HOME_ASSISTANT_MIGRATION.md "GPS / location tracking".
+          mobile_app_device_count: 11   # confirmed live 2026-08-16, for the post-restore rehearsal check
+
+          # Vault paths (see migration doc section 4)
+          vault_home_assistant_api_path: secret/home-assistant/api          # keys: token, url
+          vault_influxdb_path: secret/influxdb/homeassistant                 # key: token
+          vault_esphome_path: secret/esphome/api                             # keys: encryption_key, ota_password
+          vault_mqtt_path: secret/mqtt/homeassistant                         # key: password
+
+          # Monitoring
+          node_exporter_port: 9100
+          docker_exporter_port: 9323
+          prometheus_scrape_interval: "60s"
+
+          # Backup — nightly Proxmox vzdump of VM 282 (pve-01 job, all VMs) plus
+          # HA's own daily automatic partial backup (service.yaml "vzdump+native")
+          backup_strategy: vzdump+native-ha-backup
+
+          # Tags — mirrors IaC/services/assistant/home-assistant/service.yaml
+          tier: assistant
+          criticality: high   # mediates voice pipeline + physical-security-adjacent devices
+          app_platform: home-assistant
+          expose: "true"
+          auth: none          # HA has its own native auth; no Authelia/Traefik in front today
+          sla: high
+          data_classification: sensitive
+
+    tier3_messaging:
+      hosts:
+        comms-01:
+          ansible_host: 10.0.30.45
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          ansible_ssh_common_args: >-
+            -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_ansible
+            -o StrictHostKeyChecking=no root@10.0.0.11"
+            -o StrictHostKeyChecking=no
+
+          # VM specs
+          vm_tier: application
+          vm_memory_gb: 4
+          vm_cpus: 2
+          vm_datastore: SSDs
+          vm_vlan: vlan30
+          proxmox_node: pve-01
+          proxmox_vm_id: 271
+          always_on: true
+
+          # Matrix / Synapse
+          matrix_server_name: "home.arpa"
+          matrix_public_baseurl: "https://matrix.home.arpa"
+          synapse_db_name: synapse
+          synapse_db_user: synapse
+          comms_dir: /opt/family-messaging
+
+          # Vault paths
+          vault_synapse_path: secret/family-messaging/synapse
+          vault_db_path: secret/family-messaging/db
+          vault_bot_path: secret/family-messaging/bot
+
+          # Monitoring
+          node_exporter_port: 9100
+          docker_exporter_port: 9323
+
+          # Tags
+          tier: assistant
+          criticality: low
+          app_platform: matrix
+          expose: "true"
+
+    #########################################
+    # SERVICE GROUPS (By Function)
+    #########################################
+
+    # All database servers
+    databases:
+      hosts:
+        pg-01: {}
+    
+    # PostgreSQL cluster (for playbook targeting)
+    postgres_cluster:
+      hosts:
+        pg-01:
+          postgres_role: primary
+          streaming_replication: false        # (enable for replicas)
+
+    # Wake-on-LAN capable Proxmox hosts
+    # pve-01 is the always-on SENDER; pve-02 and pve-03 are the TARGETS.
+    # Run wol_setup.yml once while hosts are on to discover and store MAC addresses.
+    proxmox_wol:
+      hosts:
+        pve-02: {}    # 10.0.0.12 — all vars from proxmox_hosts above
+        pve-03: {}    # 10.0.0.13 — all vars from proxmox_hosts above
+    
+    # Elasticsearch cluster
+    search_hosts:
+      hosts:
+        es-01: {}
+        es-02: {}
+
+    # All Docker hosts
+    docker_hosts:
+      hosts:
+        web-01: {}
+        web-02: {}
+        git-01: {}
+        media-vm: {}
+        immich-01: {}
+        jellyfin-01: {}
+        es-01: {}
+        es-02: {}
+        home-assistant: {}
+        dl-01: {}
+        studio-01: {}
+    
+    # Media hosts (on pve-03, WoL-managed)
+    media_hosts:
+      hosts:
+        media-vm:
+          ansible_host: 10.0.30.60
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          vm_tier: application
+          vm_memory_gb: 16
+          vm_cpus: 8
+          vm_datastore: local-lvm
+          vm_vlan: vlan30
+          proxmox_node: pve-03          # real Proxmox node name — see IaC/CLAUDE.md
+          proxmox_vm_id: 300
+          health_check_port: 8096     # Jellyfin
+          health_check_url: "http://10.0.30.60:8096/health"
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/jellyfin
+            - /opt/tvheadend
+          always_on: false
+          # Services
+          docker_version: latest
+          docker_compose_version: latest
+          docker_users:
+            - ansible
+          jellyfin_compose_dir: /opt/jellyfin
+          jellyfin_port: 8096
+          tvheadend_port: 9981
+          mediathek_download_dir: /mnt/media/mediathek
+          # NAS mounts
+          nfs_mounts:
+            - src: "nas-01.internal:/media"
+              dest: /mnt/media
+              opts: "rw,nfsvers=4,hard,intr"
+          # Vault
+          vault_docker_path: secret/docker/media-vm
+          # Backup
+          backup_type: snapshots
+          backup_destination: "s3:http://nas-01.internal:9000/restic/media-vm"
+          restic_jobs:
+            - name: jellyfin-config
+              type: files
+              paths:
+                - /opt/jellyfin/config
+                - /opt/tvheadend/config
+                - /opt/mediathek-dl/state
+              schedule: "04:00"    # after mediathek download completes
+          # Monitoring
+          node_exporter_port: 9100
+          docker_exporter_port: 9323
+          # Tags
+          tier: application
+          criticality: low
+          service: jellyfin
+          wol_host: pve-03
+
+        dl-01:
+          # Download stack — qBittorrent + Sonarr + Radarr + Lidarr + Readarr
+          # + Prowlarr + catalog-api (master asset catalog).
+          # VLAN60 (NordLynx CH egress) — see Roles/opnsense/tasks/nordlynx.yml.
+          # Always-on (unlike media-vm) — *arr services need to run
+          # continuously for RSS/indexer scanning, not just during downloads.
+          # Moved pve-03->pve-02 2026-09-19 (pve-03 RAM was tight; VLAN60/NordLynx
+          # routing is host-independent, verified live post-move — real
+          # NordLynx Switzerland exit IP confirmed, no leak). Same VMID/IP.
+          # Also fixed the same day: a 120GB disk existed but was never
+          # actually mounted by this role (only the NFS media mount was
+          # wired up) -- real /data/downloads now lives on a proper 250GB
+          # disk on pve-02's new zfs-sata-vms pool. See
+          # incident_n8n_outage_and_pve-03_shutdown_risk_2026-09-19 memory.
+          ansible_host: 10.0.60.5
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          vm_tier: application
+          vm_memory_gb: 4
+          vm_cpus: 2
+          vm_datastore: zfs-sata-vms
+          vm_vlan: vlan60
+          proxmox_node: pve-02          # real Proxmox node name — see IaC/CLAUDE.md
+          proxmox_vm_id: 301
+          health_check_port: 8989     # Sonarr
+          health_check_url: "http://10.0.60.5:8989/"
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/downloads
+          always_on: true
+          # Services
+          docker_version: latest
+          docker_compose_version: latest
+          docker_users:
+            - ansible
+          download_compose_dir: /opt/downloads
+          download_config_dir: /opt/downloads/config
+          download_downloads_dir: /data/downloads
+          qbittorrent_port: 8080
+          sonarr_port: 8989
+          radarr_port: 7878
+          prowlarr_port: 9696
+          lidarr_port: 8686
+          readarr_port: 8787
+          catalog_api_port: 5091
+          # NAS mount — media library (Sonarr/Radarr import completed
+          # downloads here; same share Jellyfin/media-vm reads from)
+          download_nfs_server: nas-02.internal   # DATAGRID/media since 2026-10-10 (was nas-01, never used)
+          download_nfs_path: /media
+          download_media_mount: /mnt/media
+          # Backup — config/quality-profiles/indexer-config for all 6 apps,
+          # previously unbacked-up. Matches media-vm's restic_jobs shape.
+          backup_type: snapshots
+          backup_destination: "s3:http://nas-01.internal:9000/restic/dl-01"
+          restic_jobs:
+            - name: download-stack-config
+              type: files
+              paths:
+                - /opt/downloads/config
+              excludes:
+                - "*.log"
+                - "*.tmp"
+              schedule: "03:30"
+          # Monitoring
+          node_exporter_port: 9100
+          docker_exporter_port: 9323
+          # Tags
+          tier: application
+          criticality: low
+          service: download-stack
+          # No wol_host — unlike media-vm, dl-01 is always_on: true, not WoL-managed.
+
+        osemsearch:
+          # Solr-based search for news intelligence (queries from n8n via SSH tunnel)
+          # Moved to VLAN60 (NordLynx Guest) 2026-09-25; now with static IP
+          # Awaiting Proxmox static IP config + Ansible host deployment
+          ansible_host: 10.0.60.9
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+          vm_tier: application
+          vm_memory_gb: 8
+          vm_cpus: 4
+          vm_datastore: zfs-nvme
+          vm_vlan: vlan60
+          proxmox_node: pve-02
+          proxmox_vm_id: 106
+          always_on: true
+          health_check_url: "http://10.0.60.9/search/"   # 2026-10-16 audit: Solr listens on 127.0.0.1 only; Apache serves /search/
+          tier: application
+          criticality: medium
+          service: osemearch
+
+    # Web/application platforms
+    web_platform:
+      hosts:
+        web-01:
+          primary_app: n8n
+        web-02:
+          primary_app: atlassian
+        git-01:
+          primary_app: gitlab
+        immich-01:
+          primary_app: immich
+        jellyfin-01:
+          primary_app: jellyfin
+
+    # Backends for Traefik reverse proxy
+    traefik_backends:
+      hosts:
+        web-01:
+          traefik_exposed: "true"
+          traefik_service_host: "n8n.internal"
+          traefik_port: 5678
+        web-02:
+          traefik_exposed: "true"
+          traefik_service_hosts:
+            - "jira.internal"
+            - "confluence.internal"
+          traefik_ports:
+            jira: 8080
+            confluence: 8090
+        git-01:
+          traefik_exposed: "true"
+          traefik_service_hosts:
+            - "gitlab.internal"
+            - "registry.gitlab.internal"
+          traefik_ports:
+            gitlab: 80
+            registry: 5050
+        immich-01:
+          traefik_exposed: "true"
+          traefik_service_host: "immich.home.example.org"   # was "immich.internal" — standardized on the real domain, same pattern as paperless/git/chronicle
+          traefik_port: 2283
+        jellyfin-01:
+          traefik_exposed: "true"
+          traefik_service_host: "jellyfin.home.example.org"
+          traefik_port: 8096
+
+    # Monitoring targets
+    monitoring_exporters:
+      hosts:
+        pg-01:
+          exporter_type: postgres
+          exporter_port: 9187
+        web-01:
+          exporter_types:
+            - docker
+            - node
+          exporter_ports:
+            docker_exporter: 9323
+            node_exporter: 9100
+        web-02:
+          exporter_types:
+            - docker
+            - node
+          exporter_ports:
+            docker_exporter: 9323
+            node_exporter: 9100
+        git-01:
+          exporter_types:
+            - docker
+            - node
+          exporter_ports:
+            docker_exporter: 9323
+            node_exporter: 9100
+        immich-01:
+          exporter_types:
+            - docker
+            - node
+            - immich
+          exporter_ports:
+            docker_exporter: 9323
+            node_exporter: 9100
+            immich_metrics: 2283   # /metrics endpoint (Immich v1.107+)
+        jellyfin-01:
+          exporter_types:
+            - docker
+            - node
+          exporter_ports:
+            docker_exporter: 9323
+            node_exporter: 9100
+        home-assistant:
+          exporter_types:
+            - docker
+            - node
+          exporter_ports:
+            docker_exporter: 9323
+            node_exporter: 9100
+
+    # Backup sources
+    backup_sources:
+      hosts:
+        pg-01:
+          backup_type: wal-archiving
+          backup_destination: "s3:http://nas-01.internal:9000/postgres-backups/pg-01"
+        web-01:
+          backup_type: snapshots
+          backup_destination: "s3:http://nas-01.internal:9000/restic/web-01"
+        web-02:
+          backup_type: snapshots
+          backup_destination: "s3:http://nas-01.internal:9000/restic/web-02"
+        git-01:
+          backup_type: gitlab-backup
+          backup_destination: "s3:http://nas-01.internal:9000/restic/git-01"
+        dmz-nc-01:
+          backup_type: restic
+          backup_destination: "s3:http://nas-01.internal:9000/restic/dmz-nc-01"
+        dmz-pg-01:
+          backup_type: restic
+          backup_destination: "s3:http://nas-01.internal:9000/restic/dmz-pg-01"
+        immich-01:
+          backup_type: restic
+          backup_destination: "s3:http://nas-01.internal:9000/restic/immich-01"
+        jellyfin-01:
+          backup_type: restic
+          backup_destination: "s3:http://nas-01.internal:9000/restic/jellyfin-01"
+
+
+    #########################################
+    # TIER-DMZ: DMZ SERVICES
+    #########################################
+    tier_dmz:
+      hosts:
+        # nc-01 (old bare-metal NextCloudPi, VMID 260, 172.16.0.21) was
+        # decommissioned 2026-09-09 in favor of dmz-nc-01 below, kept powered
+        # off as a rollback, then actually deleted 2026-09-20 (backups exist
+        # on nfs-backups). secret/nextcloud/ssh in Vault is now moot -- safe
+        # to remove whenever convenient. Full migration history: see
+        # NC01_DMZ_MIGRATION_PLAN.md.
+
+        # PRODUCTION as of 2026-09-09 -- this is now the live, real
+        # Nextcloud instance for the household. 172.16.0.30 is its
+        # PERMANENT address, not a temp build IP -- the original plan
+        # (take over nc-01's literal IP, 172.16.0.21, in-place) was
+        # superseded by a DNS-level cutover instead: Pi-hole's
+        # cloud.home.example.org record now points here directly, and the WAN
+        # port-forward (fw-01, TCP 80/443) was already retargeted here
+        # in an earlier session. nc-01 (172.16.0.21, VM 260) keeps its
+        # own IP as a powered-off rollback -- see its entry above.
+        # Real Let's Encrypt cert live for cloud.home.example.org. Full data
+        # migration (calendars/contacts/bookmarks/files, 84.3GB) done
+        # 2026-09-09 -- see NC01_DMZ_MIGRATION_PLAN.md Sessions 4-5.
+        dmz-nc-01:
+          ansible_host: 172.16.0.30     # PERMANENT production IP on DMZ (vtnet2, 172.16.0.0/24) -- not temporary
+          # Added 2026-09-09: deploy_nextcloud.yml's nc_domain/
+          # nc_use_internal_tls previously had NO inventory-driven default
+          # -- only an env-var override (-e NC_DOMAIN=.../-e
+          # nc_use_internal_tls=false) or a hardcoded self-signed/bare-IP
+          # fallback baked into the play itself. A bare re-run (forgetting
+          # those -e flags -- which happened for real, twice, the same
+          # session this was fixed) silently reverted the live site to a
+          # self-signed cert and briefly broke it (empty NC_DOMAIN crashed
+          # Caddy's config entirely). Since this is now permanent
+          # production, its correct values belong here as the real
+          # source of truth, not as something every future run must
+          # remember to pass by hand.
+          nc_domain: cloud.home.example.org
+          nc_use_internal_tls: false
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # VM specs
+          # Corrected 2026-09-08 against live nc-01 (VM 260) config, checked
+          # via the Proxmox API before writing this: real pool names on pve-01
+          # are "zfs-nvme" and "SSDs" -- "zfs-nvme-vms" (below) doesn't exist,
+          # see IaC/CLAUDE.md's known-fictional-pool-names note. nc-01 actually
+          # runs a SECOND disk for Nextcloud's data dir (88GB used today,
+          # confirmed via `occ config:system:get datadirectory` ->
+          # /media/USBdrive/ncdata) -- the OS disk alone was never enough.
+          # See IaC/docs/NC01_DMZ_MIGRATION_PLAN.md for the full sizing writeup.
+          vm_tier: dmz
+          # Scaled down 2026-09-08 from 6 -- the original figure was a
+          # guess, not real numbers, and (combined with dmz-pg-01's own
+          # oversized default) directly caused a real pve-01 memory-
+          # overcommit crash. Live data point: current nc-01 (VM 260)
+          # runs its ENTIRE stack (Apache+PHP-FPM+MariaDB together) in
+          # 1.5GB at under 80% utilized. dmz-nc-01 only needs the app
+          # side (DB moves to dmz-pg-01), so 2GB should cover Docker's
+          # own overhead plus Caddy+coturn+redis alongside PHP-FPM. See
+          # NC01_DMZ_MIGRATION_PLAN.md's incident note -- treat as a
+          # first cut, watch real usage once Phase 2 actually runs.
+          vm_memory_gb: 2
+          vm_cpus: 2
+          vm_datastore: zfs-nvme        # OS disk only (was: zfs-nvme-vms, fictional)
+          vm_data_datastore: SSDs       # NEW -- second disk for Nextcloud data volume
+          vm_data_disk_gb: 200          # sized for current 88GB used + real headroom
+          vm_vlan: dmz               # OPNSense vtnet2 — not a VLAN tag, physical DMZ port
+          proxmox_node: pve-01
+          proxmox_vm_id: 200
+          health_check_port: 443      # Nextcloud HTTPS via Caddy
+          health_check_url: "https://cloud.home.example.org/status.php"   # 2026-10-16 audit: the check runs on the IaC VM, which the DMZ firewall keeps off 172.16.0.30:443
+          docker_enabled: "true"
+          docker_compose_dirs:
+            - /opt/nextcloud
+
+          # Docker Compose stack: nextcloud + redis + caddy + coturn
+          compose_dir: /opt/nextcloud
+          postgres_host: "172.16.0.22"     # dmz-pg-01
+
+          # Vault paths
+          vault_nc_path: secret/nextcloud/dmz
+
+          # Backup (Restic → MinIO on nas-01)
+          # NOTE: DMZ VMs need a VLAN-routed path to nas-01 (10.0.40.20).
+          # OPNSense rule: VLAN200 → VLAN40:9000 ALLOW (add to opnsense role).
+          backup_type: restic
+          backup_destination: "s3:http://nas-01.internal:9000/restic/dmz-nc-01"
+          restic_jobs:
+            - name: nextcloud-volumes
+              type: files
+              paths:
+                - /opt/nextcloud/config          # NextCloud config volume
+                - /opt/nextcloud/data            # NextCloud user data volume
+                - /opt/nextcloud/caddy           # Caddy certs + config
+              schedule: "03:00"                 # After nightly maintenance window
+              tags: ["nextcloud", "dmz"]
+
+          # Tags
+          tier: dmz
+          criticality: high
+          expose_external: "true"
+
+        dmz-pg-01:
+          ansible_host: 172.16.0.22     # dmz-pg-01 on DMZ (vtnet2, 172.16.0.0/24)
+          ansible_user: ansible
+          ansible_ssh_private_key_file: ~/.ssh/id_ansible
+
+          # VM specs
+          vm_tier: dmz
+          # Scaled down 2026-09-08 from 4 -- guessed, not measured, and
+          # (combined with dmz-nc-01's own oversized default) directly
+          # caused a real pve-01 memory-overcommit crash. 2GB for a
+          # single-tenant Postgres serving one Nextcloud instance should
+          # be plenty -- postgres_shared_buffers/effective_cache_size
+          # below are scaled down to match (25%/50% of this value), not
+          # left sized for the old 4GB ceiling. See NC01_DMZ_MIGRATION_
+          # PLAN.md's incident note; watch real usage once Phase 2 runs.
+          vm_memory_gb: 2
+          vm_cpus: 2
+          # Corrected 2026-09-08: "zfs-nvme-vms"/"zfs-ssd-vms" don't exist on
+          # pve-01 (real pools: "zfs-nvme", "SSDs" -- see IaC/CLAUDE.md). Not
+          # yet re-verified against a live headroom check for dmz-pg-01
+          # specifically -- flagged as open in NC01_DMZ_MIGRATION_PLAN.md.
+          vm_datastore: zfs-nvme        # OS + data disk; WAL colocated for now
+          vm_vlan: dmz               # OPNSense vtnet2 — not a VLAN tag, physical DMZ port
+          proxmox_node: pve-01           # Core host — DMZ bridge lives here
+          proxmox_vm_id: 201
+          health_check_port: 22         # 2026-10-16 audit: 5432 is closed to the IaC VM (DMZ firewall), where the check runs
+          docker_enabled: "false"
+
+          # PostgreSQL configuration
+          postgres_version: 16
+          postgres_port: 5432
+          postgres_data_dir: /pgdata/pg_data    # scsi1 (zfs-nvme, 60G)
+          postgres_wal_dir: /wal/pg_wal          # scsi2 (SSDs, 20G — separate SSD pool)
+          postgres_listen_address: "172.16.0.22"
+          postgres_max_connections: 50
+          # Scaled down 2026-09-08 alongside vm_memory_gb (4GB -> 2GB,
+          # see above) -- these were still sized for the old ceiling
+          # before this edit, which would have left too little RAM for
+          # the OS + connection overhead on the smaller VM. Standard
+          # starting ratios: shared_buffers ~25% of RAM, effective_cache_
+          # size ~50%.
+          postgres_shared_buffers: "512MB"
+          postgres_effective_cache_size: "1GB"
+          postgres_wal_buffers: "16MB"
+
+          # Access restriction: dmz-nc-01's address, now PERMANENT --
+          # corrected 2026-09-09. The originally-planned IP takeover
+          # (dmz-nc-01 moving to .21) did not happen; a DNS-level cutover
+          # was used instead (see dmz-nc-01's own inventory comment and
+          # NC01_DMZ_MIGRATION_PLAN.md Session 5), so .30 stays correct
+          # with no further change needed here.
+          postgres_allowed_client: "172.16.0.30/32"    # dmz-nc-01 (permanent production IP)
+          postgres_db: nextcloud
+          postgres_user: nextcloud
+
+          # Vault paths
+          vault_postgres_path: secret/nextcloud/dmz/postgres
+
+          # Backup (Restic → MinIO on nas-01)
+          # pg_dump is piped directly into restic stdin — no temp files on disk.
+          # Full PGDATA dir backup also runs for binary-level restore option.
+          backup_type: restic
+          backup_destination: "s3:http://nas-01.internal:9000/restic/dmz-pg-01"
+          restic_jobs:
+            - name: nextcloud-pgdump
+              type: postgres
+              postgres_db: nextcloud
+              postgres_user: nextcloud
+              postgres_host: "127.0.0.1"
+              schedule: "01:00"                 # Ahead of nc-01 backup at 03:00
+              tags: ["postgres", "dmz", "nextcloud"]
+
+            - name: nextcloud-pgdata-files
+              type: files
+              paths:
+                - /pgdata/pg_data               # Binary data dir (for PITR restore)
+                - /etc/postgresql               # pg config files
+              schedule: "01:30"                 # After pg_dump job
+              exclude:
+                - "*.pid"
+                - "postmaster.pid"
+              tags: ["postgres", "dmz"]
+
+          # Tags
+          tier: dmz
+          criticality: high
+          postgres_role: primary
+          wal_enabled: "true"
+
+    # ── Patch-managed groups ──────────────────────────────────────────────────
+    # Used by rolling_update.yml as the default target scope.
+    # Excludes: PVE hypervisors (pve-01/02/03), bare-metal (nas-01/gpu-01),
+    #           and OPNSense (fw-01) — these require manual maintenance procedures.
+    patchable_vms:
+      # REBUILT 2026-10-16 from the live VM list: every Debian/Ubuntu VM Ansible reaches
+      # (or reaches in the 23:00-07:00 pve-02 window) that has proxmox_vm_id + proxmox_node.
+      # The weekly queue step in scripts/patch_window.sh sets these `pending` in NetBox
+      # (netbox_setup_patch_fields.yml --tags reset_pending); patch_never still wins.
+      # Removed: media-vm (no longer exists). home-assistant is NOT here on purpose: it has its
+      # own Sunday slot (patchable_vms_sunday below); gpu-02 has its own Saturday slot
+      # (patchable_vms_gpu02 below). HA is Supervised on Debian 12, not HAOS:
+      # Supervisor updates Core/add-ons, the host OS is patched like any other VM.
+      # Before this, gpu-01/02, es-01/02, scout-01, osemsearch, grid-01, comms-01 were never in it.
+      hosts:
+        # pve-01
+        dns-01:      {}    # vm 220
+        vpn-01:      {}    # vm 210
+        pg-01:       {}    # vm 230 -- DB; app connections are re-established by the pg-01 auto-remediation
+        web-01:      {}    # vm 240 -- Traefik, Authelia, n8n: every site blips on its reboot
+        git-01:      {}    # vm 251 -- Forgejo
+        gpu-01:      {}    # vm 270 -- GPU passthrough; rolling_update checks NVIDIA/DKMS after the upgrade
+        comms-01:    {}    # vm 271 -- Matrix
+        dmz-nc-01:   {}    # vm 200 -- Nextcloud (DMZ)
+        dmz-pg-01:   {}    # vm 201 -- Nextcloud DB (DMZ)
+        # pve-03
+        web-02:      {}    # vm 241 -- Ubuntu noble
+        immich-01:   {}    # vm 280
+        jellyfin-01: {}    # vm 281
+        studio-01:   {}    # vm 283 -- music studio (music-studio stack + Chromatone)
+        # pve-01, added 2026-11-05
+        code-01:     {}    # vm 252 -- DOMO code partner
+        mail-agent-01: {}  # vm 303 -- mail fetcher (mailbox logins live here only)
+        # pve-02 -- powered 23:00-07:00 only, so patched in the 05:00 window
+        dl-01:       {}    # vm 301
+        es-01:       {}    # vm 231
+        es-02:       {}    # vm 234
+        grid-01:     {}    # vm 302
+        scout-01:    {}    # vm 304
+        osemsearch:  {}    # vm 106 -- Debian 12 since 2026-10-16 (docs/UPGRADE_OSSEMSEARCH.md); ansible user added the same day
+    # Own slot: Sunday 06:00 Europe/Berlin (systemd --user patch-window-ha.timer on the IaC VM),
+    # after pve-01's 03:00 vzdump (ends ~05:00-05:10; HA's archive lands ~05:02, so the
+    # daily 05:00 window would always fail its backup gate). Queued and patched in the same
+    # run; rolling_update.yml skips these hosts unless patch_host names them. 2026-10-23.
+    patchable_vms_sunday:
+      hosts:
+        home-assistant: {}  # vm 282 -- HA Core restarts with Docker; ~1-3 min outage on reboot
+
+    # Own slot: Saturday 05:45 Europe/Berlin (systemd --user patch-window-gpu02.timer on the
+    # IaC VM). 2026-11-05: in the daily 05:00 window gpu-02 was patched while pve-03's 03:00
+    # vzdump was still running (ends 05:01-05:12); a failed check rolled it back and the
+    # restart timed out (10 GB pinned for the GPU), so it stayed down 10-26..10-30 and
+    # 11-03..11-05, taking DOMO voice, the classifier, HA speech-to-text and immich-ml with
+    # it. 05:45 is after pve-03's vzdump and the daily window, and done before DOMO's 06:30
+    # brief. pve-03's vzdump and this timer are both Europe/Berlin, so DST moves them together.
+    patchable_vms_gpu02:
+      hosts:
+        gpu-02: {}  # vm 211 on pve-03 -- Ubuntu noble, GPU passthrough (RTX 2070)
+
+    patchable_always_on:
+      hosts:
+        dns-01:   {}
+        vpn-01:   {}
+        pg-01:    {}
+        web-01:   {}
+        web-02:   {}
+        git-01:   {}
+        immich-01: {}
+        jellyfin-01: {}
+        dmz-nc-01: {}
+        dmz-pg-01: {}
+        home-assistant: {}
+        dl-01: {}
+
+    # Subset: WoL-managed VMs (rolling_update.yml will wake before patching)
+    patchable_wol_managed:
+      hosts:
+        media-vm: {}    # pve-03, vm 300
+        gpu-02:   {}    # pve-02, vm 211 — RTX 4060 Ti burst node — Ollama+Qwen 14B deployed 2026-07-21
+
+
+# ============================================================
+# GROUP VARIABLES
+# ============================================================
+
+# Default variables applied to all groups
+group_vars:
+  all:
+    # Common settings
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_become: yes
+    
+    # Vault
+    vault_addr: "http://vault.internal:8200"
+    vault_skip_verify: false
+    
+    # DNS
+    nameserver_primary: "10.0.30.10"      # Pi-hole on vlan30 (dns-01)
+    nameserver_fallback: "8.8.8.8"
+    
+    # NTP
+    ntp_servers:
+      - ntp.ubuntu.com
+      - time.nist.gov
+    
+    # Logging
+    syslog_server: "graylog-01.internal"
+    syslog_port: 5140
+    
+    # SSH hardening
+    ssh_port: 22
+    ssh_password_auth: "no"
+    ssh_pubkey_auth: "yes"
+    
+    # Firewall
+    ufw_enabled: "yes"
+    ufw_default_incoming: "deny"
+    ufw_default_outgoing: "allow"
+
+  tier2_storage:
+    # Database-specific defaults
+    backup_enabled: "yes"
+    backup_retention_days: 30
+    monitoring_enabled: "yes"
+    critical_service: "yes"
+
+  tier3_application:
+    # Application-specific defaults
+    backup_enabled: "yes"
+    backup_retention_days: 14
+    monitoring_enabled: "yes"
+    critical_service: "no"
+
+  databases:
+    # Database role defaults
+    postgres_enabled: "yes"
+    postgres_backup_type: "wal"
+    postgres_replication_enabled: "no"
+
+  docker_hosts:
+    # Docker host defaults
+    docker_enabled: "yes"
+    container_log_driver: "json-file"
+    container_log_rotation_enabled: "yes"
+
+  monitoring_exporters:
+    # Exporter defaults
+    exporter_enabled: "yes"
+    prometheus_scrape_interval: "15s"
+
+
+# ============================================================
+# HOST VARIABLES
+# ============================================================
+
+host_vars:
+  pg-01:
+    # PostgreSQL-specific configuration (already defined above)
+    pass
+  
+  web-01:
+    # Docker/n8n-specific configuration (already defined above)
+    pass

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# copy-offsite.sh — copy all snapshots from primary repo to offsite repo
+set -euo pipefail
+LOGFILE="{{ restic_log_dir }}/copy-offsite.log"
+log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [copy-offsite] $*" | tee -a "${LOGFILE}"; }
+
+log "=== Offsite copy started ==="
+
+# Source: primary env (RESTIC_REPOSITORY + RESTIC_PASSWORD + primary S3 creds)
+set -a; source {{ restic_config_dir }}/primary.env; set +a
+PRIMARY_REPO="${RESTIC_REPOSITORY}"
+PRIMARY_PASSWORD="${RESTIC_PASSWORD}"
+
+# Destination: offsite env (RESTIC_REPOSITORY2 + same password)
+# We export RESTIC_TO_REPOSITORY pointing to offsite
+set -a; source {{ restic_config_dir }}/offsite.env; set +a
+
+log "Source : ${PRIMARY_REPO}"
+log "Dest   : ${RESTIC_REPOSITORY}"
+
+RESTIC_REPOSITORY="${PRIMARY_REPO}" RESTIC_PASSWORD="${PRIMARY_PASSWORD}" \
+  restic copy \
+    --repo2 "${RESTIC_REPOSITORY}" \
+    --password-file2 <(echo "${RESTIC_PASSWORD}") \
+    --verbose=1 \
+    2>&1 | tee -a "${LOGFILE}"
+
+log "=== Offsite copy done ==="

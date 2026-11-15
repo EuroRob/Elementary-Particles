@@ -1,0 +1,46 @@
+---
+# 2026-10-16: v3.1.7 had 15 open advisories (2 critical); bumped through the patch
+# window container pass (images: {traefik:v3.1: traefik:v3.7.15}).
+traefik_image: "traefik:v3.7.15"
+traefik_host: "web-01"
+traefik_ip: "10.0.30.10"
+
+# Directories on the Traefik host
+traefik_config_dir: /etc/traefik
+traefik_dynamic_dir: /etc/traefik/dynamic
+traefik_certs_dir: /etc/traefik/certs
+traefik_log_dir: /var/log/traefik
+traefik_compose_dir: /opt/traefik
+
+# Vault secret paths
+vault_traefik_certs_path: secret/traefik/certs
+vault_traefik_dashboard_path: secret/traefik/dashboard
+
+# TLS strategy: internal_ca | acme_dns
+traefik_tls_strategy: internal_ca
+
+# =============================================================================
+# ACME / Let's Encrypt via IONOS DNS-01 challenge
+# Set traefik_acme_enabled: true in inventory or playbook to activate.
+# =============================================================================
+traefik_acme_enabled: false
+
+# Your Let's Encrypt account email address
+traefik_acme_email: "admin@example.com"
+
+# The PUBLIC domain hosted at IONOS that you want a wildcard cert for.
+# Produces: *.yourdomain.com + yourdomain.com  (SAN wildcard)
+# Example: traefik_acme_domain: "example.com"
+traefik_acme_domain: ""
+
+# Use LE staging CA for testing (avoids hitting rate limits)
+traefik_acme_staging: false
+
+# Seconds Traefik waits after setting TXT record before checking propagation
+traefik_acme_dns_delay: 10
+
+# Directory on host where acme.json is stored (must be rw by root)
+traefik_acme_dir: /etc/traefik/acme
+
+# Vault path for IONOS API key (key: ionos_api_key, format: prefix.secret)
+vault_traefik_acme_path: secret/traefik/acme

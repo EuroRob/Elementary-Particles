@@ -1,0 +1,196 @@
+{
+  "active": true,
+  "connections": {
+    "Daily 23:00 Trigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get VM List (pve-01)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Filter + Format Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send to Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Get Snapshots": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Filter + Format Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Get VM List (pve-01)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Split VMs",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Split VMs": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get Snapshots",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "2g8T7p2vexDQH2TZ",
+  "name": "Daily Orphaned Snapshot Check -> System Alerts (Matrix)",
+  "nodes": [
+    {
+      "id": "f868c871-a025-4c3b-8902-492122b59146",
+      "name": "Daily 23:00 Trigger",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "0 23 * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        200,
+        300
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "a778e482-0254-4ef9-9e47-da99ee9ad612",
+      "name": "Filter + Format Message",
+      "parameters": {
+        "jsCode": "const snapshotItems = $input.all();\nconst vmItems = $('Split VMs').all();\n\nconst offenders = [];\nfor (let i = 0; i < snapshotItems.length; i++) {\n  const vm = vmItems[i].json;\n  const snaps = (snapshotItems[i].json.data || []).filter(s => s.name !== 'current');\n  if (snaps.length > 0) {\n    const ages = snaps.map(s => {\n      const ageHours = s.snaptime ? Math.round((Date.now() / 1000 - s.snaptime) / 3600) : null;\n      return `${s.name}${ageHours !== null ? ` (${ageHours}h old)` : ''}`;\n    });\n    offenders.push(`• ${vm.name} (VM ${vm.vmid}): ${ages.join(', ')}`);\n  }\n}\n\nif (offenders.length === 0) {\n  return [];\n}\n\nconst text = `📸 ${offenders.length} VM(s) still have a Proxmox snapshot allocated — review and remove before the 03:00 nightly backup:\\n\\n${offenders.join('\\n')}`;\nconst txn_id = 'snap-' + Date.now() + '-' + Math.random().toString(36).slice(2);\n\nreturn [{\n  json: {\n    txn_id,\n    matrixPayload: { msgtype: 'm.text', body: text }\n  }\n}];",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1080,
+        300
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OnzL2wXr1dswd0Ye",
+          "name": "Proxmox pve-01 API"
+        }
+      },
+      "id": "b43625e8-5cff-4e0b-bbe3-f9456f2e6a02",
+      "name": "Get Snapshots",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "method": "GET",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 15000
+        },
+        "url": "=https://10.0.0.11:8006/api2/json/nodes/{{ $json.node }}/qemu/{{ $json.vmid }}/snapshot"
+      },
+      "position": [
+        860,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OnzL2wXr1dswd0Ye",
+          "name": "Proxmox pve-01 API"
+        }
+      },
+      "id": "f00c6c6d-4272-46e1-861e-6a323b5046a4",
+      "name": "Get VM List (pve-01)",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "method": "GET",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 15000
+        },
+        "url": "https://10.0.0.11:8006/api2/json/cluster/resources?type=vm"
+      },
+      "position": [
+        420,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "9e40dbec-c50e-446e-849b-f3c9b8877233",
+      "name": "Send to Matrix",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        1300,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "d6e340f0-76ed-482b-a8d0-dd57a913a865",
+      "name": "Split VMs",
+      "parameters": {
+        "jsCode": "const vms = $input.first().json.data || [];\nreturn vms.map(vm => ({ json: vm }));"
+      },
+      "position": [
+        640,
+        300
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  },
+  "tags": []
+}

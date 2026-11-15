@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Browse &amp; Search — Music Studio{% endblock %}
+{% block content %}
+<form class="search-bar" method="get" action="/ui">
+  <input type="hidden" name="user" value="{{ current_user }}">
+  {% if notes_query %}<input type="hidden" name="notes_q" value="{{ notes_query }}">{% endif %}
+  <input type="search" name="q" value="{{ query }}" placeholder="Search tracks, sessions, songs, cover wishlist…" autofocus>
+  <button type="submit">Search</button>
+</form>
+
+<form class="search-bar" method="get" action="/ui" style="margin-bottom:2rem">
+  <input type="hidden" name="user" value="{{ current_user }}">
+  {% if query %}<input type="hidden" name="q" value="{{ query }}">{% endif %}
+  <input type="search" name="notes_q" value="{{ notes_query }}" placeholder="Search what you wrote in track notes…">
+  <button type="submit">Search Notes</button>
+</form>
+
+{% if notes_query %}
+<h3 style="margin-bottom:0.6rem">Notes matching "{{ notes_query }}"</h3>
+{% if not notes_results %}
+<p style="opacity:0.7">No notes matching "{{ notes_query }}".</p>
+{% endif %}
+{% for n in notes_results %}
+<div class="card">
+  <h3><a href="/ui/track/{{ n.item_id }}?user={{ n.user_id }}">{{ n.title }}</a></h3>
+  <div class="meta">
+    <span class="user-tag">{{ n.user_id | capitalize }}</span>
+    · <span class="status-{{ n.status }}">{{ n.status | replace('_', ' ') | title }}</span>
+    {% if n.rating %} · {{ n.rating }}★{% endif %}
+  </div>
+  <div style="white-space:pre-wrap">{{ n.notes }}</div>
+</div>
+{% endfor %}
+<hr style="border:none; border-top:1px solid color-mix(in srgb, CanvasText 12%, transparent); margin:2rem 0">
+{% endif %}
+
+{% if query and not results %}
+<p style="opacity:0.7">No results for "{{ query }}".</p>
+{% endif %}
+
+{% if not query %}
+<p style="opacity:0.7; font-size:0.9rem">Showing all cataloged tracks. Search above to also pull in sessions, songs and your cover wishlist.</p>
+{% endif %}
+
+{% for r in results %}
+  {% if r.source == 'beets' %}
+  <div class="card">
+    <h3><a href="/ui/track/{{ r.item_id }}?user={{ current_user }}">{{ (r.artist ~ ' — ' ~ r.title) if r.artist else r.title }}</a></h3>
+    <div class="meta">
+      <span class="badge beets_track">track</span>
+      {% if r.album %}{{ r.album }}{% endif %}
+      {% if r.year %} · {{ r.year }}{% endif %}
+      {% if r.engagement %}
+        · <span class="status-{{ r.engagement.status }}">{{ r.engagement.status | replace('_', ' ') | title }}</span>
+        {% if r.engagement.rating %} · <span class="rating-stars">{{ '★' * r.engagement.rating }}{{ '☆' * (5 - r.engagement.rating) }}</span>{% endif %}
+      {% endif %}
+      · <a href="/ui/track/{{ r.item_id }}?user={{ current_user }}#listen">🎧 Listen</a>
+    </div>
+    {% if r.engagement and r.engagement.notes %}<div style="white-space:pre-wrap; font-size:0.9rem">{{ r.engagement.notes }}</div>{% endif %}
+  </div>
+  {% else %}
+  <div class="card">
+    <h3>{{ r.title }}</h3>
+    <div class="meta">
+      <span class="badge {{ r.entity_type }}">{{ r.entity_type }}</span>
+      {% if r.artist %}{{ r.artist }} · {% endif %}
+      {% if r.status %}<span class="status-{{ r.status }}">{{ r.status | replace('_', ' ') | title }}</span>{% endif %}
+      {% if r.created_at %} · {{ r.created_at[:10] }}{% endif %}
+    </div>
+  </div>
+  {% endif %}
+{% endfor %}
+{% endblock %}

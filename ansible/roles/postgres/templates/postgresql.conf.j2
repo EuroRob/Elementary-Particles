@@ -1,0 +1,58 @@
+# Managed by Ansible — do not edit by hand.
+
+# ── Data directory (required by Debian pg_ctlcluster) ─────────────────────────
+data_directory = '/var/lib/postgresql/{{ postgres_version }}/main'
+
+# ── Connection ────────────────────────────────────────────────────────────────
+listen_addresses = '{{ postgres_listen_address }}'
+port = {{ postgres_port }}
+max_connections = {{ postgres_max_connections }}
+
+# ── Memory ────────────────────────────────────────────────────────────────────
+shared_buffers = {{ postgres_shared_buffers }}
+work_mem = {{ postgres_work_mem }}
+maintenance_work_mem = {{ postgres_maintenance_work_mem }}
+effective_cache_size = {{ postgres_effective_cache_size }}
+
+# ── Disk ──────────────────────────────────────────────────────────────────────
+random_page_cost = 1.1
+effective_io_concurrency = 200
+
+# ── WAL / Replication ─────────────────────────────────────────────────────────
+wal_buffers = {{ postgres_wal_buffers }}
+wal_level = {{ postgres_wal_level }}
+max_wal_senders = {{ postgres_max_wal_senders }}
+wal_keep_size = {{ postgres_wal_keep_size }}
+archive_mode = {{ postgres_archive_mode }}
+{% if postgres_archive_mode == 'on' %}
+archive_command = '{{ postgres_archive_command }}'
+archive_timeout = {{ postgres_archive_timeout }}
+{% endif %}
+
+# ── Checkpoints / WAL volume ──────────────────────────────────────────────────
+# All reload-only (sighup). Longer checkpoints = fewer full-page images in WAL
+# (on pg-01 FPIs were most of the 462 GB of WAL written Jul-Oct 2026).
+checkpoint_timeout = {{ postgres_checkpoint_timeout }}
+max_wal_size = {{ postgres_max_wal_size }}
+min_wal_size = {{ postgres_min_wal_size }}
+wal_compression = {{ postgres_wal_compression }}
+
+# ── Background writer ─────────────────────────────────────────────────────────
+bgwriter_lru_maxpages = {{ postgres_bgwriter_lru_maxpages }}
+bgwriter_lru_multiplier = {{ postgres_bgwriter_lru_multiplier }}
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+log_destination = 'stderr'
+logging_collector = on
+log_directory = 'log'
+log_filename = 'postgresql-%Y-%m-%d.log'
+log_rotation_age = 1d
+log_rotation_size = 100MB
+log_min_duration_statement = {{ postgres_log_min_duration_statement }}
+log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+log_checkpoints = on
+log_connections = off
+log_disconnections = off
+log_lock_waits = on
+log_temp_files = {{ postgres_log_temp_files }}
+track_io_timing = {{ postgres_track_io_timing }}

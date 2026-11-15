@@ -1,0 +1,87 @@
+---
+name: postgres
+version: "15.0"
+tier: "storage"
+description: "PostgreSQL Database Server - primary datastore for multiple services"
+owner: "infra-team"
+runbook: "https://docs.internal/postgres-runbook"
+
+tags:
+  expose: "false"
+  ingress: "tcp"
+  auth: "none"
+  auth_provider: "none"
+  network: "vlan30"
+  dns: "false"
+  tier: "storage"
+  category: "Other"
+  icon: "database"
+  color: "#336791"
+  sla: "critical"
+  backup: "daily"
+  owner: "infra"
+  environment: "production"
+  data_classification: "internal"
+
+deployment:
+  platform: "docker"
+  deployment_target: "storage-vm"
+  namespace: "storage"
+  replicas: 1
+  resources:
+    cpu: "2"
+    memory: "4Gi"
+    storage: "50Gi"
+  image: "postgres:15-alpine"
+
+interfaces:
+  - name: "database"
+    protocol: "tcp"
+    port: 5432
+    internal_port: 5432
+
+dependencies: []
+
+provides:
+  - interface: "tcp:5432"
+    for_services: ["immich-server", "nextcloud", "authelia", "homepage"]
+    contract: "PostgreSQL 15"
+    documentation: "https://www.postgresql.org/docs/15/"
+
+secrets:
+  - name: "POSTGRES_PASSWORD"
+    vault_path: "secrets/postgres/root"
+
+monitoring:
+  health_check: "pg_isready -U postgres"
+  health_check_interval: "30s"
+  health_check_timeout: "5s"
+  unhealthy_threshold: 3
+  metrics_endpoint: "http://localhost:9187/metrics"
+  alert_rules:
+    - name: "postgres_connections_high"
+      condition: "pg_stat_activity_count > 80"
+      severity: "warning"
+    - name: "postgres_wal_lag"
+      condition: "pg_wal_lsn_diff > 1073741824"
+      severity: "critical"
+
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  retention: "30d"
+  target: "s3:http://nas-01.internal:9000/restic/postgres"
+
+networking:
+  vlan: "vlan40"
+  dns_enabled: false
+  dns_names:
+    - "postgres.internal"
+  internal_access_only: true
+
+metadata:
+  data_classification: "internal"
+  cost_center: "infrastructure"
+  business_impact: "critical"
+  backup_required: true
+  service_suite: "data-layer"

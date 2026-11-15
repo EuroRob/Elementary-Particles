@@ -1,0 +1,98 @@
+---
+# pg_vault registered in config.yml (same play, already fetched)
+
+# ── postgres superuser password ───────────────────────────────────────────────
+- name: Set postgres superuser password
+  community.postgresql.postgresql_user:
+    name: postgres
+    password: "{{ pg_vault.secret.postgres_password }}"
+    role_attr_flags: SUPERUSER
+  become_user: postgres
+  no_log: true
+
+# ── application user ──────────────────────────────────────────────────────────
+- name: Create application database user
+  community.postgresql.postgresql_user:
+    name: "{{ pg_vault.secret.app_user }}"
+    password: "{{ pg_vault.secret.app_password }}"
+    role_attr_flags: NOSUPERUSER,NOCREATEROLE,NOCREATEDB,LOGIN
+  become_user: postgres
+  no_log: true
+
+# ── replication user ─────────────────────────────────────────────────────────
+- name: Create replication user
+  community.postgresql.postgresql_user:
+    name: replicator
+    password: "{{ pg_vault.secret.replication_user_password }}"
+    role_attr_flags: REPLICATION,LOGIN
+  become_user: postgres
+  no_log: true
+
+# ── scout_app_user — deliberately NOT the shared app_user (n8n) ──────────────
+# scout-mcp is the one component reachable by both Concierge (privileged)
+# and Scout (internet-facing, untrusted-content-exposed) -- see
+# integration/postgres/scout_schema.sql's own header for why this needs its
+# own narrowly-scoped role instead of reusing "n8n", which has GRANTs across
+# every other personal-data schema in this database.
+- name: Fetch Scout's Postgres credentials from Vault
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "scout/postgres"
+    mount_point: "secret"
+  register: scout_pg_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+  tags: [databases, scout]
+
+- name: Create scout_app_user database user
+  community.postgresql.postgresql_user:
+    name: "{{ scout_pg_vault.secret.app_user }}"
+    password: "{{ scout_pg_vault.secret.app_password }}"
+    role_attr_flags: NOSUPERUSER,NOCREATEROLE,NOCREATEDB,LOGIN
+  become_user: postgres
+  no_log: true
+  tags: [databases, scout]
+
+# ── databases for Layer 4 services ───────────────────────────────────────────
+- name: Create application databases
+  community.postgresql.postgresql_db:
+    name: "{{ item.name }}"
+    owner: "{{ pg_vault.secret.app_user }}"
+    encoding: UTF8
+    lc_collate: en_US.UTF-8
+    lc_ctype: en_US.UTF-8
+    template: template0
+  become_user: postgres
+  loop: "{{ postgres_databases }}"
+  tags: [databases]
+
+# ── authelia: CREATE on its own public schema ────────────────────────────────
+# FOUND 2026-10-16: Authelia 4.39 brings schema migrations 16-29 and creates tables.
+# PostgreSQL 15 no longer gives every role CREATE on `public`, and the `authelia`
+# login (made by hand, owner of the 21 tables 4.38 created) had none: 4.39 failed at
+# migration 18, rolled itself back and restart-looped. Tested on a copy first.
+- name: "Authelia: allow its login to create tables in its own database"
+  community.postgresql.postgresql_query:
+    db: authelia
+    query: |
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authelia') THEN
+          GRANT CREATE ON SCHEMA public TO authelia;
+        END IF;
+      END $$;
+  become_user: postgres
+  tags: [databases, authelia]
+
+# ── grant privileges ─────────────────────────────────────────────────────────
+- name: Grant all privileges on application databases
+  community.postgresql.postgresql_privs:
+    database: "{{ item.name }}"
+    role: "{{ pg_vault.secret.app_user }}"
+    type: database
+    privs: ALL
+  become_user: postgres
+  loop: "{{ postgres_databases }}"
+  tags: [databases]

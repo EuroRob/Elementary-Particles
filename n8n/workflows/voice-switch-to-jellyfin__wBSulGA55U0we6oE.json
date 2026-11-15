@@ -1,0 +1,86 @@
+{
+  "active": true,
+  "connections": {
+    "Switch to jellyfin": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Respond to Webhook",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Voice: turn on jellyfin": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Switch to jellyfin",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "wBSulGA55U0we6oE",
+  "name": "Voice -> Switch to Jellyfin",
+  "nodes": [
+    {
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": $json.stdout.includes('RESULT ok'), \"target\": \"jellyfin\", \"detail\": $json.stdout } }}"
+      },
+      "position": [
+        880,
+        300
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "e3F8Ii1xlTw1L0ty",
+          "name": "media-switch-ssh (jellyfin-01)"
+        }
+      },
+      "id": "ssh",
+      "name": "Switch to jellyfin",
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "jellyfin",
+        "resource": "command"
+      },
+      "position": [
+        640,
+        300
+      ],
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1
+    },
+    {
+      "id": "webhook",
+      "name": "Voice: turn on jellyfin",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "media-switch-jellyfin",
+        "responseMode": "responseNode"
+      },
+      "position": [
+        400,
+        300
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "2c87b2af-b85f-4e25-929e-4b7fedf955f8"
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

@@ -1,0 +1,37 @@
+{# =============================================================================
+   Traefik file-provider: ACME wildcard cert provisioner
+   Src : IaC/Ansible/Roles/traefik/templates/acme-wildcard.yml.j2
+   Dest: /etc/traefik/dynamic/acme-wildcard.yml
+   Written only when traefik_acme_enabled=true.
+
+   Purpose: Forces Traefik to immediately provision a *.{{ traefik_acme_domain }}
+   wildcard certificate via the 'letsencrypt' certificatesResolver (IONOS DNS-01
+   challenge). Once acme.json holds the cert, ALL other routers that declare
+   certResolver: letsencrypt reuse it — no re-challenge per subdomain.
+
+   The router points to api@internal (Traefik's own dashboard service). The
+   domain traefik.{{ traefik_acme_domain }} MUST be in DNS pointing to web-01.
+   ============================================================================= #}
+---
+# Auto-generated — do not hand-edit.  Source: acme-wildcard.yml.j2
+# Domain : {{ traefik_acme_domain }} (wildcard)
+# Email  : {{ traefik_acme_email }}
+# Updated: {{ ansible_date_time.iso8601 | default(now(utc=True, fmt='%Y-%m-%dT%H:%M:%SZ')) }}
+
+http:
+  routers:
+    # ---- Traefik dashboard on public domain (also anchors the wildcard cert) ---
+    traefik-public:
+      rule: "Host(`traefik.{{ traefik_acme_domain }}`)"
+      entryPoints:
+        - websecure
+      service: api@internal
+      middlewares:
+        - authelia@file
+        - secure-headers@file
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "{{ traefik_acme_domain }}"
+            sans:
+              - "*.{{ traefik_acme_domain }}"

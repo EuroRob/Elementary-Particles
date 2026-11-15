@@ -1,0 +1,29 @@
+{# Desired Syncthing state for files/syncthing_apply.py (Roles/syncthing). #}
+{
+  "options": {
+    "globalAnnounceEnabled": false, "localAnnounceEnabled": false, "relaysEnabled": false,
+    "natEnabled": false, "urAccepted": -1, "crashReportingEnabled": false,
+    "autoUpgradeIntervalH": 0, "startBrowser": false,
+    "listenAddresses": {{ syncthing_listen | to_json }}
+  },
+  "gui": {"address": "127.0.0.1:8384"},
+  "devices": [
+{% for d in syncthing_devices %}
+    {"deviceID": {{ d.id | to_json }}, "name": {{ d.name | to_json }}}{{ "," if not loop.last }}
+{% endfor %}
+  ],
+  "folders": [
+{% for f in syncthing_folders %}
+    {
+      "id": {{ f.id | to_json }}, "label": {{ f.label | to_json }}, "path": {{ f.path | to_json }},
+      "type": {{ f.type | default('receiveonly') | to_json }},
+      "ignoreDelete": {{ f.ignore_delete | default(false) | to_json }},
+      "ignorePerms": true, "fsWatcherEnabled": true, "rescanIntervalS": 3600,
+{% if f.versioning_days | default(0) | int > 0 %}
+      "versioning": {"type": "staggered", "params": {"maxAge": "{{ (f.versioning_days | int) * 86400 }}"}},
+{% endif %}
+      "devices": {{ syncthing_devices | selectattr('name', 'in', f.devices | default([])) | map(attribute='id') | list | to_json }}
+    }{{ "," if not loop.last }}
+{% endfor %}
+  ]
+}

@@ -1,0 +1,59 @@
+{# Prometheus rules for the IoT (VLAN20) watcher, fed by scripts/iot_watch_exporter.py
+   on the IaC VM (added 2026-11-03). raw block: these use Prometheus's own
+   {{ $labels }} templating, which Jinja must not touch. #}
+{% raw %}
+groups:
+  - name: iot_watch
+    rules:
+      # The exporter only shows a peer here for 24 h after it first appears,
+      # and only after that device's 7-day learning week -- so this fires once
+      # per new contact and resolves by itself.
+      - alert: IotNewPeer
+        expr: iot_watch_new_peer_first_seen_timestamp_seconds > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "IoT: {{ $labels.device }} contacted something new: {{ $labels.peer }}"
+          description: "{{ $labels.device }} ({{ $labels.ip }}) reached {{ $labels.peer }} ({{ $labels.kind }}) for the first time since its learning week. Usual after a firmware update; worth a look if not. Details: on the IaC VM `sqlite3 ~/.local/share/iot-watch/iot_watch.db \"select * from peers where device='{{ $labels.ip }}' order by first_seen desc limit 10\"`."
+
+      # Would have caught feefcam (dead from ~2026-10-02, noticed weeks later).
+      - alert: IotDeviceSilent
+        expr: (time() - iot_watch_device_last_seen_timestamp_seconds) > 86400
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "IoT: {{ $labels.device }} has been silent for over 24 h"
+          description: "No traffic and no DNS from {{ $labels.device }} ({{ $labels.ip }}) since {{ $value | humanizeDuration }} ago. Dead, unplugged or off the network? It drops off this alert after 14 days of silence."
+
+      - alert: IotUnknownDevice
+        expr: iot_watch_unknown_device == 1
+        labels:
+          severity: warning
+        annotations:
+          summary: "IoT: unknown device {{ $labels.ip }} on VLAN20"
+          description: "{{ $labels.ip }} (MAC {{ $labels.mac }}) has no Kea reservation and showed up after the learning week. Add a reservation if it's yours (OPNsense -> Services -> Kea DHCPv4 -> Reservations); find it otherwise."
+
+      # Upload to the internet only (LAN traffic like camera -> Frigate doesn't
+      # count). Needs 3+ days of history for a baseline and 50 MB today, so a
+      # plug going from 2 kB to 30 kB doesn't page anyone.
+      - alert: IotVolumeSpike
+        expr: |
+          iot_watch_external_bytes_today > 10 * iot_watch_external_bytes_baseline
+          and iot_watch_external_bytes_today > 50e6
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "IoT: {{ $labels.device }} uploaded {{ $value | humanize1024 }}B to the internet today"
+          description: "More than 10x its usual daily upload. Check where it went: `sqlite3 ~/.local/share/iot-watch/iot_watch.db \"select peer, port, octets from flows where device='{{ $labels.ip }}' and day=date('now') order by octets desc limit 10\"` on the IaC VM."
+
+      - alert: IotWatchExporterDown
+        expr: up{job="iot_watch_exporter"} == 0 or (time() - iot_watch_last_success_timestamp_seconds) > 900
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "IoT watch exporter (IaC VM) is down or can't poll fw-01"
+          description: "No successful poll for 15+ min -- IoT alerts are blind. On the IaC VM: `systemctl --user status iot-watch-exporter`. Also check fw-01 still has NetFlow on IoT and Unbound query logging on (opnsense role --tags iot_watch)."
+{% endraw %}

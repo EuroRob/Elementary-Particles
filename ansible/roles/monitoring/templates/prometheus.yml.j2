@@ -1,0 +1,130 @@
+global:
+  scrape_interval: "{{ prometheus_scrape_interval }}"
+  evaluation_interval: "{{ prometheus_scrape_interval }}"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:{{ alertmanager_port }}"]
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:{{ prometheus_port }}"]
+
+  # Alertmanager's own metrics -- feeds AlertmanagerNotificationsFailing.
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:{{ alertmanager_port }}"]
+
+  - job_name: node_exporter
+    static_configs:
+      - targets:
+{% for host in groups['all'] %}
+{% if hostvars[host].get('ansible_host') is defined and hostvars[host].get('node_exporter_enabled', true) %}
+          - "{{ hostvars[host].ansible_host }}:9100"
+{% endif %}
+{% endfor %}
+
+  - job_name: traefik
+    static_configs:
+      - targets: ["traefik:8080"]
+    metrics_path: "/metrics"
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  # Frigate exposes its own native Prometheus exporter at /api/metrics
+  # (confirmed live 2026-09-07 — no separate exporter container needed).
+  # Host port 5001, not 5000 — see frigate/docker-compose.yml's port remap
+  # comment (5000 is already held by whisper on gpu-01).
+  - job_name: frigate
+    metrics_path: /api/metrics
+    static_configs:
+      - targets: ["{{ hostvars['gpu-01'].ansible_host }}:5001"]
+
+  # nvidia_gpu_exporter — added 2026-09-23. GPU load/VRAM/temp were invisible
+  # to monitoring entirely before this (see Roles/gpu/tasks/
+  # nvidia_gpu_exporter.yml — deliberately not cAdvisor-adjacent, reads
+  # nvidia-smi only). gpu-01 is always-on; gpu-02 is WoL/burst and will show
+  # as `up == 0` whenever it's asleep — that's expected, not an alert.
+  - job_name: nvidia_gpu_exporter
+    static_configs:
+      - targets:
+{% for host in ['gpu-01', 'gpu-02'] %}
+{% if hostvars[host].get('ansible_host') is defined %}
+          - "{{ hostvars[host].ansible_host }}:{{ hostvars[host].get('nvidia_gpu_exporter_port', 9835) }}"
+{% endif %}
+{% endfor %}
+
+  # pulse_bridge_exporter — added 2026-09-23. Bridges Pulse's live Proxmox
+  # VM/LXC/storage state into Prometheus (Pulse's own /metrics is only its
+  # OWN operational health, not the infra data it collects — see
+  # docs/PULSE_MONITORING.md). Runs on web-01, shares the "monitoring"
+  # Docker network with this Prometheus container — reached by container
+  # name, NOT 127.0.0.1 (that's Prometheus's own container loopback, not
+  # the host's — confirmed live 2026-09-23: "connection refused" until
+  # switched from the host-bound 127.0.0.1:9751 to this).
+  - job_name: pulse_bridge_exporter
+    static_configs:
+      - targets: ["pulse-bridge-exporter:9751"]
+
+  # fw-01 Suricata via scripts/suricata_alert_exporter.py on the IaC VM
+  # (2026-10-22). Host IP, not a container name -- it's not on this Docker
+  # network; reachable only through fw rule seq 2056 (web-01 -> :9752).
+  - job_name: suricata_alert_exporter
+    scrape_interval: 60s
+    static_configs:
+      - targets: ["10.0.0.15:9752"]
+
+  # VLAN20 IoT contacts via scripts/iot_watch_exporter.py on the IaC VM
+  # (2026-11-03). Same path as above: fw rule seq 2057 (web-01 -> :9753).
+  - job_name: iot_watch_exporter
+    scrape_interval: 60s
+    static_configs:
+      - targets: ["10.0.0.15:9753"]
+
+  # pve-exporter runs on the IaC VM on port 9100 (VLAN30→MGMT only has port 9100 allowed).
+  # web-01 cannot reach Proxmox API directly — the exporter relays scrapes for us.
+  #
+  # FIXED 2026-09-08: all three targets previously shared one hardcoded
+  # `module: [default]` param -- fine for pve-01, whose token lives
+  # under pve.yml's "default" section, but WRONG for pve-02/pve-03. These are
+  # standalone (non-clustered) Proxmox nodes, each with its OWN separately
+  # Vault-provisioned API token (secret/proxmox/api/pve-02, pve-03) -- their
+  # token_secret values are genuinely different from pve-01's (confirmed via
+  # a boolean Vault comparison, values never printed), so scraping them with
+  # `module: default` always 401'd, silently. Only pve-01 ever showed up in
+  # pve_node_info/pve_storage_info as a result -- not because pve-02/pve-03
+  # were asleep (though they usually are), but because auth was wrong even
+  # on the rare occasion they were awake. Per-target `pve_module` label +
+  # relabel_configs now selects the matching pve.yml section (default /
+  # pve-02 / pve-03) per node. See docs/incidents/ for the write-up.
+  - job_name: pve
+    metrics_path: /pve
+    params:
+      cluster: ['1']
+      node: ['1']
+    static_configs:
+      - targets: ["10.0.0.11:8006"]
+        labels:
+          pve_module: default
+      - targets: ["10.0.0.12:8006"]
+        labels:
+          pve_module: pve-02
+      - targets: ["10.0.0.13:8006"]
+        labels:
+          pve_module: pve-03
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [pve_module]
+        target_label: __param_module
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: "{{ iac_vm_ip | default('10.0.0.15') }}:9100"

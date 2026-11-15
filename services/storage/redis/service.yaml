@@ -1,0 +1,87 @@
+---
+name: redis
+version: "7.2.0"
+tier: "storage"
+description: "Redis Cache & Session Store - high-performance in-memory cache"
+owner: "infra-team"
+runbook: "https://docs.internal/redis-runbook"
+
+tags:
+  expose: "false"
+  ingress: "tcp"
+  auth: "none"
+  auth_provider: "none"
+  network: "vlan30"
+  dns: "false"
+  tier: "storage"
+  category: "Other"
+  icon: "memory"
+  color: "#DC382D"
+  sla: "high"
+  backup: "daily"
+  owner: "infra"
+  environment: "production"
+  data_classification: "internal"
+
+deployment:
+  platform: "docker"
+  deployment_target: "storage-vm"
+  namespace: "storage"
+  replicas: 1
+  resources:
+    cpu: "1"
+    memory: "2Gi"
+    storage: "10Gi"
+  image: "redis:7-alpine"
+
+interfaces:
+  - name: "cache"
+    protocol: "tcp"
+    port: 6379
+    internal_port: 6379
+
+dependencies: []
+
+provides:
+  - interface: "tcp:6379"
+    for_services: ["immich-server", "nextcloud", "homepage"]
+    contract: "Redis 7"
+    documentation: "https://redis.io/docs/"
+
+secrets:
+  - name: "REDIS_PASSWORD"
+    vault_path: "secrets/redis/password"
+
+monitoring:
+  health_check: "redis-cli ping"
+  health_check_interval: "30s"
+  health_check_timeout: "5s"
+  unhealthy_threshold: 3
+  metrics_endpoint: "http://localhost:9121/metrics"
+  alert_rules:
+    - name: "redis_memory_usage_high"
+      condition: "redis_memory_used_bytes > 1952305152"
+      severity: "warning"
+    - name: "redis_evictions"
+      condition: "redis_evicted_keys_total > 0"
+      severity: "warning"
+
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  retention: "7d"
+  target: "s3:http://nas-01.internal:9000/restic/redis"
+
+networking:
+  vlan: "vlan40"
+  dns_enabled: false
+  dns_names:
+    - "redis.internal"
+  internal_access_only: true
+
+metadata:
+  data_classification: "internal"
+  cost_center: "infrastructure"
+  business_impact: "high"
+  backup_required: true
+  service_suite: "data-layer"

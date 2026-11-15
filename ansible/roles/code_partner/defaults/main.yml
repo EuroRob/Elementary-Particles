@@ -1,0 +1,26 @@
+---
+code_partner_port: 8210
+code_partner_user: code-partner
+code_partner_app_dir: /opt/code-partner          # root-owned: the service can't change its own code
+code_partner_home: /srv/code-partner             # the repo clone lives here
+code_partner_state_dir: /var/lib/code-partner    # sessions + per-session git worktrees
+code_partner_log_dir: /var/log/code-partner      # audit.jsonl
+code_partner_conf_dir: /etc/code-partner
+code_partner_src: "{{ playbook_dir }}/../../../integration"
+code_partner_repo_url: "http://10.0.30.31:3000/owner/GitOps.git"   # by IP: the unit allows no DNS
+code_partner_forgejo_url: "http://10.0.30.31:3000"
+code_partner_allowed_ips: ["10.0.30.50", "10.0.30.51", "10.0.30.31", "10.0.30.20"]
+# Voice (browser mic): Whisper on gpu-02, Piper here with DOMO's voice from nas-02.
+code_partner_whisper_url: "http://10.0.30.51:5000"
+code_partner_voice: "en_GB-alan-medium"
+code_partner_voice_sha256: "0a309668932205e762801f1efc2736cd4b0120329622adf62be09e56339d3330"   # = domo-gateway's
+code_partner_voice_source: "/DATAGRID/archive/voice-models/piper"                                   # on nas-02
+code_partner_ui_users: {"owner": "owner"}            # Authelia Remote-User -> person
+code_partner_memory_max: "1G"
+code_partner_pip:
+  - "fastapi==0.115.6"
+  - "uvicorn==0.34.0"
+  - "httpx==0.28.1"
+  - "pyyaml==6.0.2"
+  - "python-multipart==0.0.20"   # the mic upload
+  - "piper-tts==1.8.0"           # TTS in-process (onnxruntime); checked on Python 3.11 2026-11-05

@@ -1,0 +1,179 @@
+---
+# =============================================================================
+# restic — systemd.yml
+# Creates systemd service + timer for every backup job, plus:
+#   - restic-forget.timer    (daily after last backup)
+#   - restic-copy-offsite.timer (weekly sunday)
+#   - restic-check.timer     (weekly sunday + 1h offset)
+# =============================================================================
+
+# ---- Per-job service + timer ------------------------------------------------
+- name: "[restic] Deploy per-job systemd service units"
+  ansible.builtin.template:
+    src: restic-backup.service.j2
+    dest: "/etc/systemd/system/restic-backup-{{ item.name }}.service"
+    mode: "0644"
+  loop: "{{ restic_jobs }}"
+  loop_control:
+    label: "restic-backup-{{ item.name }}.service"
+  notify: reload systemd
+
+- name: "[restic] Deploy per-job systemd timer units"
+  ansible.builtin.template:
+    src: restic-backup.timer.j2
+    dest: "/etc/systemd/system/restic-backup-{{ item.name }}.timer"
+    mode: "0644"
+  loop: "{{ restic_jobs }}"
+  loop_control:
+    label: "restic-backup-{{ item.name }}.timer"
+  notify: reload systemd
+
+# ---- Forget/prune -----------------------------------------------------------
+- name: "[restic] Deploy restic-forget systemd service"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/restic-forget.service
+    content: |
+      [Unit]
+      Description=Restic forget/prune — {{ inventory_hostname }}
+      After=network.target
+
+      [Service]
+      Type=oneshot
+      ExecStart={{ restic_scripts_dir }}/forget.sh
+      StandardOutput=journal
+      StandardError=journal
+      OnFailure=restic-alert@forget.service
+    mode: "0644"
+  notify: reload systemd
+
+- name: "[restic] Deploy restic-forget systemd timer"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/restic-forget.timer
+    content: |
+      [Unit]
+      Description=Restic forget/prune timer — daily at 04:00 UTC
+
+      [Timer]
+      OnCalendar=*-*-* 04:00:00
+      RandomizedDelaySec=300
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+    mode: "0644"
+  notify: reload systemd
+
+# ---- Offsite copy -----------------------------------------------------------
+- name: "[restic] Deploy restic-copy-offsite systemd service"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/restic-copy-offsite.service
+    content: |
+      [Unit]
+      Description=Restic copy to offsite repo — {{ inventory_hostname }}
+      After=network.target
+
+      [Service]
+      Type=oneshot
+      ExecStart={{ restic_scripts_dir }}/copy-offsite.sh
+      StandardOutput=journal
+      StandardError=journal
+      OnFailure=restic-alert@copy-offsite.service
+    mode: "0644"
+  when: restic_offsite_enabled | bool
+  notify: reload systemd
+
+- name: "[restic] Deploy restic-copy-offsite systemd timer"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/restic-copy-offsite.timer
+    content: |
+      [Unit]
+      Description=Restic offsite copy timer — weekly Sunday 05:00 UTC
+
+      [Timer]
+      OnCalendar=Sun *-*-* 05:00:00
+      RandomizedDelaySec=600
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+    mode: "0644"
+  when: restic_offsite_enabled | bool
+  notify: reload systemd
+
+# ---- Integrity check --------------------------------------------------------
+- name: "[restic] Deploy restic-check systemd service"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/restic-check.service
+    content: |
+      [Unit]
+      Description=Restic integrity check — {{ inventory_hostname }}
+      After=network.target
+
+      [Service]
+      Type=oneshot
+      ExecStart={{ restic_scripts_dir }}/check.sh
+      StandardOutput=journal
+      StandardError=journal
+      OnFailure=restic-alert@check.service
+    mode: "0644"
+  notify: reload systemd
+
+- name: "[restic] Deploy restic-check systemd timer"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/restic-check.timer
+    content: |
+      [Unit]
+      Description=Restic integrity check timer — weekly Sunday 06:00 UTC
+
+      [Timer]
+      OnCalendar=Sun *-*-* 06:00:00
+      RandomizedDelaySec=600
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+    mode: "0644"
+  notify: reload systemd
+
+# ---- Alert helper service (OnFailure= target) --------------------------------
+- name: "[restic] Deploy restic-alert@ template service"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/restic-alert@.service
+    content: |
+      [Unit]
+      Description=Restic backup alert for %i
+
+      [Service]
+      Type=oneshot
+      ExecStart={{ restic_scripts_dir }}/alert.sh "%i" "systemd OnFailure triggered for restic-%i on {{ inventory_hostname }}"
+    mode: "0644"
+  notify: reload systemd
+
+# ---- Enable all timers -------------------------------------------------------
+- name: "[restic] Enable and start per-job timers"
+  ansible.builtin.systemd:
+    name: "restic-backup-{{ item.name }}.timer"
+    enabled: true
+    state: started
+    daemon_reload: false
+  loop: "{{ restic_jobs }}"
+  loop_control:
+    label: "restic-backup-{{ item.name }}.timer"
+
+- name: "[restic] Enable and start maintenance timers"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: false
+  loop:
+    - restic-forget.timer
+    - restic-check.timer
+
+- name: "[restic] Enable and start offsite copy timer"
+  ansible.builtin.systemd:
+    name: restic-copy-offsite.timer
+    enabled: true
+    state: started
+    daemon_reload: false
+  when: restic_offsite_enabled | bool

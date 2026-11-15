@@ -1,0 +1,170 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/wol_setup.yml
+#
+# Enables Wake-on-LAN on the management NIC.
+# Designed for pve-02 and pve-03 — WoL burst hosts that are normally off.
+#
+# The systemd unit re-applies 'ethtool -s <nic> wol g' on every boot because
+# BIOS may reset WoL settings when powered off.
+#
+# Usage from controller (send magic packet):
+#   wakeonlan <MAC-address>
+#   OR: python3 -c "import wakeonlan; wakeonlan.send_magic_packet('<mac>')"
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# 1. Install ethtool
+# ---------------------------------------------------------------------------
+- name: "WOL: Install ethtool"
+  ansible.builtin.apt:
+    name: ethtool
+    state: present
+  tags: [wol]
+
+# ---------------------------------------------------------------------------
+# 2. Detect NIC MAC address (stored for use in orchestration)
+# ---------------------------------------------------------------------------
+- name: "WOL: Get MAC address of management NIC"
+  ansible.builtin.command:
+    cmd: "cat /sys/class/net/{{ pve_wol_nic }}/address"
+  register: wol_mac_raw
+  changed_when: false
+  tags: [wol]
+
+- name: "WOL: Set MAC address fact"
+  ansible.builtin.set_fact:
+    pve_detected_mac: "{{ pve_wol_mac if pve_wol_mac != '' else wol_mac_raw.stdout | trim }}"
+  tags: [wol]
+
+- name: "WOL: Display MAC address"
+  ansible.builtin.debug:
+    msg: "WoL MAC for {{ pve_hostname }} ({{ pve_wol_nic }}): {{ pve_detected_mac }}"
+  tags: [wol]
+
+# ---------------------------------------------------------------------------
+# 3. Enable WoL on the NIC now
+# ---------------------------------------------------------------------------
+- name: "WOL: Enable WoL immediately via ethtool"
+  ansible.builtin.command:
+    cmd: "ethtool -s {{ pve_wol_nic }} wol {{ pve_wol_modes }}"
+  changed_when: true
+  tags: [wol]
+
+# ---------------------------------------------------------------------------
+# 4. Persist WoL via systemd service (runs on every boot)
+# ---------------------------------------------------------------------------
+- name: "WOL: Deploy systemd service to persist WoL setting"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/wol-enable.service
+    content: |
+      [Unit]
+      Description=Enable Wake-on-LAN on {{ pve_wol_nic }}
+      After=network.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/sbin/ethtool -s {{ pve_wol_nic }} wol {{ pve_wol_modes }}
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root
+    group: root
+    mode: "0644"
+  when: pve_wol_systemd_persist | bool
+  notify: reload_systemd
+  tags: [wol, systemd]
+
+- name: "WOL: Enable WoL systemd service"
+  ansible.builtin.systemd:
+    name: wol-enable.service
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: pve_wol_systemd_persist | bool
+  tags: [wol, systemd]
+
+# ---------------------------------------------------------------------------
+# 5. Store MAC address in Vault for the WoL orchestration to use
+# ---------------------------------------------------------------------------
+- name: "WOL: Store MAC address in Vault"
+  community.hashi_vault.vault_kv2_write:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "homelab/proxmox/{{ pve_hostname }}"
+    data:
+      wol_mac:  "{{ pve_detected_mac }}"
+      wol_nic:  "{{ pve_wol_nic }}"
+      mgmt_ip:  "{{ pve_mgmt_ip | regex_replace('/.*', '') }}"
+      hostname: "{{ pve_hostname }}"
+  tags: [wol, vault]
+
+# ---------------------------------------------------------------------------
+# 6. Configure auto-shutdown after burst workload completes
+# pve-02/03 should cleanly shut down VMs and then power off automatically
+# when idle. A separate cron job / systemd timer triggers the shutdown.
+# ---------------------------------------------------------------------------
+- name: "WOL: Deploy burst-mode auto-shutdown script"
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/pve-burst-shutdown.sh
+    content: |
+      #!/bin/bash
+      # pve-burst-shutdown.sh — gracefully stops all running VMs then powers off.
+      # Called by orchestration (n8n) when burst workload is complete.
+      # Safe to run manually: /usr/local/sbin/pve-burst-shutdown.sh
+      set -euo pipefail
+
+      LOG="/var/log/pve-burst-shutdown.log"
+      echo "[$(date -Iseconds)] Burst shutdown initiated" | tee -a "$LOG"
+
+      # Get list of running VMs
+      RUNNING=$(qm list | awk '/running/ {print $1}')
+
+      if [ -z "$RUNNING" ]; then
+        echo "[$(date -Iseconds)] No running VMs — proceeding to host shutdown" | tee -a "$LOG"
+      else
+        echo "[$(date -Iseconds)] Gracefully stopping VMs: $RUNNING" | tee -a "$LOG"
+        for VMID in $RUNNING; do
+          echo "[$(date -Iseconds)] Stopping VM $VMID" | tee -a "$LOG"
+          qm shutdown "$VMID" --timeout 120 || qm stop "$VMID"
+        done
+        # Wait for all VMs to stop
+        sleep 10
+        STILL_RUNNING=$(qm list | awk '/running/ {print $1}')
+        if [ -n "$STILL_RUNNING" ]; then
+          echo "[$(date -Iseconds)] Force-stopping remaining VMs: $STILL_RUNNING" | tee -a "$LOG"
+          for VMID in $STILL_RUNNING; do
+            qm stop "$VMID"
+          done
+        fi
+      fi
+
+      echo "[$(date -Iseconds)] All VMs stopped — shutting down host" | tee -a "$LOG"
+      /sbin/poweroff
+    owner: root
+    group: root
+    mode: "0750"
+  tags: [wol, burst, shutdown]
+
+# ---------------------------------------------------------------------------
+# 7. Verify WoL is active
+# ---------------------------------------------------------------------------
+- name: "WOL: Verify WoL is enabled"
+  ansible.builtin.command:
+    cmd: "ethtool {{ pve_wol_nic }}"
+  register: wol_verify
+  changed_when: false
+  tags: [wol, verify]
+
+- name: "WOL: Assert WoL magic packet support is active"
+  ansible.builtin.assert:
+    that: "'Wake-on: g' in wol_verify.stdout"
+    success_msg: "WoL is enabled (magic packet) on {{ pve_wol_nic }}."
+    fail_msg: >-
+      WoL 'g' not confirmed on {{ pve_wol_nic }}.
+      Output: {{ wol_verify.stdout }}
+      Check BIOS 'Wake on LAN' setting and whether the NIC supports magic packets.
+  tags: [wol, verify]

@@ -1,0 +1,212 @@
+---
+# =============================================================================
+# Role: authelia — tasks/main.yml
+# =============================================================================
+
+# ── Directory structure ───────────────────────────────────────────────────────
+- name: "[authelia] Create directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ authelia_config_dir }}"
+    - "{{ authelia_secrets_dir }}"
+    - "{{ authelia_data_dir }}"
+
+# ── Fetch secrets from Vault ──────────────────────────────────────────────────
+- name: "[authelia] Fetch core secrets from Vault"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "{{ vault_authelia_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: _authelia_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[authelia] Fetch OIDC issuer key + client secrets from Vault"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "{{ vault_authelia_oidc_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: _authelia_oidc_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[authelia] Fetch initial admin user from Vault"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "{{ vault_authelia_users_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: _authelia_users_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[authelia] Fetch SMTP secrets from Vault (optional)"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "{{ vault_authelia_smtp_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: _authelia_smtp_vault
+  delegate_to: localhost
+  become: false
+  failed_when: false
+  when: authelia_smtp_enabled | bool
+  no_log: true
+
+# ── Write secret files (mounted read-only into container) ────────────────────
+- name: "[authelia] Write secret files"
+  ansible.builtin.copy:
+    dest: "{{ authelia_secrets_dir }}/{{ item.name }}"
+    content: "{{ item.value }}"
+    owner: root
+    group: root
+    mode: "0400"
+  no_log: true
+  loop:
+    - name: jwt_secret
+      value: "{{ _authelia_vault.secret.jwt_secret }}"
+    - name: session_secret
+      value: "{{ _authelia_vault.secret.session_secret }}"
+    - name: storage_encryption_key
+      value: "{{ _authelia_vault.secret.storage_encryption_key }}"
+    - name: pg_password
+      value: "{{ _authelia_vault.secret.pg_password }}"
+    - name: oidc_private_key
+      value: "{{ _authelia_oidc_vault.secret.private_key }}"
+
+- name: "[authelia] Write SMTP secret file"
+  ansible.builtin.copy:
+    dest: "{{ authelia_secrets_dir }}/smtp_password"
+    content: "{{ _authelia_smtp_vault.secret.password }}"
+    mode: "0400"
+  no_log: true
+  when:
+    - authelia_smtp_enabled | bool
+    - _authelia_smtp_vault is not failed
+
+# ── Hash and write OIDC client secret files (one bcrypt hash per client) ─────
+# Authelia 4.38+ requires client secrets as bcrypt/argon2 digests, not plaintext.
+- name: "[authelia] Generate bcrypt hash for OIDC client secret"
+  ansible.builtin.shell:
+    cmd: |
+      python3 -c "
+      import bcrypt, sys
+      pw = sys.stdin.read().strip().encode()
+      print(bcrypt.hashpw(pw, bcrypt.gensalt(12)).decode())
+      "
+    stdin: "{{ _authelia_oidc_vault.secret[item.id + '_secret'] }}"
+  register: _oidc_secret_hashes
+  no_log: true
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  loop: "{{ authelia_oidc_clients }}"
+  loop_control:
+    label: "{{ item.id }}"
+  when: "_authelia_oidc_vault.secret[item.id + '_secret'] is defined"
+
+- name: "[authelia] Build OIDC client hash fact dict (used in configuration.yml template)"
+  ansible.builtin.set_fact:
+    _oidc_client_hashes: >-
+      {{ dict(
+           _oidc_secret_hashes.results
+           | selectattr('skipped', 'undefined')
+           | map(attribute='item.id')
+           | list
+           | zip(
+               _oidc_secret_hashes.results
+               | selectattr('skipped', 'undefined')
+               | map(attribute='stdout')
+               | list
+             )
+           | list
+         ) }}
+  no_log: true
+
+# ── Write configuration.yml ───────────────────────────────────────────────────
+- name: "[authelia] Write configuration.yml"
+  ansible.builtin.template:
+    src: configuration.yml.j2
+    dest: "{{ authelia_config_dir }}/configuration.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: restart authelia
+
+# ── Write users_database.yml (file backend only) ─────────────────────────────
+- name: "[authelia] Write users_database.yml"
+  ansible.builtin.template:
+    src: users_database.yml.j2
+    dest: "{{ authelia_config_dir }}/users_database.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  when: authelia_auth_backend == 'file'
+  notify: restart authelia
+
+# ── Docker compose ────────────────────────────────────────────────────────────
+- name: "[authelia] Write docker-compose.yml"
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ authelia_data_dir }}/docker-compose.yml"
+    mode: "0644"
+  notify: restart authelia
+
+- name: "[authelia] Pull images"
+  community.docker.docker_image:
+    name: "{{ item }}"
+    source: pull
+  loop:
+    - "{{ authelia_image }}"
+    - "{{ authelia_redis_image }}"
+
+- name: "[authelia] Ensure traefik Docker network exists (Traefik creates it, but may not be deployed yet)"
+  community.docker.docker_network:
+    name: traefik
+    driver: bridge
+    ipam_config:
+      - subnet: 172.20.0.0/24
+    state: present
+
+- name: "[authelia] Start Authelia + Redis"
+  community.docker.docker_compose_v2:
+    project_src: "{{ authelia_data_dir }}"
+    state: present
+    pull: policy
+
+- name: "[authelia] Wait for Authelia health endpoint"
+  ansible.builtin.uri:
+    url: "http://localhost:{{ authelia_port }}/api/health"
+    status_code: 200
+  retries: 12
+  delay: 5
+  register: _authelia_health
+  until: _authelia_health.status == 200
+
+# ── Traefik registration ──────────────────────────────────────────────────────
+- name: "[authelia] Register auth.{{ base_domain }} in Traefik"
+  ansible.builtin.include_role:
+    name: traefik_register
+  vars:
+    traefik_service_name: authelia
+    traefik_backend_url:  "http://authelia:{{ authelia_port }}"
+    traefik_domain:       "{{ authelia_fqdn }}"
+    traefik_auth:         none     # Authelia can't protect itself
+
+- name: "[authelia] Show SSO endpoint"
+  ansible.builtin.debug:
+    msg: "Authelia SSO: https://{{ authelia_fqdn }}  (port {{ authelia_port }} internally)"

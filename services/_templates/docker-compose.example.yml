@@ -1,0 +1,55 @@
+version: '3.8'
+
+# Docker Compose Template for Services
+# This is an example structure for containerized services
+
+services:
+  # === Example Service ===
+  example-service:
+    image: myapp:latest
+    container_name: example-service
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Environment variables (prefer secrets in Vault for sensitive data)
+    environment:
+      - LOG_LEVEL=info
+      - ENVIRONMENT=production
+    
+    # Volumes for persistent data
+    volumes:
+      - example_data:/data
+      - ./config:/etc/example:ro
+    
+    # Network connection
+    networks:
+      - services
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Traefik labels (auto-populated by orchestration)
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.example.rule: "Host(`example.internal`)"
+      traefik.http.routers.example.entrypoints: "websecure"
+      traefik.http.services.example.loadbalancer.server.port: "8080"
+      # Auth middleware (if needed)
+      # traefik.http.routers.example.middlewares: "authelia@docker"
+
+# ===== Volumes =====
+volumes:
+  example_data:
+    driver: local
+
+# ===== Networks =====
+# The 'services' network should be created externally to support service discovery
+networks:
+  services:
+    external: true

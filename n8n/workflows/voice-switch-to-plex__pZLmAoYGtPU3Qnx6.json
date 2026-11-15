@@ -1,0 +1,86 @@
+{
+  "active": true,
+  "connections": {
+    "Switch to plex": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Respond to Webhook",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Voice: turn on plex": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Switch to plex",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "pZLmAoYGtPU3Qnx6",
+  "name": "Voice -> Switch to Plex",
+  "nodes": [
+    {
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": $json.stdout.includes('RESULT ok'), \"target\": \"plex\", \"detail\": $json.stdout } }}"
+      },
+      "position": [
+        880,
+        300
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "e3F8Ii1xlTw1L0ty",
+          "name": "media-switch-ssh (jellyfin-01)"
+        }
+      },
+      "id": "ssh",
+      "name": "Switch to plex",
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "plex",
+        "resource": "command"
+      },
+      "position": [
+        640,
+        300
+      ],
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1
+    },
+    {
+      "id": "webhook",
+      "name": "Voice: turn on plex",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "media-switch-plex",
+        "responseMode": "responseNode"
+      },
+      "position": [
+        400,
+        300
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "3a9033a8-f319-4ac9-bbcb-bbccfc56877a"
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

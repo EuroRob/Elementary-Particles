@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Progressions — Music Studio{% endblock %}
+{% block content %}
+<h2>Progressions</h2>
+<p class="muted">Chord loops from your songs and recordings, written relative to the key (Roman numerals), so the same
+  progression is found in any key. Songs count first: a song's progressions come from its corrected sheet when it has one,
+  otherwise from its best recording. {{ lib.songs_with_harmony }} songs analysed so far — the catalogue fills up as you
+  accept <a href="/ui/suggestions?user={{ current_user }}">suggestions</a>.</p>
+
+<form class="search-bar" method="get" action="/ui/progressions">
+  <input type="hidden" name="user" value="{{ current_user }}">
+  <input type="search" name="q" value="{{ q }}" placeholder="Find takes using a progression: ii V I · or chords in any key: Am F C G">
+  <button type="submit">Find</button>
+</form>
+
+{% if search_error %}<p class="err">{{ search_error }}</p>{% endif %}
+{% if search %}
+<div class="card">
+  <h3 style="margin-top:0">“{{ search.query }}” — {{ search.total }} place{{ '' if search.total == 1 else 's' }} in {{ search.recordings }} recording{{ '' if search.recordings == 1 else 's' }}</h3>
+  <p class="muted" style="margin-top:0">{{ 'Matched by numerals, relative to each recording’s key.' if search.kind == 'roman' else 'Matched by chord movement — the same progression in any key counts.' }}</p>
+  {% if search.hits %}
+  <table class="files">
+    <tr><th>Song / recording</th><th>Played as</th><th>Key</th><th>At</th><th></th></tr>
+    {% for h in search.hits %}
+    <tr>
+      <td>{% if h.song_id %}<a href="/ui/song/{{ h.song_id }}?user={{ current_user }}"><b>{{ h.song_title }}</b></a><br>{% endif %}
+          {% if h.beets_item_id %}<a href="/ui/track/{{ h.beets_item_id }}?user={{ current_user }}">{{ h.name }}</a>{% else %}{{ h.name }}{% endif %}</td>
+      <td>{{ h.chords }}</td>
+      <td class="muted">{{ h.key }}</td>
+      <td class="muted">{{ '%d:%02d' % (h.t_start // 60, h.t_start % 60) }}</td>
+      <td>{% if h.beets_item_id %}<audio controls preload="none" src="{{ beets_public }}/item/{{ h.beets_item_id }}/file#t={{ '%.1f' % h.t_start }}" style="height:2rem; width:12rem"></audio>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="chips">
+  {% for m in ['', 'major', 'minor'] %}
+  <a class="chip {{ 'active' if f.mode == m else '' }}" href="?mode={{ m }}&length={{ f.length }}&meter={{ f.meter }}&user={{ current_user }}">{{ m or 'all' }}</a>
+  {% endfor %}
+  <span class="muted">·</span>
+  {% for n in ['', 3, 4, 5, 6] %}
+  <a class="chip {{ 'active' if f.length|string == n|string else '' }}" href="?mode={{ f.mode }}&length={{ n }}&meter={{ f.meter }}&user={{ current_user }}">{{ (n ~ ' chords') if n else 'any length' }}</a>
+  {% endfor %}
+  <span class="muted">·</span>
+  {% for m in ['', '4/4', '3/4'] %}
+  <a class="chip {{ 'active' if f.meter == m else '' }}" href="?mode={{ f.mode }}&length={{ f.length }}&meter={{ m | urlencode }}&user={{ current_user }}">{{ m or 'any meter' }}</a>
+  {% endfor %}
+</div>
+
+<p class="muted">{{ lib.total }} progressions · page {{ page }} of {{ pages }}</p>
+<table>
+  <tr><th>Progression</th><th>e.g. in {{ 'C' }} / {{ 'Am' }}</th><th>Songs</th><th>Recordings</th><th>Meter</th></tr>
+  {% for p in lib['items'] %}
+  <tr>
+    <td><a href="/ui/progression?pattern={{ p.pattern | urlencode }}&user={{ current_user }}"><b>{{ p.pattern }}</b></a></td>
+    <td class="muted">{{ p.example }}</td>
+    <td>{{ p.songs or '' }}</td>
+    <td>{{ p.recordings }}</td>
+    <td class="muted">{% for m, n in p.meters.items() %}{{ m }}{{ ' · ' if not loop.last }}{% endfor %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% if pages > 1 %}
+<div class="chips">
+  {% if page > 1 %}<a class="chip" href="?mode={{ f.mode }}&length={{ f.length }}&meter={{ f.meter }}&page={{ page - 1 }}&user={{ current_user }}">&larr; previous</a>{% endif %}
+  {% if page < pages %}<a class="chip" href="?mode={{ f.mode }}&length={{ f.length }}&meter={{ f.meter }}&page={{ page + 1 }}&user={{ current_user }}">next &rarr;</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

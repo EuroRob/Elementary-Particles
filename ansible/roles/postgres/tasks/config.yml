@@ -1,0 +1,127 @@
+---
+# ── Vault credentials ────────────────────────────────────────────────────────
+- name: Fetch PostgreSQL credentials from Vault
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "postgres/pg-01"
+    mount_point: "secret"
+  register: pg_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+  tags: [databases]
+
+# ── postgresql.conf ───────────────────────────────────────────────────────────
+- name: Deploy postgresql.conf
+  ansible.builtin.template:
+    src: postgresql.conf.j2
+    dest: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: Reload PostgreSQL
+
+# ── pg_hba.conf ───────────────────────────────────────────────────────────────
+- name: Configure pg_hba.conf (restrict to internal VLANs and VPN)
+  ansible.builtin.copy:
+    dest: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+    content: |
+      # TYPE  DATABASE  USER  ADDRESS           METHOD
+      # Local socket — postgres system user only
+      local   all       postgres                peer
+      local   all       all                     reject
+
+      # Loopback — app connections from localhost
+      host    all       all   127.0.0.1/32      scram-sha-256
+      host    all       all   ::1/128            scram-sha-256
+
+      # Management VLAN10 (IaC VM, fw-01, vpn-01) -- the intended long-term
+      # address once the VLAN10 MGMT migration happens (see IaC/CLAUDE.md
+      # Active Constraints). Not done yet.
+      host    all       all   10.0.10.0/24      scram-sha-256
+
+      # IaC VM, interim (found live 2026-09-08): the VLAN10 rule above covers
+      # the FUTURE address (10.0.10.15); the IaC VM's REAL current address is
+      # still the pre-migration flat network (10.0.0.15), which had no entry
+      # here at all until iac-api's Phase 1 agent_actions table needed direct
+      # Postgres access and hit "no pg_hba.conf entry for host 10.0.0.15".
+      # Single host, not a /24, to keep this as narrow as the OPNsense rule
+      # (10.0.0.15 -> pg-01:5432) that opens the network path to it. Remove
+      # once VLAN10 migration lands and 10.0.10.0/24 above covers it.
+      host    all       all   10.0.0.15/32      scram-sha-256
+
+      # Services VLAN30 (web-01, git-01, web-02, dns-01)
+      host    all       all   10.0.30.0/24      scram-sha-256
+
+      # Storage VLAN40 (local — pg-01 itself and nas-01)
+      host    all       all   10.0.40.0/24      scram-sha-256
+
+      # VLAN60 (dl-01 — catalog-api's elementary_particles/assets schema)
+      host    all       all   10.0.60.0/24      scram-sha-256
+
+      # VPN tunnel (remote access via wireguard)
+      host    all       all   10.8.0.0/24       scram-sha-256
+  notify: Reload PostgreSQL
+
+# ── Apply config ──────────────────────────────────────────────────────────────
+# Changed 2026-10-23: config changes used to RESTART PostgreSQL, which on
+# pg-01 orphans every app's connection pool. Now: reload, then check whether
+# anything still needs a restart, and only restart when explicitly allowed.
+- name: Flush handlers to apply config changes now (reload)
+  ansible.builtin.meta: flush_handlers
+
+- name: Check for settings that still need a restart
+  ansible.builtin.command: >-
+    psql -XtAc "select coalesce(string_agg(name, ','), '') from pg_settings where pending_restart"
+  become: true
+  become_user: postgres
+  register: _pg_pending_restart
+  changed_when: false
+  check_mode: false
+
+# 'setting could not be applied' = needs a restart; reported by the pending_restart
+# task above, not a parse error.
+- name: Check postgresql.conf parsed cleanly
+  ansible.builtin.command: >-
+    psql -XtAc "select coalesce(string_agg(name || ': ' || error, '; '), '') from pg_file_settings where error is not null and error <> 'setting could not be applied'"
+  become: true
+  become_user: postgres
+  register: _pg_file_errors
+  changed_when: false
+  check_mode: false
+  failed_when: _pg_file_errors.stdout | length > 0
+
+- name: Warn about settings waiting for a restart
+  ansible.builtin.debug:
+    msg: >-
+      Needs a PostgreSQL restart to take effect: {{ _pg_pending_restart.stdout }}.
+      Not restarting (postgres_allow_restart=false) -- do it in a maintenance
+      window; app pools on pg-01 must reconnect afterwards.
+  when:
+    - _pg_pending_restart.stdout | length > 0
+    - not postgres_allow_restart | bool
+
+- name: Restart PostgreSQL for pending settings (explicitly allowed)
+  ansible.builtin.service:
+    name: postgresql
+    state: restarted
+  when:
+    - _pg_pending_restart.stdout | length > 0
+    - postgres_allow_restart | bool
+
+# ── Per-database settings (ALTER DATABASE ... SET) ────────────────────────────
+# Stored in the catalog, picked up by NEW sessions; no reload needed.
+- name: Apply per-database settings
+  ansible.builtin.command: >-
+    psql -XtAc "ALTER DATABASE \"{{ item.database }}\" SET {{ item.name }} = '{{ item.value }}'"
+  become: true
+  become_user: postgres
+  loop: "{{ postgres_database_settings }}"
+  loop_control:
+    label: "{{ item.database }}.{{ item.name }}={{ item.value }}"
+  changed_when: false

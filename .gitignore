@@ -1,0 +1,20 @@
+# secrets and state never belong here
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+*.tfplan
+.terraform/
+.env
+.env.*
+*.pem
+*.key
+id_*
+vault_pass*
+
+# tooling
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store

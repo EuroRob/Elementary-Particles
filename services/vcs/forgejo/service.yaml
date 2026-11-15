@@ -1,0 +1,93 @@
+---
+name: forgejo
+version: "9"
+tier: "application"
+description: >
+  Lightweight self-hosted git hosting (Go binary + SQLite), replacing GitLab CE
+  on the old git-01 (decommissioned 2026-07-29). Runs on its own VM (git-01,
+  10.0.30.31) to keep the git host isolated from other application services.
+  Authelia OIDC wired up 2026-07-30 (client id "forgejo").
+owner: "infra"
+
+tags:
+  expose: "true"
+  ingress: "https"
+  auth: "oidc"
+  auth_provider: "authelia"
+  network: "vlan30"
+  dns: "true"
+  tier: "application"
+  category: "Development"
+  icon: "forgejo"
+  href: "https://git.home.example.org"
+  color: "#fa8072"
+  sla: "high"
+  backup: "daily"
+  owner: "infra"
+  environment: "production"
+  data_classification: "internal"
+
+deployment:
+  platform: "docker"
+  deployment_target: "git-01"
+  namespace: "forgejo"
+  compose_file: "IaC/Ansible/services/applications/forgejo/docker-compose.yml"
+  compose_dir: "/opt/forgejo"
+  replicas: 1
+  resources:
+    cpu: "2"
+    memory: "2Gi"
+    storage: "20Gi"
+
+sources:
+  - path: "IaC/Ansible/services/applications/forgejo/docker-compose.yml"
+    role: "Forgejo (Go binary + SQLite)"
+  - path: "IaC/Ansible/playbooks/deploy_forgejo01.yml"
+    role: "VM config, Vault secrets, Traefik + UFW"
+  - path: "IaC/Terraform/envs/git-01/main.tf"
+    role: "Proxmox VM provisioning (vmid 251)"
+
+interfaces:
+  - name: "web"
+    protocol: "https"
+    port: 443
+    internal_port: 3000
+    dns_name: "git.home.example.org"
+    description: "Web UI + git HTTP smart protocol"
+  - name: "git-ssh"
+    protocol: "ssh"
+    port: 2222
+    internal_port: 22
+    description: "git-over-SSH — direct to git-01.internal:2222 (not routed through Traefik)"
+
+dependencies:
+  - name: "traefik"
+    role: "tls-termination-and-routing"
+    required: true
+    interface: "tcp/443"
+    tags:
+      tier: "network"
+  - name: "authelia"
+    role: "oidc-sso"
+    required: false
+    interface: "https/9091"
+    notes: "Optional — local admin login (owner) still works if Authelia is down"
+    tags:
+      tier: "network"
+
+vault_secrets:
+  - path: "forgejo/admin"
+    key: "username, password"
+    description: "Local admin account (fallback if OIDC is unavailable)"
+  - path: "forgejo/app"
+    key: "secret_key, internal_token, jwt_secret"
+    description: "Forgejo app crypto secrets — rotated 2026-07-30"
+  - path: "authelia/oidc"
+    key: "forgejo_secret"
+    description: "Authelia OIDC client secret for the 'forgejo' client — rotated 2026-07-30"
+
+monitoring:
+  health_check: "https://git.home.example.org/api/healthz"
+  health_check_interval: "30s"
+  health_check_timeout: "10s"
+  unhealthy_threshold: 3

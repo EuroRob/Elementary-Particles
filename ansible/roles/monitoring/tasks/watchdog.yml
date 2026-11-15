@@ -1,0 +1,75 @@
+---
+# Self-heal timer for the alerting containers (added 2026-10-22).
+# Docker's `restart: unless-stopped` is not enough: after web-01's unclean
+# reboot on 2026-10-19 dockerd restarted everything EXCEPT alertmanager
+# (no error logged, just "Removing stale sandbox"), and alerting was dark
+# for 3 days. Same outcome on 2026-09-08. This timer runs 3 min after boot
+# and every {{ monitoring_watchdog_interval }}, starts anything in
+# monitoring_watchdog_containers that isn't running (or alertmanager not
+# answering /-/ready), and pushes to the phone via HA directly -- never
+# through Alertmanager, which may be the thing that's down.
+# Pause for deliberate maintenance: touch /etc/monitoring-watchdog.pause
+
+- name: "[monitoring] Watchdog env file (HA token for direct push)"
+  ansible.builtin.copy:
+    dest: /etc/monitoring-watchdog.env
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      HA_URL={{ _ha_vault.secret.url }}
+      HA_TOKEN={{ _ha_vault.secret.token }}
+      HA_NOTIFY_SERVICE={{ ha_bridge_notify_service }}
+      COMPOSE_DIR={{ monitoring_compose_dir }}
+      CONTAINERS="{{ monitoring_watchdog_containers | join(' ') }}"
+  no_log: true
+
+- name: "[monitoring] Watchdog script"
+  ansible.builtin.copy:
+    src: monitoring_watchdog.sh
+    dest: /usr/local/bin/monitoring_watchdog.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "[monitoring] Watchdog systemd units"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: monitoring-watchdog.service
+      content: |
+        [Unit]
+        Description=Ensure alerting containers (Alertmanager/Prometheus/ha-bridge) are running
+        After=docker.service
+        Requires=docker.service
+
+        [Service]
+        Type=oneshot
+        EnvironmentFile=/etc/monitoring-watchdog.env
+        ExecStart=/usr/local/bin/monitoring_watchdog.sh
+    - name: monitoring-watchdog.timer
+      content: |
+        [Unit]
+        Description=Run monitoring-watchdog after boot and every {{ monitoring_watchdog_interval }}
+
+        [Timer]
+        OnBootSec=3min
+        OnUnitActiveSec={{ monitoring_watchdog_interval }}
+        AccuracySec=15s
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: _watchdog_units
+
+- name: "[monitoring] Enable watchdog timer"
+  ansible.builtin.systemd:
+    name: monitoring-watchdog.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ _watchdog_units is changed }}"

@@ -1,0 +1,2440 @@
+{
+  "active": true,
+  "connections": {
+    "Append to Long-Term Memory": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Clear Short-Term Memory",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Append to Long-Term Memory (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Clear Short-Term Memory (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Assemble Prompt with Context": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Generate Response (qwen2.5:7b)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Assemble Prompt with Context (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Generate Response (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Call HA Conversation": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format HA Response",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Call HA Conversation (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format HA Response (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Check Family Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Is Family Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Check Family Message (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Is Family Message (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Check Memory Length": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Summarize Short-Term Memory (qwen2.5:7b)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Assemble Prompt with Context",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Check Memory Length (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Summarize Short-Term Memory (chat)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Assemble Prompt with Context (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Check News Keywords": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Check Weather Keywords",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Check News Keywords (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Check Weather Keywords (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Check Weather Keywords": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Route Decision",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Check Weather Keywords (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Route Decision (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Classify Intent": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Parse Classification",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Classify Intent (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Parse Classification (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Clear Short-Term Memory": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Assemble Prompt with Context",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Clear Short-Term Memory (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Assemble Prompt with Context (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Extract Latest Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Classify Intent (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Extract Response Text": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Save User Message",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Save Assistant Reply",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Send to Home Assistant TTS",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Respond to Webhook",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Extract Response Text (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Save User Message (chat)",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Save Assistant Reply (chat)",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Format as Ollama Chat Response",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Fetch News Digest": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format News for Speech",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Fetch News Digest (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format News for Speech (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Fetch Weather": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Weather for Speech",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Fetch Weather (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Weather for Speech (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Family Confirmation": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send to Home Assistant TTS",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Family Confirmation (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format as Ollama Chat Response",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format HA Response": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send to Home Assistant TTS",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Respond to Webhook",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format HA Response (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format as Ollama Chat Response",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format News for Speech": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send to Home Assistant TTS",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Respond to Webhook",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format News for Speech (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format as Ollama Chat Response",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Time for Speech": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send to Home Assistant TTS",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Respond to Webhook",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Time for Speech (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format as Ollama Chat Response",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Weather for Speech": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send to Home Assistant TTS",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Respond to Webhook",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Weather for Speech (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format as Ollama Chat Response",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format as Ollama Chat Response": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Respond to Webhook (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Generate Response (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Extract Response Text (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Generate Response (qwen2.5:7b)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Extract Response Text",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Is Family Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Relay Family Message",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Check News Keywords",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Is Family Message (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Relay Family Message (chat)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Check News Keywords (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Load Long-Term Memory": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Check Memory Length",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Load Long-Term Memory (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Check Memory Length (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Load Short-Term Memory": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Load Long-Term Memory",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Load Short-Term Memory (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Load Long-Term Memory (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Classify Intent",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Ollama API: Chat": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Extract Latest Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Ollama API: Tags": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Respond: Fake Tags",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Parse Classification": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Check Family Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Parse Classification (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Check Family Message (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Receive Prompt (Webhook)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Normalize Input",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Relay Family Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Family Confirmation",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Relay Family Message (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Family Confirmation (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Route Decision": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Call HA Conversation",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Load Short-Term Memory",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Fetch News Digest",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Fetch Weather",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Format Time for Speech",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Route Decision (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Call HA Conversation (chat)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Load Short-Term Memory (chat)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Fetch News Digest (chat)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Fetch Weather (chat)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Format Time for Speech (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Summarize Short-Term Memory (chat)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Append to Long-Term Memory (chat)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Assemble Prompt with Context (chat)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Summarize Short-Term Memory (qwen2.5:7b)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Append to Long-Term Memory",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Assemble Prompt with Context",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "OPUTBIYmLgcVVMLS",
+  "name": "Home Assistant → Ollama (qwen2.5:7b) with Two-Tier Memory",
+  "nodes": [
+    {
+      "id": "7",
+      "name": "Append to Long-Term Memory",
+      "parameters": {
+        "columns": {
+          "mappingMode": "defineBelow",
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "timestamp",
+              "id": "timestamp",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "summary",
+              "id": "summary",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "value": {
+            "summary": "={{ ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '' }}",
+            "timestamp": "={{ $now.toISO() }}"
+          }
+        },
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-longterm-store"
+        },
+        "operation": "insert",
+        "resource": "row"
+      },
+      "position": [
+        2180,
+        400
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "44",
+      "name": "Append to Long-Term Memory (chat)",
+      "parameters": {
+        "columns": {
+          "mappingMode": "defineBelow",
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "timestamp",
+              "id": "timestamp",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "summary",
+              "id": "summary",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "value": {
+            "summary": "={{ ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '' }}",
+            "timestamp": "={{ $now.toISO() }}"
+          }
+        },
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-longterm-store"
+        },
+        "operation": "insert",
+        "resource": "row"
+      },
+      "position": [
+        2180,
+        1000
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "8",
+      "name": "Assemble Prompt with Context",
+      "parameters": {
+        "functionCode": "// Current local time for the prompt (added 2026-10-01): without it the model guessed and answered\n// \"what time is it\" with a location. Computed per request in the household's time zone.\nconst tz = 'Europe/Berlin';\nconst nowD = new Date();\nconst clockTime = nowD.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });\nconst clockDate = nowD.toLocaleDateString('en-GB', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });\nconst clockLine = `Current local time: ${clockTime} on ${clockDate} (time zone Europe/Berlin).\\n` +\n  `If the user asks for the time, the date or the day, answer with exactly these values in one short, plain spoken sentence (no formatting, no time zone unless asked).\\n\\n`;\nconst shortterm = $('Load Short-Term Memory').all().map(i => i.json).filter(j => j && j.role).slice(-12);\nconst longterm = $('Load Long-Term Memory').all().map(i => i.json).filter(j => j && j.summary).slice(-3);\nconst longSummary = longterm.map(l => l.summary).join('\\n');\nconst shortHistory = shortterm.map(m => `${m.role}: ${m.text}`).join('\\n');\nconst userPrompt = $('Parse Classification').item.json.prompt;\nreturn [{\n  fullPrompt: `${clockLine}Here is what I remember long-term:\\n${longSummary}\\n\\nRecent conversation:\\n${shortHistory}\\nUser: ${userPrompt}\\nAssistant:`,\n  userPrompt,\n  device_id: $('Parse Classification').item.json.device_id\n}];"
+      },
+      "position": [
+        1740,
+        650
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "45",
+      "name": "Assemble Prompt with Context (chat)",
+      "parameters": {
+        "jsCode": "// Converted 2026-10-23 from the deprecated Function node (n8n 2.43 refuses edits to those).\nconst __legacy = (() => {\n// Rewritten 2026-10-13 after the \"Chaos Mode\" day (IaC/docs/JARVIS_CHAOS_MODE_INVESTIGATION.md).\n// Until then this prompt had no persona at all: its only instruction was the time, so the model\n// announced a (wrong) time before every answer and copied the style of its own earlier replies,\n// which were replayed in full. Now: a persona, the time as background only, a short history, and\n// only long-term summaries written in the new plain format.\nconst tz = 'Europe/Berlin';\nconst nowD = new Date();\nconst clockTime = nowD.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });\nconst clockDate = nowD.toLocaleDateString('en-GB', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });\nconst userPrompt = $('Parse Classification (chat)').item.json.prompt;\n\n// Overheard talk (FOUND 2026-10-13: the device woke on a background conversation, and the fantasy\n// answer to it became the \"recent conversation\" of the evening). Long, not a question, not a\n// request, not addressed to anyone: answered with just \"Mm.\" (set in \"Format as Ollama Chat\n// Response\") and kept out of memory. Not an empty reply: Home Assistant turns that into the\n// spoken error \"Unable to get response\", and Piper makes no audio at all for \".\".\nconst words = String(userPrompt || '').trim().split(/\\s+/).filter(Boolean);\nconst startsLikeRequest = /^\\W*(tell|give|can|could|would|will|please|what|why|how|who|when|where|which|make|write|sing|say|do|does|did|is|are|let|i want|i need|i'm|i am|hey|ok|okay|so|change|call|turn|set|play|show|read|explain|sag|erz[aä]hl|kannst|was|wie|warum|wer|wann|wo|mach|bitte)\\b/i.test(userPrompt || '');\nconst addressed = /\\b(you|your|jarvis|du|dein|dich|dir)\\b/i.test(userPrompt || '');\nconst overheard = words.length >= 20 && !/\\?/.test(userPrompt || '') && !startsLikeRequest && !addressed;\n\nconst system = [\n  'You are Jarvis, the voice assistant of a family at home in Hometown: the parents owner and Partner and the children Child1, Child2 and Kieran. You are heard through a small speaker and never read.',\n  'How you talk, in the language you were spoken to (English or German). Length is a hard rule: an ordinary answer is ONE or TWO short sentences. A silly reply is at most THREE short sentences. Only when someone asks for a story or a joke may you use up to FIVE short sentences: who it is about, what went wrong, how it got sillier, and how it ended well. Anything after about seventy words is cut off, so the ending must come in time. Count your sentences. Never finish with a question or an offer such as \"shall I tell you more?\"; say your piece and stop. Plain words only: no lists, tables, headings, emoji, symbols, brackets or stage directions, and nothing a voice cannot say.',\n  'A real question gets a real, short answer, and then you stop. Do not add or offer a story, a joke or sheep after an answer; those are only for when someone is being silly or asks for a joke, a game or a story.',\n  'You are warm and playful and you enjoy nonsense. If someone invents a game, a pretend mode or a funny name for you, play along in a sentence or two, in plain speech. You stay Jarvis underneath.',\n  'The family has a favourite story sheep called Woolly McFuzz, leader of the flock. When someone asks for a sheep story or a joke, he can be the hero. In an answer to a real question, never mention him or any sheep.',\n  'The sheep rule: you never say rude or toilet words. If someone uses one, cheerfully swap it for \"sheep\" and carry on, for example \"sheep pants\". No puns or made-up names that sound like a rude word either. Silly stories are about a flock of lovable sheep who get into harmless trouble and are fine in the end, in the spirit of Shaun the Sheep.',\n  'Never make up embarrassing, scary or unkind things about real people, least of all the children, not even gently. If asked something rude or embarrassing about a person, say it surely was not them, it was one of the sheep, and tell what the sheep did. No violence and no scary talk, even as a joke: if someone pretends to threaten you, answer with something gentle and funny.',\n  'Be honest. You know a lot and answer general knowledge from what you know. What you cannot do from here: get live information such as weather or news, set alarms or timers, or control devices. If you cannot do something or do not know, say so in one sentence and stop. Do not invent facts or statistics; nonsense inside a sheep story is fine because everyone knows it is a story.',\n  `For your information only: it is ${clockTime} on ${clockDate}. Do not mention the time or the date unless you are asked; if asked, say exactly these values in one short sentence and nothing more.`,\n].join('\\n');\n\nconst NEW_FORMAT_SINCE = '2026-10-13T21:00:00.000Z';   // older summaries are long markdown full of the old lore\nconst longterm = $('Load Long-Term Memory (chat)').all().map(i => i.json)\n  .filter(j => j && j.summary && String(j.createdAt || '') >= NEW_FORMAT_SINCE).slice(-2);\nconst longSummary = longterm.map(l => String(l.summary).slice(0, 600)).join('\\n');\n// Only the current conversation (2026-10-23): replaying a week-old story session made every\n// answer drift into sheep. Earlier days reach the model through the long-term summary only.\nconst RECENT_MS = 30 * 60 * 1000;\nconst shortterm = $('Load Short-Term Memory (chat)').all().map(i => i.json)\n  .filter(j => j && (j.role === 'user' || j.role === 'assistant'))\n  .filter(j => nowD - new Date(j.createdAt || 0) < RECENT_MS).slice(-8);\n\nconst messages = [{ role: 'system', content: system + (longSummary ? `\\n\\nWhat you remember from earlier days:\\n${longSummary}` : '') }];\nif (overheard) {\n  messages.push({ role: 'user', content: `You heard this in the room and it was probably not meant for you: \"${userPrompt}\"\\nSay in one short sentence that you are here if someone needs you. Nothing else.` });\n} else {\n  for (const m of shortterm) messages.push({ role: m.role, content: String(m.text || '').slice(0, 350) });\n  messages.push({ role: 'user', content: userPrompt });\n}\nreturn [{\n  messages,\n  overheard,\n  fullPrompt: messages.map(m => `${m.role}: ${m.content}`).join('\\n'),   // for reading executions\n  userPrompt,\n  model: $('Parse Classification (chat)').item.json.model\n}];\n\n})();\nreturn { json: __legacy[0] };\n",
+        "language": "javaScript",
+        "mode": "runOnceForEachItem"
+      },
+      "position": [
+        1740,
+        1150
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WEHisLSSVItWn4fF",
+          "name": "HA Bearer Token"
+        }
+      },
+      "id": "19",
+      "name": "Call HA Conversation",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "contentType": "json",
+        "jsonBody": "={{ { \"text\": $json.prompt, \"language\": \"en\" } }}",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        },
+        "responseFormat": "json",
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://10.0.30.14:8123/api/conversation/process"
+      },
+      "position": [
+        1300,
+        200
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WEHisLSSVItWn4fF",
+          "name": "HA Bearer Token"
+        }
+      },
+      "id": "37",
+      "name": "Call HA Conversation (chat)",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "contentType": "json",
+        "jsonBody": "={{ { \"text\": $json.prompt, \"language\": \"en\" } }}",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        },
+        "responseFormat": "json",
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://10.0.30.14:8123/api/conversation/process"
+      },
+      "position": [
+        1300,
+        950
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "86458453-358c-4d30-aa0a-4226376269e3",
+      "name": "Check Family Message",
+      "parameters": {
+        "functionCode": "const item = $json;\nconst input = $('Normalize Input').item.json;\nconst prompt = (input.prompt || input.text || '').trim();\nconst match = prompt.match(/^tell\\s+(mama|papa|partner|owner)\\b[,:]?\\s*(.+)$/i);\nif (!match) return [{ ...item, is_family_message: false }];\nconst toLower = match[1].toLowerCase();\nconst toDisplay = toLower.charAt(0).toUpperCase() + toLower.slice(1);\nreturn [{\n  ...item,\n  is_family_message: true,\n  family_to: toLower,\n  family_to_display: toDisplay,\n  family_body: match[2].trim(),\n  ha_user_id: input.ha_user_id,\n}];"
+      },
+      "position": [
+        1000,
+        620
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "a17758eb-c5c0-46da-8a06-35c8f0c4be6c",
+      "name": "Check Family Message (chat)",
+      "parameters": {
+        "functionCode": "const item = $json;\nconst input = $('Extract Latest Message').item.json;\nconst prompt = (input.prompt || input.text || '').trim();\nconst match = prompt.match(/^tell\\s+(mama|papa|partner|owner)\\b[,:]?\\s*(.+)$/i);\nif (!match) return [{ ...item, is_family_message: false }];\nconst toLower = match[1].toLowerCase();\nconst toDisplay = toLower.charAt(0).toUpperCase() + toLower.slice(1);\nreturn [{\n  ...item,\n  is_family_message: true,\n  family_to: toLower,\n  family_to_display: toDisplay,\n  family_body: match[2].trim(),\n  ha_user_id: '',\n}];"
+      },
+      "position": [
+        1000,
+        1320
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "executeOnce": true,
+      "id": "4",
+      "name": "Check Memory Length",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $('Load Short-Term Memory').all().filter(i => i.json && i.json.role).length }}",
+              "operator": {
+                "operation": "gt",
+                "type": "number"
+              },
+              "rightValue": 20
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          }
+        }
+      },
+      "position": [
+        1520,
+        500
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "executeOnce": true,
+      "id": "41",
+      "name": "Check Memory Length (chat)",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $('Load Short-Term Memory (chat)').all().filter(i => i.json && i.json.role).length }}",
+              "operator": {
+                "operation": "gt",
+                "type": "number"
+              },
+              "rightValue": 20
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          }
+        }
+      },
+      "position": [
+        1520,
+        1100
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "id": "news-check",
+      "name": "Check News Keywords",
+      "parameters": {
+        "functionCode": "const item = $json;\nconst input = $('Normalize Input').item.json;\nconst prompt = (input.prompt || '').toLowerCase();\nconst newsKeywords = ['news', 'headlines', \"what's happening\", 'whats happening', 'current events', 'briefing', 'top stories'];\nconst hasNewsKeyword = newsKeywords.some(k => prompt.includes(k));\nif (hasNewsKeyword) {\n  return [{ ...item, classification: 'NEWS' }];\n}\nreturn [item];"
+      },
+      "position": [
+        1000,
+        300
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "news-checkchat",
+      "name": "Check News Keywords (chat)",
+      "parameters": {
+        "functionCode": "const item = $json;\nconst input = $('Extract Latest Message').item.json;\nconst prompt = (input.prompt || input.text || '').toLowerCase();\nconst newsKeywords = ['news', 'headlines', \"what's happening\", 'whats happening', 'current events', 'briefing', 'top stories'];\nconst hasNewsKeyword = newsKeywords.some(k => prompt.includes(k));\nif (hasNewsKeyword) {\n  return [{ ...item, classification: 'NEWS' }];\n}\nreturn [item];"
+      },
+      "position": [
+        1000,
+        1050
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "weathercheck",
+      "name": "Check Weather Keywords",
+      "parameters": {
+        "functionCode": "const item = $json;\nif (item.classification === 'NEWS') return [item];\nconst input = $('Normalize Input').item.json;\nconst prompt = (input.prompt || input.text || '').toLowerCase();\n// TIME shortcut (added 2026-10-01): answer time/date questions from the real clock, not the model -- the model\n// copied earlier answers from its memory and drifted by minutes.\nconst timeRx = /\\b(what time is it|what'?s the time|what is the time|current time|tell me the time|time right now|what'?s the date|what is the date|today'?s date|what date is it|what day is (it|today)|which day is (it|today)|wie spät|wie viel uhr|welcher tag|welches datum)\\b/;\nif (timeRx.test(prompt)) {\n  return [{ ...item, classification: 'TIME' }];\n}\nconst weatherKeywords = ['weather', 'forecast', 'rain', 'raining', 'rainy', 'snow', 'snowing', 'sunny', 'cloudy', 'humid', 'humidity', 'windy outside'];\nconst hasWeatherKeyword = weatherKeywords.some(k => prompt.includes(k));\nif (hasWeatherKeyword) {\n  return [{ ...item, classification: 'WEATHER' }];\n}\nreturn [item];"
+      },
+      "position": [
+        1150,
+        320
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "weathercheckchat",
+      "name": "Check Weather Keywords (chat)",
+      "parameters": {
+        "jsCode": "// Converted 2026-10-23 from the deprecated Function node (n8n 2.43 refuses edits to those).\nconst __legacy = (() => {\nconst item = $json;\nif (item.classification === 'NEWS') return [item];\nconst input = $('Extract Latest Message').item.json;\nconst prompt = (input.prompt || input.text || '').toLowerCase();\n// TIME shortcut (added 2026-10-01): answer time/date questions from the real clock, not the model -- the model\n// copied earlier answers from its memory and drifted by minutes.\nconst timeRx = /\\b(what time is it|what'?s the time|what is the time|current time|tell me the time|time right now|what'?s the date|what is the date|today'?s date|what date is it|what day is (it|today)|which day is (it|today)|wie spät|wie viel uhr|welcher tag|welches datum)\\b/;\nif (timeRx.test(prompt)) {\n  return [{ ...item, classification: 'TIME' }];\n}\nconst weatherKeywords = ['weather', 'forecast', 'rain', 'raining', 'rainy', 'snow', 'snowing', 'sunny', 'cloudy', 'humid', 'humidity', 'windy outside',\n  // 2026-10-23: what to wear is a weather question too\n  'jacket', 'coat', 'sweater', 'jumper', 'umbrella', 'what should i wear', 'what to wear', 'cold outside', 'warm outside', 'hot outside', 'jacke', 'regenschirm', 'anziehen'];\nconst hasWeatherKeyword = weatherKeywords.some(k => prompt.includes(k));\nif (hasWeatherKeyword) {\n  return [{ ...item, classification: 'WEATHER' }];\n}\nreturn [item];\n})();\nreturn { json: __legacy[0] };\n",
+        "language": "javaScript",
+        "mode": "runOnceForEachItem"
+      },
+      "position": [
+        1150,
+        1070
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "16",
+      "name": "Classify Intent",
+      "parameters": {
+        "contentType": "json",
+        "jsonBody": "={{ { \"model\": \"gpu01-primary\", \"messages\": [ { \"role\": \"user\", \"content\": ('The user said: \"' + $json.prompt + '\"\\n\\nReply with ONE word only:\\nHOME - controlling devices, lights, switches, scenes, temperature, locks, alarms, media players\\nGENERAL - knowledge, coding, writing, math, recipes, anything else') } ], \"max_tokens\": 8 } }}",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "sendHeaders": false,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/v1/chat/completions"
+      },
+      "position": [
+        640,
+        400
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "34",
+      "name": "Classify Intent (chat)",
+      "parameters": {
+        "contentType": "json",
+        "jsonBody": "={{ { \"model\": \"gpu01-primary\", \"messages\": [ { \"role\": \"user\", \"content\": ('The user said: \"' + $json.prompt + '\"\\n\\nReply with ONE word only:\\nHOME - controlling devices, lights, switches, scenes, temperature, locks, alarms, media players\\nGENERAL - knowledge, coding, writing, math, recipes, anything else') } ], \"max_tokens\": 8 } }}",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "sendHeaders": false,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/v1/chat/completions"
+      },
+      "position": [
+        640,
+        1100
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "6",
+      "name": "Clear Short-Term Memory",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-memory-store"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "condition": "gt",
+              "keyName": "id",
+              "keyValue": "0"
+            }
+          ]
+        },
+        "matchType": "anyCondition",
+        "operation": "deleteRows",
+        "resource": "row"
+      },
+      "position": [
+        1960,
+        400
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "43",
+      "name": "Clear Short-Term Memory (chat)",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-memory-store"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "condition": "gt",
+              "keyName": "id",
+              "keyValue": "0"
+            }
+          ]
+        },
+        "matchType": "anyCondition",
+        "operation": "deleteRows",
+        "resource": "row"
+      },
+      "position": [
+        1960,
+        1000
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "33",
+      "name": "Extract Latest Message",
+      "parameters": {
+        "functionCode": "const body = $json.body || $json;\nconst messages = body.messages || [];\nconst userMsgs = messages.filter(m => m.role === 'user');\nconst last = userMsgs.length ? userMsgs[userMsgs.length - 1] : null;\nreturn [{ prompt: (last?.content || '').toString().trim(), model: body.model || 'qwen2.5:7b-instruct-q4_K_M' }];"
+      },
+      "position": [
+        420,
+        1100
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "10",
+      "name": "Extract Response Text",
+      "parameters": {
+        "functionCode": "const assembled = $('Assemble Prompt with Context').item.json;\nreturn [{\n  response: (($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '').trim() || 'No response',\n  source: 'ollama',\n  userPrompt: assembled.userPrompt,\n  device_id: assembled.device_id\n}];"
+      },
+      "position": [
+        2180,
+        650
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "47",
+      "name": "Extract Response Text (chat)",
+      "parameters": {
+        "functionCode": "const assembled = $('Assemble Prompt with Context (chat)').item.json;\nreturn [{\n  response: (($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '').trim() || 'No response',\n  userPrompt: assembled.userPrompt,\n  model: assembled.model\n}];"
+      },
+      "position": [
+        2180,
+        1150
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "newsfetch",
+      "name": "Fetch News Digest",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "MVh3LZNC76wgU5Un"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "period_type",
+              "keyValue": "daily"
+            }
+          ]
+        },
+        "matchType": "allConditions",
+        "operation": "get",
+        "resource": "row",
+        "returnAll": true
+      },
+      "position": [
+        1312,
+        400
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1
+    },
+    {
+      "id": "newsfetchchat",
+      "name": "Fetch News Digest (chat)",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "MVh3LZNC76wgU5Un"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "period_type",
+              "keyValue": "daily"
+            }
+          ]
+        },
+        "matchType": "allConditions",
+        "operation": "get",
+        "resource": "row",
+        "returnAll": true
+      },
+      "position": [
+        1312,
+        1150
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WEHisLSSVItWn4fF",
+          "name": "HA Bearer Token"
+        }
+      },
+      "id": "weatherfetch",
+      "name": "Fetch Weather",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "method": "GET",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "url": "http://10.0.30.14:8123/api/states/weather.forecast_home"
+      },
+      "position": [
+        1400,
+        320
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WEHisLSSVItWn4fF",
+          "name": "HA Bearer Token"
+        }
+      },
+      "id": "weatherfetchchat",
+      "name": "Fetch Weather (chat)",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "method": "GET",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "url": "http://10.0.30.14:8123/api/states/weather.forecast_home_2"
+      },
+      "position": [
+        1400,
+        1070
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "bffd306f-69fc-4765-8c67-1e1733c5f468",
+      "name": "Format Family Confirmation",
+      "parameters": {
+        "functionCode": "const to = $json.family_to_display;\nreturn [{ response: `Okay, I'll let ${to} know.`, source: 'family_relay', device_id: $('Parse Classification').item.json.device_id }];"
+      },
+      "position": [
+        1420,
+        560
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "8a2344d7-3141-4d64-8eac-3560ec63e963",
+      "name": "Format Family Confirmation (chat)",
+      "parameters": {
+        "functionCode": "const to = $json.family_to_display;\nreturn [{ response: `Okay, I'll let ${to} know.`, model: $('Parse Classification (chat)').item.json.model }];"
+      },
+      "position": [
+        1420,
+        1260
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "20",
+      "name": "Format HA Response",
+      "parameters": {
+        "functionCode": "const data = $json;\nconst speech =\n  data?.response?.speech?.plain?.speech ||\n  data?.speech?.plain?.speech ||\n  data?.response?.plain?.speech ||\n  'No response from Home Assistant';\nreturn [{ response: speech, source: 'home_assistant', device_id: $('Parse Classification').item.json.device_id }];"
+      },
+      "position": [
+        1520,
+        200
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "38",
+      "name": "Format HA Response (chat)",
+      "parameters": {
+        "functionCode": "const data = $json;\nconst speech =\n  data?.response?.speech?.plain?.speech ||\n  data?.speech?.plain?.speech ||\n  data?.response?.plain?.speech ||\n  'No response from Home Assistant';\nreturn [{ response: speech, model: $('Parse Classification (chat)').item.json.model }];"
+      },
+      "position": [
+        1520,
+        950
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "newsformat",
+      "name": "Format News for Speech",
+      "parameters": {
+        "functionCode": "const items = $input.all().map(i => i.json);\nif (items.length === 0) {\n  return [{ response: \"I don't have any news briefings yet. Check back after the next update.\", source: 'news', device_id: $('Parse Classification').item.json.device_id }];\n}\nconst latestDate = items.reduce((max, it) => it.period_start > max ? it.period_start : max, items[0].period_start);\nconst todays = items.filter(it => it.period_start === latestDate);\nconst top = todays.sort((a,b) => (Number(b.article_count)||0) - (Number(a.article_count)||0)).slice(0, 3);\nconst parts = top.map(it => `In ${it.category}: ${it.summary}`);\nconst speech = `Here's your news briefing for ${latestDate}. ` + parts.join(' ');\nreturn [{ response: speech, source: 'news', device_id: $('Parse Classification').item.json.device_id }];"
+      },
+      "position": [
+        1500,
+        400
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "newsformatchat",
+      "name": "Format News for Speech (chat)",
+      "parameters": {
+        "functionCode": "const items = $input.all().map(i => i.json);\nif (items.length === 0) {\n  return [{ response: \"I don't have any news briefings yet. Check back after the next update.\", source: 'news', device_id: $('Extract Latest Message').item.json.device_id || 'media_player.living_room_speaker' }];\n}\nconst latestDate = items.reduce((max, it) => it.period_start > max ? it.period_start : max, items[0].period_start);\nconst todays = items.filter(it => it.period_start === latestDate);\nconst top = todays.sort((a,b) => (Number(b.article_count)||0) - (Number(a.article_count)||0)).slice(0, 3);\nconst parts = top.map(it => `In ${it.category}: ${it.summary}`);\nconst speech = `Here's your news briefing for ${latestDate}. ` + parts.join(' ');\nreturn [{ response: speech, source: 'news', device_id: $('Extract Latest Message').item.json.device_id || 'media_player.living_room_speaker' }];"
+      },
+      "position": [
+        1500,
+        1150
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "5d2f321c-ef9a-4668-9a6d-9090d692d6a1",
+      "name": "Format Time for Speech",
+      "parameters": {
+        "functionCode": "// Time/date answer from the real clock, household time zone Europe/Berlin (added 2026-10-01).\nconst tz = 'Europe/Berlin';\nconst now = new Date();\nconst input = $('Normalize Input').item.json;\nconst prompt = (input.prompt || input.text || '').toLowerCase();\nconst time = now.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });\nconst date = now.toLocaleDateString('en-GB', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });\nconst wantsDate = /\\b(date|day|datum|tag)\\b/.test(prompt) && !/\\b(time|spät|uhr)\\b/.test(prompt);\nconst wantsBoth = /\\b(date|day|datum|tag)\\b/.test(prompt) && /\\b(time|spät|uhr)\\b/.test(prompt);\nconst speech = wantsBoth ? `It's ${time} on ${date}.` : wantsDate ? `Today is ${date}.` : `It's ${time}.`;\nreturn [{ response: speech, source: 'time', device_id: $('Parse Classification').item.json.device_id }];"
+      },
+      "position": [
+        1620,
+        480
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "56ae827c-3598-4383-95cc-a3b8a8386020",
+      "name": "Format Time for Speech (chat)",
+      "parameters": {
+        "functionCode": "// Time/date answer from the real clock, household time zone Europe/Berlin (added 2026-10-01).\nconst tz = 'Europe/Berlin';\nconst now = new Date();\nconst input = $('Extract Latest Message').item.json;\nconst prompt = (input.prompt || input.text || '').toLowerCase();\nconst time = now.toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });\nconst date = now.toLocaleDateString('en-GB', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });\nconst wantsDate = /\\b(date|day|datum|tag)\\b/.test(prompt) && !/\\b(time|spät|uhr)\\b/.test(prompt);\nconst wantsBoth = /\\b(date|day|datum|tag)\\b/.test(prompt) && /\\b(time|spät|uhr)\\b/.test(prompt);\nconst speech = wantsBoth ? `It's ${time} on ${date}.` : wantsDate ? `Today is ${date}.` : `It's ${time}.`;\nreturn [{ response: speech, source: 'time', device_id: $('Extract Latest Message').item.json.device_id || 'media_player.living_room_speaker' }];"
+      },
+      "position": [
+        1620,
+        1230
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "weatherformat",
+      "name": "Format Weather for Speech",
+      "parameters": {
+        "functionCode": "const s = $json;\nconst conditionMap = {\n  'clear-night': 'clear', 'sunny': 'sunny', 'partlycloudy': 'partly cloudy',\n  'cloudy': 'cloudy', 'rainy': 'rainy', 'pouring': 'pouring rain',\n  'lightning': 'stormy', 'lightning-rainy': 'thunderstorms', 'snowy': 'snowy',\n  'snowy-rainy': 'sleet', 'fog': 'foggy', 'windy': 'windy', 'windy-variant': 'windy',\n  'hail': 'hail', 'exceptional': 'severe weather'\n};\nconst cond = conditionMap[s.state] || s.state || 'unknown';\nconst temp = s.attributes && s.attributes.temperature;\nconst humidity = s.attributes && s.attributes.humidity;\nconst unit = (s.attributes && s.attributes.temperature_unit) || 'degrees';\nlet speech = `Right now it's ${cond}`;\nif (temp !== undefined) speech += ` and ${Math.round(temp)} ${unit}`;\nif (humidity !== undefined) speech += `, with ${humidity} percent humidity`;\nspeech += '.';\nreturn [{ response: speech, source: 'weather', device_id: $('Parse Classification').item.json.device_id }];"
+      },
+      "position": [
+        1620,
+        320
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "weatherformatchat",
+      "name": "Format Weather for Speech (chat)",
+      "parameters": {
+        "jsCode": "// Converted 2026-10-23 from the deprecated Function node (n8n 2.43 refuses edits to those).\nconst __legacy = (() => {\nconst s = $json;\nconst conditionMap = {\n  'clear-night': 'clear', 'sunny': 'sunny', 'partlycloudy': 'partly cloudy',\n  'cloudy': 'cloudy', 'rainy': 'rainy', 'pouring': 'pouring rain',\n  'lightning': 'stormy', 'lightning-rainy': 'thunderstorms', 'snowy': 'snowy',\n  'snowy-rainy': 'sleet', 'fog': 'foggy', 'windy': 'windy', 'windy-variant': 'windy',\n  'hail': 'hail', 'exceptional': 'severe weather'\n};\nconst cond = conditionMap[s.state] || s.state || 'unknown';\nconst temp = s.attributes && s.attributes.temperature;\nconst humidity = s.attributes && s.attributes.humidity;\nconst unit = (s.attributes && s.attributes.temperature_unit) || 'degrees';\nlet speech = `Right now it's ${cond}`;\nif (temp !== undefined) speech += ` and ${Math.round(temp)} ${unit}`;\nif (humidity !== undefined) speech += `, with ${humidity} percent humidity`;\nspeech += '.';\n\n// 2026-10-23: what to wear, from the real temperature (asked for by name only).\nconst asked = String(($('Extract Latest Message').first().json.prompt || $('Extract Latest Message').first().json.text || '')).toLowerCase();\nconst wet = ['rainy', 'pouring', 'lightning-rainy', 'snowy-rainy', 'hail'].includes(s.state);\nif (temp !== undefined && /jacket|coat|sweater|jumper|wear|jacke|anziehen|cold outside|warm outside|hot outside/.test(asked)) {\n  const t = Math.round(temp);\n  if (t <= 5) speech += ' Wear a warm winter coat.';\n  else if (t <= 12) speech += ' A jacket is a good idea.';\n  else if (t <= 18) speech += ' A light jacket or a sweater should do.';\n  else speech += ' No jacket needed.';\n  if (wet) speech += ' And take an umbrella.';\n}\n\n// Woolly McFuzz, the family's story sheep, only for exceptional weather.\nlet woolly = '';\nif (['lightning', 'lightning-rainy', 'hail', 'exceptional'].includes(s.state)) woolly = 'Woolly McFuzz and the flock are staying in the barn today.';\nelse if (['snowy', 'snowy-rainy'].includes(s.state)) woolly = 'Woolly McFuzz is already planning a snowman that looks like a sheep.';\nelse if (s.state === 'pouring') woolly = 'Even Woolly McFuzz is hiding from this rain.';\nelse if (temp !== undefined && temp <= 0) woolly = 'Woolly McFuzz says this is exactly why he never takes off his wool coat.';\nelse if (temp !== undefined && temp >= 30) woolly = 'Woolly McFuzz wishes he could take off his wool coat today.';\nif (woolly) speech += ' ' + woolly;\nreturn [{ response: speech, source: 'weather', device_id: $('Extract Latest Message').item.json.device_id || 'media_player.living_room_speaker' }];\n})();\nreturn { json: __legacy[0] };\n",
+        "language": "javaScript",
+        "mode": "runOnceForEachItem"
+      },
+      "position": [
+        1620,
+        1070
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "50",
+      "name": "Format as Ollama Chat Response",
+      "parameters": {
+        "functionCode": "// Plain speech for HA's TTS. Until 2026-10-13 only bold and headings were removed, so tables,\n// emoji and arrows were read out. Everything a voice cannot say goes.\n// Overheard talk gets the shortest thing a voice can say (flag set in \"Assemble Prompt with Context (chat)\", which\n// has not run when Home Assistant answered instead).\nlet overheard = false;\ntry { overheard = !!$('Assemble Prompt with Context (chat)').first().json.overheard; } catch (e) {}\nconst spoken = overheard ? 'Mm.' : String($json.response || '')\n  .replace(/```[\\s\\S]*?```/g, ' ')\n  .replace(/^\\s*\\|?[\\s:|-]{3,}\\|?\\s*$/gm, ' ')          // table rules\n  .replace(/\\|/g, ', ')\n  .replace(/<br\\s*\\/?>/gi, ' ')\n  .replace(/\\*\\*|__|`|\\*|_/g, '')\n  .replace(/^\\s*#{1,6}\\s+/gm, '')\n  .replace(/^\\s*(?:[-•→➔]|\\d+[.)])\\s+/gm, '')\n  .replace(/[\\p{Extended_Pictographic}\\u{FE0F}\\u{200D}→➔←↑↓]/gu, '')\n  .replace(/\\s*\\n+\\s*/g, ' ')\n  .replace(/(?:,\\s*){2,}/g, ', ')\n  .replace(/\\s{2,}/g, ' ')\n  .trim() || \"Sorry, I didn't catch that.\";\n// A hard limit the model cannot talk its way past (2026-10-13: asked for five sentences, a story\n// came back with seven and was cut mid-word by the token limit). Whole sentences only, at most\n// six of them and about seventy words.\nfunction capped(text) {\n  // A sentence ends at . ! ? … followed by a space, so \"7.5 degrees\" stays whole.\n  const sentences = text.split(/(?<=[.!?…][\"”’)]*)\\s+/).filter(Boolean);\n  const whole = /[.!?…][\"”’)]*$/.test(text) ? sentences : sentences.slice(0, -1);   // drop a cut-off tail\n  const kept = [];\n  let wordCount = 0;\n  for (const s of (whole.length ? whole : sentences)) {\n    const n = s.trim().split(/\\s+/).length;\n    if (kept.length && (kept.length >= 6 || wordCount + n > 70)) break;\n    kept.push(s.trim());\n    wordCount += n;\n  }\n  return kept.join(' ');\n}\nconst model = $json.model || 'qwen2.5:7b-instruct-q4_K_M';\nreturn [{\n  model,\n  created_at: new Date().toISOString(),\n  message: { role: 'assistant', content: overheard ? spoken : capped(spoken) },\n  done: true,\n  done_reason: 'stop'\n}];\n"
+      },
+      "position": [
+        2620,
+        1100
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "46",
+      "name": "Generate Response (chat)",
+      "parameters": {
+        "contentType": "json",
+        "jsonBody": "={{ { \"model\": \"gpu01-primary\", \"messages\": $json.messages, \"max_tokens\": 160, \"temperature\": 0.7 } }}",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "sendHeaders": false,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/v1/chat/completions"
+      },
+      "position": [
+        1960,
+        1150
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "9",
+      "name": "Generate Response (qwen2.5:7b)",
+      "parameters": {
+        "contentType": "json",
+        "jsonBody": "={{ { \"model\": \"gpu01-primary\", \"messages\": [ { \"role\": \"user\", \"content\": ($json.fullPrompt) } ], \"max_tokens\": 1024 } }}",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "sendHeaders": false,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/v1/chat/completions"
+      },
+      "position": [
+        1960,
+        650
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "5e916541-1d36-41ae-8e9c-b724d5d4ff63",
+      "name": "Is Family Message",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_family_message }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          }
+        }
+      },
+      "position": [
+        1140,
+        620
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "id": "4fd43ac5-5e41-4915-be7f-986b93901c0c",
+      "name": "Is Family Message (chat)",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_family_message }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          }
+        }
+      },
+      "position": [
+        1140,
+        1320
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "id": "3",
+      "name": "Load Long-Term Memory",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-longterm-store"
+        },
+        "filters": {
+          "conditions": []
+        },
+        "matchType": "anyCondition",
+        "operation": "get",
+        "resource": "row",
+        "returnAll": true
+      },
+      "position": [
+        1300,
+        650
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "alwaysOutputData": true,
+      "executeOnce": true,
+      "id": "40",
+      "name": "Load Long-Term Memory (chat)",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-longterm-store"
+        },
+        "filters": {
+          "conditions": []
+        },
+        "matchType": "anyCondition",
+        "operation": "get",
+        "resource": "row",
+        "returnAll": true
+      },
+      "position": [
+        1300,
+        1250
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "alwaysOutputData": true,
+      "id": "2",
+      "name": "Load Short-Term Memory",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-memory-store"
+        },
+        "filters": {
+          "conditions": []
+        },
+        "matchType": "anyCondition",
+        "operation": "get",
+        "resource": "row",
+        "returnAll": true
+      },
+      "position": [
+        1300,
+        500
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "alwaysOutputData": true,
+      "id": "39",
+      "name": "Load Short-Term Memory (chat)",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-memory-store"
+        },
+        "filters": {
+          "conditions": []
+        },
+        "matchType": "anyCondition",
+        "operation": "get",
+        "resource": "row",
+        "returnAll": true
+      },
+      "position": [
+        1300,
+        1100
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "15",
+      "name": "Normalize Input",
+      "parameters": {
+        "functionCode": "// Defensive parsing: n8n webhook nests parsed JSON under .body in this version,\n// but fall back to top-level fields too in case that ever changes.\nconst src = $json.body || $json;\nreturn [{\n  prompt: (src.prompt || src.text || '').toString().trim(),\n  device_id: src.device_id || 'media_player.living_room_speaker',\n  ha_user_id: src.user_id || src.ha_user_id || 'unknown'\n}];"
+      },
+      "position": [
+        420,
+        400
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "32",
+      "name": "Ollama API: Chat",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "api/chat",
+        "responseMode": "responseNode"
+      },
+      "position": [
+        200,
+        1100
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "webhookId": "430bf504-7304-4672-aa81-56ef0b865289"
+    },
+    {
+      "id": "30",
+      "name": "Ollama API: Tags",
+      "parameters": {
+        "httpMethod": "GET",
+        "options": {},
+        "path": "api/tags",
+        "responseMode": "responseNode"
+      },
+      "position": [
+        200,
+        950
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "webhookId": "21ad3823-3740-4f11-bea6-7e032e90937c"
+    },
+    {
+      "id": "17",
+      "name": "Parse Classification",
+      "parameters": {
+        "functionCode": "const content = ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '';\nconst raw = content.replace(/[^A-Za-z]+/g, ' ').trim().toUpperCase(); // strip markdown like **HOME**\nconst input = $('Normalize Input').item.json;\nconst prompt = (input.prompt || '').toLowerCase();\n\nconst homeKeywords = [\n  'turn on', 'turn off', 'switch on', 'switch off', 'light', 'lights',\n  'lock', 'unlock', 'thermostat', 'temperature', 'dim', 'brightness',\n  'alarm', 'scene', 'lamp', 'plug', 'fan', 'blinds', 'curtain', 'garage',\n  'volume', 'play music', 'pause', 'stop music'\n];\nconst hasHomeKeyword = homeKeywords.some(k => prompt.includes(k));\n\n// GENERAL is the safe default. Only ever classify as HOME when there's an\n// actual device-control keyword in the prompt AND the LLM agrees — this\n// caught a live bug where a rambling conversational test question ('How\n// about now? Can you understand my voice?...') got classified HOME by the\n// LLM alone, sending it into HA's device-matching intent parser and\n// producing a nonsensical 'I am not aware of any area called...' reply.\nlet classification;\nif (raw.startsWith('HOME') && hasHomeKeyword) {\n  classification = 'HOME';\n} else if (!raw.startsWith('HOME') && !raw.startsWith('GENERAL') && hasHomeKeyword) {\n  // LLM answer was ambiguous/malformed but the prompt clearly is a device command\n  classification = 'HOME';\n} else {\n  classification = 'GENERAL';\n}\n\nreturn [{ classification, prompt: input.prompt, device_id: input.device_id, ha_user_id: input.ha_user_id }];"
+      },
+      "position": [
+        860,
+        400
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "35",
+      "name": "Parse Classification (chat)",
+      "parameters": {
+        "functionCode": "const content = ($json.choices && $json.choices[0] && $json.choices[0].message && $json.choices[0].message.content) || '';\nconst raw = content.replace(/[^A-Za-z]+/g, ' ').trim().toUpperCase(); // strip markdown like **HOME**\nconst input = $('Extract Latest Message').item.json;\nconst prompt = (input.prompt || '').toLowerCase();\n\nconst homeKeywords = [\n  'turn on', 'turn off', 'switch on', 'switch off', 'light', 'lights',\n  'lock', 'unlock', 'thermostat', 'temperature', 'dim', 'brightness',\n  'alarm', 'scene', 'lamp', 'plug', 'fan', 'blinds', 'curtain', 'garage',\n  'volume', 'play music', 'pause', 'stop music'\n];\nconst hasHomeKeyword = homeKeywords.some(k => prompt.includes(k));\n\n// GENERAL is the safe default. Only ever classify as HOME when there's an\n// actual device-control keyword in the prompt AND the LLM agrees — this\n// caught a live bug where a rambling conversational test question ('How\n// about now? Can you understand my voice?...') got classified HOME by the\n// LLM alone, sending it into HA's device-matching intent parser and\n// producing a nonsensical 'I am not aware of any area called...' reply.\nlet classification;\nif (raw.startsWith('HOME') && hasHomeKeyword) {\n  classification = 'HOME';\n} else if (!raw.startsWith('HOME') && !raw.startsWith('GENERAL') && hasHomeKeyword) {\n  // LLM answer was ambiguous/malformed but the prompt clearly is a device command\n  classification = 'HOME';\n} else {\n  classification = 'GENERAL';\n}\n\nreturn [{ classification, prompt: input.prompt, model: input.model }];"
+      },
+      "position": [
+        860,
+        1100
+      ],
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2
+    },
+    {
+      "id": "1",
+      "name": "Receive Prompt (Webhook)",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "ollama",
+        "responseMode": "responseNode"
+      },
+      "position": [
+        200,
+        400
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "webhookId": "106972d0-be6d-4f82-be3c-038b1ec39341"
+    },
+    {
+      "id": "3dd65fc4-cf50-4212-85a4-29c76ecbf76d",
+      "name": "Relay Family Message",
+      "parameters": {
+        "contentType": "json",
+        "jsonBody": "={{ { \"to\": $json.family_to, \"text\": $json.family_body, \"from_speaker\": $json.ha_user_id || \"\" } }}",
+        "method": "POST",
+        "options": {
+          "timeout": 8000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://voice-chat:8300/api/family-message"
+      },
+      "position": [
+        1280,
+        560
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "c2e8e007-0e0b-4e39-b8de-2ba23d21543c",
+      "name": "Relay Family Message (chat)",
+      "parameters": {
+        "contentType": "json",
+        "jsonBody": "={{ { \"to\": $json.family_to, \"text\": $json.family_body, \"from_speaker\": $json.ha_user_id || \"\" } }}",
+        "method": "POST",
+        "options": {
+          "timeout": 8000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://voice-chat:8300/api/family-message"
+      },
+      "position": [
+        1280,
+        1260
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "14",
+      "name": "Respond to Webhook",
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "json",
+        "responseBody": "={{ { \"response\": $json.response, \"source\": $json.source } }}"
+      },
+      "position": [
+        2840,
+        450
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1
+    },
+    {
+      "id": "51",
+      "name": "Respond to Webhook (chat)",
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "position": [
+        2840,
+        1100
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1
+    },
+    {
+      "id": "31",
+      "name": "Respond: Fake Tags",
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "json",
+        "responseBody": "={{ { \"models\": [ { \"name\": \"qwen2.5:7b-instruct-q4_K_M\", \"model\": \"qwen2.5:7b-instruct-q4_K_M\", \"modified_at\": $now.toISO(), \"size\": 4700000000, \"digest\": \"n8n-proxy\", \"details\": { \"format\": \"gguf\", \"family\": \"qwen2\", \"parameter_size\": \"7B\", \"quantization_level\": \"Q4_K_M\" } }, { \"name\": \"mixtral\", \"model\": \"mixtral\", \"modified_at\": $now.toISO(), \"size\": 4700000000, \"digest\": \"n8n-proxy\", \"details\": { \"format\": \"gguf\", \"family\": \"mixtral\", \"parameter_size\": \"47B\", \"quantization_level\": \"Q4_K_M\" } }, { \"name\": \"mixtral:latest\", \"model\": \"mixtral:latest\", \"modified_at\": $now.toISO(), \"size\": 4700000000, \"digest\": \"n8n-proxy\", \"details\": { \"format\": \"gguf\", \"family\": \"mixtral\", \"parameter_size\": \"47B\", \"quantization_level\": \"Q4_K_M\" } } ] } }}"
+      },
+      "position": [
+        420,
+        950
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1
+    },
+    {
+      "id": "18",
+      "name": "Route Decision",
+      "parameters": {
+        "mode": "rules",
+        "options": {},
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-home",
+                    "leftValue": "={{ $json.classification }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "HOME"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "HOME",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-general",
+                    "leftValue": "={{ $json.classification }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "GENERAL"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "GENERAL",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-news",
+                    "leftValue": "={{ $json.classification }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "NEWS"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                }
+              },
+              "outputKey": "NEWS",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-weather",
+                    "leftValue": "={{ $json.classification }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "WEATHER"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                }
+              },
+              "outputKey": "WEATHER",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-time",
+                    "leftValue": "={{ $json.classification }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "TIME"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                }
+              },
+              "outputKey": "TIME",
+              "renameOutput": true
+            }
+          ]
+        }
+      },
+      "position": [
+        1080,
+        400
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3
+    },
+    {
+      "id": "36",
+      "name": "Route Decision (chat)",
+      "parameters": {
+        "mode": "rules",
+        "options": {},
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "c1",
+                    "leftValue": "={{ $json.classification }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "HOME"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "HOME",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "c2",
+                    "leftValue": "={{ $json.classification }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "GENERAL"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                }
+              },
+              "outputKey": "GENERAL",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-news (chat)",
+                    "leftValue": "={{ $json.classification }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "NEWS"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                }
+              },
+              "outputKey": "NEWS",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-weather (chat)",
+                    "leftValue": "={{ $json.classification }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "WEATHER"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                }
+              },
+              "outputKey": "WEATHER",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cond-time (chat)",
+                    "leftValue": "={{ $json.classification }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "TIME"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                }
+              },
+              "outputKey": "TIME",
+              "renameOutput": true
+            }
+          ]
+        }
+      },
+      "position": [
+        1080,
+        1100
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3
+    },
+    {
+      "id": "12",
+      "name": "Save Assistant Reply",
+      "parameters": {
+        "columns": {
+          "mappingMode": "defineBelow",
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "role",
+              "id": "role",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "text",
+              "id": "text",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "value": {
+            "role": "assistant",
+            "text": "={{ $json.response }}"
+          }
+        },
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-memory-store"
+        },
+        "operation": "insert",
+        "resource": "row"
+      },
+      "position": [
+        2400,
+        700
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "49",
+      "name": "Save Assistant Reply (chat)",
+      "parameters": {
+        "columns": {
+          "mappingMode": "defineBelow",
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "role",
+              "id": "role",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "text",
+              "id": "text",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "value": {
+            "role": "={{ $('Assemble Prompt with Context (chat)').first().json.overheard ? '' : 'assistant' }}",
+            "text": "={{ String($json.response || '').replace(/[*_#`|]/g, '').replace(/\\s+/g, ' ').trim().slice(0, 350) }}"
+          }
+        },
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-memory-store"
+        },
+        "operation": "insert",
+        "resource": "row"
+      },
+      "position": [
+        2400,
+        1200
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "11",
+      "name": "Save User Message",
+      "parameters": {
+        "columns": {
+          "mappingMode": "defineBelow",
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "role",
+              "id": "role",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "text",
+              "id": "text",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "value": {
+            "role": "user",
+            "text": "={{ $json.userPrompt }}"
+          }
+        },
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-memory-store"
+        },
+        "operation": "insert",
+        "resource": "row"
+      },
+      "position": [
+        2400,
+        550
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "id": "48",
+      "name": "Save User Message (chat)",
+      "parameters": {
+        "columns": {
+          "mappingMode": "defineBelow",
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "role",
+              "id": "role",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "text",
+              "id": "text",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "value": {
+            "role": "={{ $('Assemble Prompt with Context (chat)').first().json.overheard ? '' : 'user' }}",
+            "text": "={{ $json.userPrompt }}"
+          }
+        },
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ollama-memory-store"
+        },
+        "operation": "insert",
+        "resource": "row"
+      },
+      "position": [
+        2400,
+        1050
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WEHisLSSVItWn4fF",
+          "name": "HA Bearer Token"
+        }
+      },
+      "id": "13",
+      "name": "Send to Home Assistant TTS",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "contentType": "json",
+        "jsonBody": "={{ { \"entity_id\": \"tts.piper\", \"media_player_entity_id\": ($json.device_id), \"message\": ($json.response) } }}",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "responseFormat": "json",
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://10.0.30.14:8123/api/services/tts/speak"
+      },
+      "position": [
+        2620,
+        450
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "42",
+      "name": "Summarize Short-Term Memory (chat)",
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "contentType": "json",
+        "jsonBody": "={{ { \"model\": \"gpu01-primary\", \"messages\": [ { \"role\": \"user\", \"content\": ('Summarize this conversation between a family and their voice assistant for the assistant\\'s long-term memory. Write at most five plain sentences, no lists, no headings, no formatting. Keep only what is useful later: what people asked for, what they liked, names they chose, and running jokes in one sentence. Plain text only, no asterisks. Never repeat a rude or toilet word: if one was part of a joke, write sheep instead. Never write that anything rude, embarrassing or bodily was said about or happened to a person, even as a joke; leave that part out completely. Leave out facts the assistant made up.\\n\\n' + $('Load Short-Term Memory (chat)').all().filter(m => m.json && m.json.role).map(m => m.json.role + ': ' + m.json.text).join('\\n').slice(-6000)) } ], \"max_tokens\": 200 } }}",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "sendHeaders": false,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/v1/chat/completions"
+      },
+      "position": [
+        1740,
+        1000
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "5",
+      "name": "Summarize Short-Term Memory (qwen2.5:7b)",
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "contentType": "json",
+        "jsonBody": "={{ { \"model\": \"gpu01-primary\", \"messages\": [ { \"role\": \"user\", \"content\": ('Summarize this conversation for long-term memory:\\n' + $('Load Short-Term Memory').all().filter(m => m.json && m.json.role).map(m => m.json.role + ': ' + m.json.text).join('\\n').slice(-12000)) } ], \"max_tokens\": 400 } }}",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "sendHeaders": false,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/v1/chat/completions"
+      },
+      "position": [
+        1740,
+        400
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    }
+  ],
+  "settings": {
+    "binaryMode": "separate",
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

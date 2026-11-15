@@ -1,0 +1,42 @@
+---
+# traefik_register role defaults
+# These are overridden per-service via host_vars or playbook vars.
+
+traefik_host: "web-01"          # Ansible inventory hostname for the Traefik host
+traefik_host_ip: "10.0.30.10"  # kept for backwards compat; traefik_host is used for delegate_to
+traefik_dynamic_dir: /etc/traefik/dynamic
+
+# Per-service vars (set by calling playbook or host_vars):
+# traefik_service_name:   "open-webui"         # used for file name + router name
+# traefik_backend_url:    "http://10.0.30.50:3000"
+# traefik_domain:         "chat.internal"       # .internal  → internal CA
+#                                               # .yourdomain.com → ACME wildcard
+# traefik_auth:           "one_factor"          # one_factor | two_factor → adds authelia@file (forward auth)
+#                                               # oidc   → NO forward auth; service does own OIDC redirect to Authelia
+#                                               #          (use for GitLab, Grafana, NetBox, n8n — any native OIDC app)
+#                                               # none   → truly public route, no auth at all
+# traefik_extra_domains:  []                    # additional Host() rules
+# traefik_path_prefix:    ""                    # restrict the router to a PathPrefix (empty = whole host)
+# traefik_rate_limit:     false                 # apply rate-limit-api middleware
+# traefik_strip_prefix:   ""                    # prefix to strip (empty = no strip)
+# traefik_tls:            true
+# traefik_entrypoint:     "websecure"
+# traefik_backend_insecure_tls: false            # true = backend has its own self-signed
+#                                               # cert (e.g. Proxmox's built-in UI) —
+#                                               # Traefik still terminates the front end
+#                                               # with a real cert; this only skips
+#                                               # verification on the Traefik->backend
+#                                               # leg. Added 2026-08-15 for
+#                                               # pve-01.home.example.org -> Proxmox 8006.
+#
+# --- ACME / Let's Encrypt ---
+# traefik_cert_resolver:  ""                    # "" = internal CA, "letsencrypt" = ACME
+# traefik_acme_domain:    ""                    # Base domain, e.g. "example.com".
+#                                               # When set, the router requests
+#                                               # *.example.com wildcard via ACME.
+#                                               # Leave empty to omit domains block
+#                                               # (uses already-cached wildcard from
+#                                               # acme-wildcard.yml anchor route).
+
+traefik_cert_resolver: ""
+traefik_acme_domain: ""

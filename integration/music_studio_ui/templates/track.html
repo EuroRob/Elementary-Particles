@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}{{ track.artist }} — {{ track.title }} — Music Studio{% endblock %}
+{% block content %}
+<p><a href="/ui?user={{ current_user }}">&larr; back to browse</a></p>
+<h2>{{ (track.artist ~ ' — ' ~ track.title) if track.artist else track.title }}</h2>
+<div class="meta">
+  {% if track.album %}{{ track.album }}{% endif %}
+  {% if track.year %} · {{ track.year }}{% endif %}
+  {% if track.format %}<span class="badge beets_track">{{ track.format }}</span>{% endif %}
+</div>
+
+<div class="card" id="listen">
+  <h3>🎧 Listen</h3>
+  <audio id="player" controls preload="metadata" style="width:100%">
+    <source src="{{ track.play_url }}">
+    Your browser doesn't support inline audio playback.
+  </audio>
+  <div id="speed-controls" style="margin-top:0.5rem; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap">
+    <span style="opacity:0.6; font-size:0.8rem">Speed:</span>
+    {% for speed in [0.75, 1.0, 1.25, 1.5, 2.0] %}
+    <button type="button" class="speed-btn" data-speed="{{ speed }}"
+      style="padding:0.2rem 0.55rem; font-size:0.85rem;">{{ speed }}x</button>
+    {% endfor %}
+  </div>
+  <p style="opacity:0.6; font-size:0.8rem; margin-bottom:0; margin-top:0.5rem">
+    Streamed straight from Beets (nasty.internal stays canonical — nothing is copied) ·
+    <a href="{{ track.play_url }}" download>Download the original file</a> instead, if you want it.
+  </p>
+</div>
+<script>
+(function () {
+  const player = document.getElementById('player');
+  const buttons = document.querySelectorAll('.speed-btn');
+  function setSpeed(speed) {
+    player.playbackRate = speed;
+    player.preservesPitch = true;
+    player.mozPreservesPitch = true;
+    player.webkitPreservesPitch = true;
+    buttons.forEach(b => b.style.fontWeight = (parseFloat(b.dataset.speed) === speed) ? '700' : '400');
+    buttons.forEach(b => b.style.opacity = (parseFloat(b.dataset.speed) === speed) ? '1' : '0.6');
+  }
+  buttons.forEach(btn => btn.addEventListener('click', () => setSpeed(parseFloat(btn.dataset.speed))));
+  setSpeed(1.0);
+})();
+</script>
+
+{% if audio_id %}
+{% set ana_media = 'player' %}
+{% set ana_items = [{'audio_id': audio_id, 'label': track.title, 'play_url': track.play_url}] %}
+{% include "_analysis.html" %}
+{% endif %}
+
+<div class="card">
+  <h3>Your review ({{ current_user | capitalize }})</h3>
+  <form id="engagement-form">
+    <p>
+      Status:
+      <select id="eng-status">
+        <option value="new" {{ 'selected' if track.engagement.status == 'new' else '' }}>New</option>
+        <option value="reviewing" {{ 'selected' if track.engagement.status == 'reviewing' else '' }}>Reviewing</option>
+        <option value="needs_work" {{ 'selected' if track.engagement.status == 'needs_work' else '' }}>Needs Work</option>
+        <option value="approved" {{ 'selected' if track.engagement.status == 'approved' else '' }}>Approved</option>
+      </select>
+      Rating:
+      <select id="eng-rating">
+        <option value="">—</option>
+        {% for n in range(1,6) %}
+        <option value="{{ n }}" {{ 'selected' if track.engagement.rating == n else '' }}>{{ n }}★</option>
+        {% endfor %}
+      </select>
+    </p>
+    <p>
+      <textarea id="eng-notes" rows="3" style="width:100%" placeholder="Overall take on this track…">{{ track.engagement.notes or '' }}</textarea>
+    </p>
+    <button type="submit">Save</button>
+    <span id="eng-saved" style="opacity:0.6; margin-left:0.5rem; display:none">Saved.</span>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Notes history</h3>
+  <p style="opacity:0.7; font-size:0.85rem; margin-top:-0.3rem">
+    A running log — every note ever left on this track, never overwritten (the review above is just your current take).
+  </p>
+  <div id="annotation-list">
+    {% for a in annotations %}
+    <div class="annotation">
+      <div class="meta">{{ a.created_at[:16] | replace('T', ' ') }} · {{ a.category | title }}</div>
+      <div style="white-space:pre-wrap">{{ a.note }}</div>
+    </div>
+    {% else %}
+    <p style="opacity:0.6; font-size:0.9rem">No notes yet.</p>
+    {% endfor %}
+  </div>
+  <form id="annotation-form" style="margin-top:1rem">
+    <select id="ann-category">
+      <option value="general">General</option>
+      <option value="improvement">Improvement</option>
+      <option value="mix">Mix</option>
+      <option value="arrangement">Arrangement</option>
+      <option value="lyrics">Lyrics</option>
+      <option value="performance">Performance</option>
+    </select>
+    <textarea id="ann-note" rows="2" style="width:100%; margin-top:0.4rem" placeholder="Add a dated note — what needs work, what changed, an idea for later…"></textarea>
+    <button type="submit" style="margin-top:0.4rem">Add note</button>
+  </form>
+</div>
+
+<script>
+document.getElementById('engagement-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = {
+    status: document.getElementById('eng-status').value,
+    rating: document.getElementById('eng-rating').value ? parseInt(document.getElementById('eng-rating').value) : null,
+    notes: document.getElementById('eng-notes').value,
+  };
+  const resp = await fetch('/api/engagement/{{ item_id }}?user={{ current_user }}', {
+    method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+  });
+  if (resp.ok) {
+    const el = document.getElementById('eng-saved');
+    el.style.display = 'inline'; setTimeout(() => el.style.display = 'none', 2000);
+  }
+});
+
+document.getElementById('annotation-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const noteEl = document.getElementById('ann-note');
+  if (!noteEl.value.trim()) return;
+  const body = {
+    entity_type: 'beets_track',
+    entity_id: '{{ item_id }}',
+    note: noteEl.value,
+    category: document.getElementById('ann-category').value,
+  };
+  const resp = await fetch('/api/annotations', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+  });
+  if (resp.ok) {
+    location.reload();
+  }
+});
+</script>
+{% endblock %}

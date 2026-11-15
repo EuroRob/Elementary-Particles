@@ -1,0 +1,147 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/backup_jobs.yml
+#
+# Registers scheduled vzdump backup jobs via the Proxmox REST API
+# (/cluster/backup). Same API-only rationale as nas_backup_storage.yml —
+# delegates to localhost, uses the real Proxmox node name from Vault
+# (pve_api_node, set by nas_backup_storage.yml — run that first).
+#
+# Idempotent by `comment` (Proxmox job ids are random UUIDs assigned at
+# creation, not something we control): one job per comment is enforced.
+#
+# Updates an existing job's retention in place via PUT /cluster/backup/<id>
+# -- added 2026-09-13 after this exact gap let real config drift go
+# unnoticed: host_vars said `retention: "keep-last=3,keep-daily=7,
+# keep-weekly=4"` but the LIVE job on pve-01 had been hand-edited (or never
+# matched) and nothing here would have caught or fixed that, since
+# "Create missing backup jobs" only acts on jobs that don't exist yet by
+# comment. Confirmed live: PUT accepts a single changed field
+# (`prune-backups`) without needing to resend the whole job body --
+# Proxmox merges rather than replaces on update.
+# Schedule drift is fixed the same way since 2026-10-18 (pve-02 06:00 -> 23:15).
+# Still not built: storage/compress/exclude drift detection.
+#
+# Default job excludes the NAS VM itself (nas-01, vmid varies per
+# environment — set in pve_backup_jobs) — backing it up onto its own
+# storage is circular. See host_vars/pve-01.yml for the real exclude list.
+# =============================================================================
+
+- name: "PVE-API: Read existing cluster backup jobs"
+  ansible.builtin.uri:
+    url: "{{ pve_api_url }}/cluster/backup"
+    headers: "{{ pve_api_headers }}"
+    validate_certs: false
+    method: GET
+  register: pve_backup_jobs_existing
+  delegate_to: localhost
+  become: false
+  no_log: true
+  tags: [backup, pve-api]
+
+- name: "PVE-API: Create missing backup jobs"
+  ansible.builtin.uri:
+    url: "{{ pve_api_url }}/cluster/backup"
+    headers: "{{ pve_api_headers }}"
+    validate_certs: false
+    method: POST
+    body_format: form-urlencoded
+    body:
+      schedule: "{{ item.schedule }}"
+      storage: "{{ item.storage }}"
+      mode: "{{ item.mode | default('snapshot') }}"
+      compress: "{{ item.compress | default('zstd') }}"
+      all: "{{ item.all | default(1) }}"
+      exclude: "{{ item.exclude | default('') }}"
+      node: "{{ pve_api_node }}"
+      enabled: 1
+      prune-backups: "{{ item.retention }}"
+      comment: "{{ item.comment }}"
+    status_code: [200]
+  delegate_to: localhost
+  become: false
+  loop: "{{ pve_backup_jobs }}"
+  loop_control:
+    label: "{{ item.comment }}"
+  when: item.comment not in (pve_backup_jobs_existing.json.data | default([]) | map(attribute='comment') | list)
+  tags: [backup, pve-api]
+
+- name: "PVE-API: Update retention on existing jobs that have drifted from host_vars"
+  ansible.builtin.uri:
+    url: "{{ pve_api_url }}/cluster/backup/{{ existing_job.id }}"
+    headers: "{{ pve_api_headers }}"
+    validate_certs: false
+    method: PUT
+    body_format: form-urlencoded
+    body:
+      prune-backups: "{{ item.retention }}"
+    status_code: [200]
+  delegate_to: localhost
+  become: false
+  vars:
+    existing_job: "{{ (pve_backup_jobs_existing.json.data | default([]) | selectattr('comment', 'equalto', item.comment) | list | first) | default(None) }}"
+    # The API returns prune-backups as a dict (e.g. {"keep-last": "3",
+    # "keep-daily": "7"}), not the "keep-last=3,keep-daily=7" string form
+    # host_vars uses -- normalize BOTH sides to a sorted "key=val,key=val"
+    # string before comparing, or every run would show false-positive
+    # drift and re-PUT unnecessarily.
+    # NOTE: map('join', '=') on a list of {key, value} dicts is a real trap
+    # here -- Jinja's `join` filter treats each dict as an iterable of its
+    # own field NAMES ("key", "value") when applied via map, not the
+    # key/value pair itself, silently producing the wrong string instead
+    # of erroring. A plain loop over dictsort builds the "k=v" pairs.
+    # (Was json_query until 2026-10-18: it needs jmespath on the controller,
+    # which the IaC VM no longer has, so this task failed the whole role.)
+    existing_retention_normalized: >-
+      {% for k, v in (existing_job['prune-backups'] | default({})) | dictsort %}{{ k }}={{ v }}{{ '' if loop.last else ',' }}{% endfor %}
+    desired_retention_normalized: >-
+      {{ (item.retention.split(',') | sort) | join(',') }}
+  loop: "{{ pve_backup_jobs }}"
+  loop_control:
+    label: "{{ item.comment }}"
+  when: >-
+    existing_job is not none and
+    existing_retention_normalized != desired_retention_normalized
+  tags: [backup, pve-api]
+
+- name: "PVE-API: Update schedule on existing jobs that have drifted from host_vars"
+  ansible.builtin.uri:
+    url: "{{ pve_api_url }}/cluster/backup/{{ existing_job.id }}"
+    headers: "{{ pve_api_headers }}"
+    validate_certs: false
+    method: PUT
+    body_format: form-urlencoded
+    body:
+      schedule: "{{ item.schedule }}"
+    status_code: [200]
+  delegate_to: localhost
+  become: false
+  vars:
+    existing_job: "{{ (pve_backup_jobs_existing.json.data | default([]) | selectattr('comment', 'equalto', item.comment) | list | first) | default(None) }}"
+  loop: "{{ pve_backup_jobs }}"
+  loop_control:
+    label: "{{ item.comment }}"
+  when: existing_job is not none and existing_job.schedule != item.schedule
+  tags: [backup, pve-api]
+
+- name: "PVE-API: Display current backup jobs on this node"
+  ansible.builtin.uri:
+    url: "{{ pve_api_url }}/cluster/backup"
+    headers: "{{ pve_api_headers }}"
+    validate_certs: false
+    method: GET
+  register: pve_backup_jobs_final
+  delegate_to: localhost
+  become: false
+  tags: [backup, pve-api, verify]
+
+- name: "PVE-API: Show job summary (schedule/storage/retention only)"
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.comment }}: schedule={{ item.schedule }} storage={{ item.storage }}
+      node={{ item.node }} exclude={{ item.exclude | default('') }}
+      retention={{ item['prune-backups'] | default('') }}
+  loop: "{{ pve_backup_jobs_final.json.data }}"
+  loop_control:
+    label: "{{ item.comment | default(item.id) }}"
+  tags: [backup, pve-api, verify]

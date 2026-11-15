@@ -1,0 +1,15 @@
+---
+- name: restart systemd-timesyncd
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: restarted
+
+- name: restart ntpsec
+  ansible.builtin.systemd:
+    name: ntpsec
+    state: restarted
+
+- name: restart chrony
+  ansible.builtin.systemd:
+    name: chrony
+    state: restarted

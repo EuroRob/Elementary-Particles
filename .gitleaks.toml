@@ -1,0 +1,37 @@
+# gitleaks configuration for scripts/ci/check.sh (and for hand-run scans).
+# Default rules, plus a reviewed allowlist. Every entry names why it is safe.
+# A real secret must never be allowlisted here: rotate it and remove it instead.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Reviewed false positives"
+regexTarget = "line"      # regexes below match the whole line, not just the captured value
+paths = [
+  '''(^|/)__pycache__/''',
+  '''(^|/)\.pytest_cache/''',
+]
+regexes = [
+  # integration/test_code_partner.py: fixtures the code partner's own secret scan must catch
+  '''Sup3rS3cretValue''',
+  '''abcdefghijklmnop1234''',
+  '''hvs\.CAES[A-Za-z]{20,}''',
+  '''PVEAPIToken=terraform@pve!t=e4b8da72-1111''',
+  # IaC/vault_preflight.py: NordVPN setup comment with the literal placeholder <ACCESS_TOKEN>
+  '''token:<ACCESS_TOKEN>''',
+  # Documentation placeholders (setup guides under integration/ and IaC/)
+  '''(?i)\byour[-_][a-z_-]*(token|key|ip|password)\b''',
+  '''c1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6''',
+  '''secret_key_12345''',
+  '''abc123def456''',
+  '''nc-user:app_password''',
+  '''2eKz7--Abc-D_efX-GHIJ_kl_mno''',
+  '''pihole_secret_pass_123''',
+  '''eyJ0eXAiOiJKV1QiLCJhbGc\.\.\.''',
+  '''Bearer token123\b''',
+  '''curl -X POST http://10\.0\.1\.100:8000/journal/voice''',   # example in DOCKER_COMPOSE_DISTRIBUTED_SETUP.md, token on the next line is YOUR_TOKEN
+  # Not secrets: a WireGuard *server* public key, and an n8n node output name
+  '''opnsense_nordlynx_server_pubkey''',
+  '''outputKey: ollama_gpu02_wake''',
+]

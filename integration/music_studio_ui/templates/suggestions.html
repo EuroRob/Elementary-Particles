@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Song suggestions — Music Studio{% endblock %}
+{% block content %}
+<h2>Song suggestions</h2>
+<p class="muted">
+  Proposed by gpu-01's local model (gpu01-primary) from folder and file names — nothing leaves the homelab.
+  Accept to create the song (and its sheet in the songbook repo), untick files that don't belong, change roles,
+  or merge into a song that already exists. Files under 6 s are not considered.
+</p>
+
+<div class="chips">
+  {% for s in ['pending', 'accepted', 'merged', 'rejected', 'unassigned'] %}
+  <a class="chip {{ 'active' if status == s else '' }}"
+     href="/ui/suggestions?status={{ s }}&user={{ current_user }}">{{ s | capitalize }} ({{ summary.by_status.get(s, 0) }})</a>
+  {% endfor %}
+</div>
+
+<form class="search-bar" method="get" action="/ui/suggestions">
+  <input type="hidden" name="status" value="{{ status }}">
+  <input type="hidden" name="user" value="{{ current_user }}">
+  <input type="search" name="q" value="{{ query }}" placeholder="Filter by title, folder or project…">
+  <select name="folder">
+    <option value="">All folders</option>
+    {% for f in summary.folders %}
+    <option value="{{ f.folder }}" {{ 'selected' if f.folder == folder else '' }}>{{ f.folder }} ({{ f.pending }})</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Filter</button>
+</form>
+
+<p class="muted">{{ total }} {{ status }} · page {{ page }} of {{ pages }}</p>
+
+<datalist id="song-options"></datalist>
+
+{% for s in items %}
+<div class="card suggestion" data-id="{{ s.id }}">
+  <div class="row-actions" style="margin-bottom:0.4rem">
+    {% if status in ['pending', 'unassigned'] %}
+    <input type="text" class="f-title" value="{{ '' if s.kind == 'unassigned' else s.title }}"
+           placeholder="Song title" style="flex:1; font-weight:600; min-width:14rem">
+    <input type="text" class="f-project" value="{{ s.project }}" placeholder="Project / artist" style="width:11rem">
+    <select class="f-kind">
+      {% for k in ['original', 'cover', 'commercial', 'unknown'] %}
+      <option value="{{ k }}" {{ 'selected' if k == s.kind else '' }}>{{ k }}</option>
+      {% endfor %}
+    </select>
+    {% else %}
+    <h3 style="margin:0">{{ s.title }}</h3>
+    {% if s.song_id %}<a href="/ui/song/{{ s.song_id }}?user={{ current_user }}">open song &rarr;</a>{% endif %}
+    {% endif %}
+  </div>
+  <div class="meta">
+    <span class="badge {{ s.kind }}">{{ s.kind }}</span>
+    {% if s.confidence is not none %}confidence {{ '%.0f' % (s.confidence * 100) }}% · {% endif %}
+    <code>{{ s.folder }}</code>
+    {% if s.reason %} · {{ s.reason }}{% endif %}
+  </div>
+  {% if s.similar %}
+  <div class="meta">Looks like:
+    {% for o in s.similar %}
+      {% if o.song_id %}<a href="/ui/song/{{ o.song_id }}?user={{ current_user }}">{{ o.title }}</a>
+      {% else %}<a href="/ui/suggestions?status={{ o.status }}&q={{ o.title | urlencode }}&user={{ current_user }}">{{ o.title }}</a>{% endif %}
+      <span class="muted">({{ o.folder }}, {{ o.status }})</span>{{ ',' if not loop.last }}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <table class="files">
+    {% for f in s.files %}
+    <tr data-audio="{{ f.audio_id }}">
+      {% if status in ['pending', 'unassigned'] %}
+      <td><input type="checkbox" class="f-pick" {{ '' if s.kind == 'unassigned' else 'checked' }}></td>
+      <td><select class="f-role">
+        {% for r in ['final_mix', 'mix', 'master', 'demo', 'take', 'stem', 'sketch', 'reference'] %}
+        <option value="{{ r }}" {{ 'selected' if r == (f.role or 'take') else '' }}>{{ r }}</option>
+        {% endfor %}
+      </select></td>
+      {% else %}
+      <td><span class="badge">{{ f.role or '—' }}</span></td>
+      {% endif %}
+      <td style="width:100%">{{ f.name }}</td>
+      <td class="muted">{{ '%d:%02d' % ((f.duration_sec or 0) // 60, (f.duration_sec or 0) % 60) }}</td>
+      <td>{% if f.play_url %}<button type="button" class="play" data-src="{{ f.play_url }}" title="Play">▶</button>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  {% if status in ['pending', 'unassigned'] %}
+  <div class="row-actions" style="margin-top:0.6rem">
+    <button type="button" class="act-accept">{{ 'Create song from ticked files' if s.kind == 'unassigned' else 'Accept as new song' }}</button>
+    <input type="text" class="f-into" list="song-options" placeholder="…or merge into existing song" style="width:16rem">
+    <button type="button" class="act-merge">Merge</button>
+    {% if s.kind != 'unassigned' %}<button type="button" class="act-reject" style="border-color:var(--coral); color:var(--coral); background:transparent">Reject</button>{% endif %}
+    <span class="result muted"></span>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<p class="muted">Nothing here.</p>
+{% endfor %}
+
+{% if pages > 1 %}
+<div class="chips">
+  {% if page > 1 %}<a class="chip" href="?status={{ status }}&folder={{ folder | urlencode }}&q={{ query | urlencode }}&page={{ page - 1 }}&user={{ current_user }}">&larr; previous</a>{% endif %}
+  {% if page < pages %}<a class="chip" href="?status={{ status }}&folder={{ folder | urlencode }}&q={{ query | urlencode }}&page={{ page + 1 }}&user={{ current_user }}">next &rarr;</a>{% endif %}
+</div>
+{% endif %}
+
+<audio id="preview" preload="none"></audio>
+<script>
+(function () {
+  const user = {{ current_user | tojson }};
+  const preview = document.getElementById('preview');
+  let playing = null;
+  document.querySelectorAll('button.play').forEach(b => b.addEventListener('click', () => {
+    if (playing === b) { preview.pause(); b.textContent = '▶'; playing = null; return; }
+    if (playing) playing.textContent = '▶';
+    preview.src = b.dataset.src; preview.play(); b.textContent = '❚❚'; playing = b;
+  }));
+  preview.addEventListener('ended', () => { if (playing) playing.textContent = '▶'; playing = null; });
+
+  // Song picker for "merge into": search as you type.
+  const songIds = {};
+  const list = document.getElementById('song-options');
+  let timer = null;
+  document.querySelectorAll('.f-into').forEach(inp => inp.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const r = await fetch('/api/songs/search?q=' + encodeURIComponent(inp.value));
+      if (!r.ok) return;
+      list.innerHTML = '';
+      for (const s of await r.json()) {
+        const label = s.title + (s.project ? ' — ' + s.project : '');
+        songIds[label] = s.id;
+        const o = document.createElement('option'); o.value = label; list.appendChild(o);
+      }
+    }, 250);
+  }));
+
+  function payload(card) {
+    const files = [];
+    card.querySelectorAll('tr[data-audio]').forEach(tr => {
+      if (tr.querySelector('.f-pick').checked)
+        files.push({audio_id: tr.dataset.audio, role: tr.querySelector('.f-role').value});
+    });
+    return {title: card.querySelector('.f-title').value, project: card.querySelector('.f-project').value,
+            kind: card.querySelector('.f-kind').value, files};
+  }
+  async function send(card, url, body) {
+    const out = card.querySelector('.result');
+    out.className = 'result muted'; out.textContent = 'working…';
+    const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                body: body ? JSON.stringify(body) : null});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { out.className = 'result err'; out.textContent = d.detail || ('error ' + r.status); return; }
+    out.className = 'result ok';
+    if (d.song_id) {
+      out.innerHTML = (d.status === 'merged' ? 'merged — ' : 'created — ') +
+        '<a href="/ui/song/' + d.song_id + '?user=' + user + '">open song</a>';
+    } else { out.textContent = d.status; }
+    card.querySelectorAll('button.act-accept, button.act-merge, button.act-reject').forEach(b => b.disabled = true);
+    card.style.opacity = 0.6;
+  }
+  document.querySelectorAll('.suggestion').forEach(card => {
+    const id = card.dataset.id;
+    const acc = card.querySelector('.act-accept');
+    if (!acc) return;
+    acc.addEventListener('click', () => send(card, '/api/suggestions/' + id + '/accept', payload(card)));
+    card.querySelector('.act-merge').addEventListener('click', () => {
+      const label = card.querySelector('.f-into').value;
+      if (!songIds[label]) { card.querySelector('.result').textContent = 'pick a song from the list first'; return; }
+      send(card, '/api/suggestions/' + id + '/accept', {...payload(card), into_song_id: songIds[label]});
+    });
+    const rej = card.querySelector('.act-reject');
+    if (rej) rej.addEventListener('click', () => send(card, '/api/suggestions/' + id + '/reject'));
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,136 @@
+---
+# pgBackRest: continuous WAL archiving + weekly full / daily incremental backups
+# (added 2026-10-23). Off unless postgres_pgbackrest_enabled.
+#
+# History: archive_mode was "on" with 'pgbackrest archive-push' long before
+# pgBackRest existed on the host; every segment failed, WAL piled up and filled
+# the disk on 2026-09-02. Hence: async archiving with a queue cap
+# (postgres_pgbackrest_queue_max) and the health metrics/alerts below.
+#
+# The NFS repo is root_squash'd: only the postgres user (uid 104 on pg-01) can
+# read/write it; `ls` as root on the mount gets "Permission denied" by design.
+# Turning archive_mode on needs ONE restart (postgres_archive_mode in config.yml
+# only reloads; see postgres_allow_restart).
+
+- name: pgBackRest | install packages
+  ansible.builtin.apt:
+    name: [pgbackrest, nfs-common]
+    state: present
+
+- name: pgBackRest | local directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  loop: [/var/spool/pgbackrest, /var/log/pgbackrest, /etc/pgbackrest]
+
+# No mode/owner here: once mounted, this path IS the root_squash'd NFS share and
+# root can't chmod it (the task would fail on every re-run).
+- name: pgBackRest | repo mount point
+  ansible.builtin.file:
+    path: "{{ postgres_pgbackrest_repo_path }}"
+    state: directory
+
+# hard: never return short writes into a backup; x-systemd.automount + _netdev +
+# mount-timeout: a nas-01 outage can't hang boot, and async archiving keeps
+# commits independent of the mount.
+- name: pgBackRest | fstab entry for the NFS repo
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '\s{{ postgres_pgbackrest_repo_path | regex_escape }}\s+nfs4\s'
+    line: "{{ postgres_pgbackrest_nfs_source }} {{ postgres_pgbackrest_repo_path }} nfs4 vers=4.2,hard,noatime,_netdev,x-systemd.automount,x-systemd.mount-timeout=30s,x-systemd.idle-timeout=0 0 0"
+  register: _pgbr_fstab
+
+- name: pgBackRest | activate the automount
+  ansible.builtin.systemd:
+    name: "{{ postgres_pgbackrest_repo_path | regex_replace('^/', '') | replace('/', '-') }}.automount"
+    state: started
+    daemon_reload: "{{ _pgbr_fstab is changed }}"
+
+- name: pgBackRest | config
+  ansible.builtin.template:
+    src: pgbackrest.conf.j2
+    dest: /etc/pgbackrest/pgbackrest.conf
+    owner: root
+    group: postgres
+    mode: "0640"
+
+# The Debian package ships a sample /etc/pgbackrest.conf (pg13 example); keep it
+# out of the way so nobody mistakes it for the live config.
+- name: pgBackRest | park the package sample config
+  ansible.builtin.command: mv /etc/pgbackrest.conf /etc/pgbackrest.conf.dist
+  args:
+    removes: /etc/pgbackrest.conf
+
+- name: pgBackRest | stanza-create (idempotent)
+  ansible.builtin.command: pgbackrest --stanza={{ postgres_pgbackrest_stanza }} stanza-create
+  become: true
+  become_user: postgres
+  register: _pgbr_stanza
+  changed_when: "'already exists' not in _pgbr_stanza.stdout"
+
+# Times are UTC. 05:30 is clear of the patch window all year (05:00 Berlin =
+# 03:00 UTC summer / 04:00 UTC winter, pg-01 restart up to ~45 min in), of the
+# Sunday 00:15 pg_dumpall and of pve-01's vzdump of this VM (~02:00-03:20 UTC).
+- name: pgBackRest | weekly full backup (Sunday)
+  ansible.builtin.cron:
+    name: "pgBackRest full backup"
+    user: postgres
+    weekday: "0"
+    hour: "{{ postgres_pgbackrest_backup_hour }}"
+    minute: "{{ postgres_pgbackrest_backup_minute }}"
+    job: "nice -n 10 pgbackrest --stanza={{ postgres_pgbackrest_stanza }} --type=full backup >/dev/null 2>&1"
+
+- name: pgBackRest | daily incremental backup (Mon-Sat)
+  ansible.builtin.cron:
+    name: "pgBackRest incremental backup"
+    user: postgres
+    weekday: "1-6"
+    hour: "{{ postgres_pgbackrest_backup_hour }}"
+    minute: "{{ postgres_pgbackrest_backup_minute }}"
+    job: "nice -n 10 pgbackrest --stanza={{ postgres_pgbackrest_stanza }} --type=incr backup >/dev/null 2>&1"
+
+- name: pgBackRest | health exporter script
+  ansible.builtin.copy:
+    src: pgbackrest_textfile.sh
+    dest: /usr/local/bin/pgbackrest_textfile.sh
+    mode: "0755"
+
+- name: pgBackRest | health exporter units
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: pgbackrest-textfile.service
+      content: |
+        [Unit]
+        Description=Write pgBackRest/WAL-archiver health metrics for node_exporter
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/local/bin/pgbackrest_textfile.sh {{ postgres_pgbackrest_stanza }}
+    - name: pgbackrest-textfile.timer
+      content: |
+        [Unit]
+        Description=pgBackRest health metrics every 5 minutes
+
+        [Timer]
+        OnBootSec=3min
+        OnUnitActiveSec=5min
+        AccuracySec=30s
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: _pgbr_units
+
+- name: pgBackRest | enable health exporter timer
+  ansible.builtin.systemd:
+    name: pgbackrest-textfile.timer
+    state: started
+    enabled: true
+    daemon_reload: "{{ _pgbr_units is changed }}"

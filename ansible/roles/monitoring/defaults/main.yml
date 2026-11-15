@@ -1,0 +1,46 @@
+---
+prometheus_version:       "latest"
+prometheus_image:         "prom/prometheus:{{ prometheus_version }}"
+prometheus_port:          9090
+prometheus_data_dir:      "/opt/monitoring/prometheus"
+prometheus_scrape_interval: "30s"
+prometheus_retention:     "30d"
+
+grafana_version:          "latest"
+grafana_image:            "grafana/grafana:{{ grafana_version }}"
+grafana_port:             3000
+grafana_data_dir:         "/opt/monitoring/grafana"
+grafana_host:             "grafana.{{ base_domain | default('home.example.org') }}"
+
+monitoring_compose_dir:   "/opt/monitoring"
+
+alertmanager_version:     "latest"
+alertmanager_image:       "prom/alertmanager:{{ alertmanager_version }}"
+alertmanager_port:        9093
+alertmanager_data_dir:    "/opt/monitoring/alertmanager-data"
+alertmanager_rules_dir:   "/opt/monitoring/rules"
+# n8n workflow with a webhook trigger at this path formats the Alertmanager payload
+# and posts to the "🚨 System Alerts" Matrix room (!EXAMPLEROOMID0000:home.example.org).
+alertmanager_n8n_webhook_url: "http://n8n:5678/webhook/alertmanager"
+# PostgresRestarted routes here instead — the IaC VM, deliberately NOT
+# through n8n. See alertmanager.yml.j2's route block for why.
+alertmanager_iac_api_webhook_url: "https://iac.internal:8000/api/webhooks/pg01-restarted"
+# ha-bridge added 2026-09-13 — genuinely independent alert path (Home
+# Assistant Companion app push), not n8n/Matrix. See docker-compose.yml.j2
+# and alertmanager.yml.j2's route block.
+alertmanager_ha_bridge_webhook_url: "http://ha-bridge:5242/alert"
+ha_bridge_notify_service: "mobile_app_robs_iphone"
+
+# Dead man's switch (added 2026-10-22, after Alertmanager sat dead for 3
+# days post-reboot -- the second time, see the data-dir note in
+# tasks/main.yml). An always-firing Prometheus "Watchdog" alert is routed
+# here every ~2 min; HA (separate VM) pages if it stops. Webhook id in Vault.
+vault_ha_deadman_path:    "secret/home-assistant/deadman"
+alertmanager_deadman_repeat_interval: "2m"
+
+# Self-heal timer on web-01 -- see tasks/watchdog.yml.
+monitoring_watchdog_containers: [alertmanager, prometheus, ha-bridge]
+monitoring_watchdog_interval: "2min"
+
+vault_homepage_path:      "secret/homepage/widgets"
+vault_postgres_path:      "secret/postgres/pg-01"

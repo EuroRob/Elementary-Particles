@@ -1,0 +1,185 @@
+---
+# backrest role — see defaults/main.yml and docs/BACKREST_DEPLOYMENT.md.
+
+# ---- Preflight ---------------------------------------------------------------
+- name: Check restic version (Backrest refuses older, and would download its own)
+  ansible.builtin.command: "{{ backrest_restic_bin }} version"
+  register: backrest_restic_ver
+  changed_when: false
+
+- name: Assert restic >= {{ backrest_restic_min_version }}
+  ansible.builtin.assert:
+    that:
+      - (backrest_restic_ver.stdout.split()[1]) is version(backrest_restic_min_version, '>=')
+    fail_msg: "{{ backrest_restic_ver.stdout }} is older than {{ backrest_restic_min_version }}"
+
+# ---- Secrets from Vault (controller-side, never printed) --------------------------
+- name: Read Backrest admin password from Vault
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    engine_mount_point: secret
+    path: "{{ backrest_vault_admin_path }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+  register: backrest_vault_admin
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: Read repo credentials from Vault
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    engine_mount_point: secret
+    path: "{{ item.vault_path }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+  loop: "{{ backrest_repos }}"
+  loop_control:
+    label: "{{ item.id }}"
+  register: backrest_vault_repos
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+# ---- Install ------------------------------------------------------------------
+- name: Install htpasswd (bcrypt for the admin login)
+  ansible.builtin.apt:
+    name: apache2-utils
+    state: present
+    install_recommends: false
+
+- name: Create backrest system user
+  ansible.builtin.user:
+    name: "{{ backrest_user }}"
+    system: true
+    home: "{{ backrest_data_dir }}"
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ backrest_user }}"
+    mode: "{{ item.mode }}"
+  loop:
+    # 0770: Backrest rewrites config.json itself (temp file + rename in this dir).
+    - { path: "{{ backrest_config_dir }}", owner: root, mode: "0770" }
+    - { path: "{{ backrest_config_dir }}/secrets", owner: root, mode: "0750" }
+    - { path: "{{ backrest_data_dir }}", owner: "{{ backrest_user }}", mode: "0700" }
+    - { path: "{{ backrest_cache_dir }}", owner: "{{ backrest_user }}", mode: "0700" }
+
+- name: Download Backrest release (sha256-checked against the release checksums file)
+  ansible.builtin.get_url:
+    url: "{{ backrest_release_base }}/{{ backrest_tarball }}"
+    dest: "/tmp/{{ backrest_tarball }}"
+    checksum: "sha256:{{ backrest_release_base }}/backrest_{{ backrest_version }}_checksums.txt"
+    mode: "0644"
+  register: backrest_download
+
+- name: Install backrest binary
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ backrest_tarball }}"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [backrest]
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart backrest
+
+# ---- Per-repo secrets + guid ----------------------------------------------------
+- name: Write repo password files (RESTIC_PASSWORD_FILE — keeps them out of config.json)
+  ansible.builtin.copy:
+    dest: "{{ backrest_config_dir }}/secrets/{{ item.item.id }}.pass"
+    content: "{{ item.secret.repo_password }}"
+    owner: root
+    group: "{{ backrest_user }}"
+    mode: "0440"
+  loop: "{{ backrest_vault_repos.results }}"
+  loop_control:
+    label: "{{ item.item.id }}"
+  no_log: true
+
+# Backrest requires each repo's 64-hex guid = `restic cat config --json` → id.
+# Needs the repo's drive to be attached (rest-server up) at deploy time.
+- name: Read repo guid from the live repository
+  ansible.builtin.command: "{{ backrest_restic_bin }} cat config --json --no-lock"
+  environment:
+    RESTIC_REPOSITORY: "{{ item.item.uri }}"
+    RESTIC_REST_USERNAME: "{{ item.secret.rest_user }}"
+    RESTIC_REST_PASSWORD: "{{ item.secret.rest_password }}"
+    RESTIC_PASSWORD_FILE: "{{ backrest_config_dir }}/secrets/{{ item.item.id }}.pass"
+    RESTIC_CACHE_DIR: "{{ backrest_cache_dir }}"
+  loop: "{{ backrest_vault_repos.results }}"
+  loop_control:
+    label: "{{ item.item.id }}"
+  register: backrest_repo_config
+  changed_when: false
+  no_log: true
+
+- name: Collect repo guids
+  ansible.builtin.set_fact:
+    backrest_repo_guids: "{{ backrest_repo_guids | default({}) | combine({item.item.item.id: (item.stdout | from_json).id}) }}"
+  loop: "{{ backrest_repo_config.results }}"
+  loop_control:
+    label: "{{ item.item.item.id }}"
+
+- name: Assert guids are 64 hex chars
+  ansible.builtin.assert:
+    that: backrest_repo_guids[item.id] is match('^[0-9a-f]{64}$')
+  loop: "{{ backrest_repos }}"
+  loop_control:
+    label: "{{ item.id }}"
+
+# ---- Admin bcrypt (computed on the target, password passed via stdin) --------
+- name: Check whether config.json already exists
+  ansible.builtin.stat:
+    path: "{{ backrest_config_dir }}/config.json"
+  register: backrest_config_stat
+
+- name: Hash admin password (bcrypt, cost 12)
+  ansible.builtin.command: htpasswd -niBC 12 "{{ backrest_admin_user }}"
+  args:
+    stdin: "{{ backrest_vault_admin.secret.admin_password }}"
+  register: backrest_admin_hash
+  changed_when: false
+  no_log: true
+  when: not backrest_config_stat.stat.exists or backrest_config_force | bool
+
+- name: Seed config.json (only if absent, or with backrest_config_force=true)
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ backrest_config_dir }}/config.json"
+    owner: "{{ backrest_user }}"
+    group: "{{ backrest_user }}"
+    mode: "0600"
+  no_log: true
+  notify: Restart backrest
+  when: not backrest_config_stat.stat.exists or backrest_config_force | bool
+
+- name: systemd unit
+  ansible.builtin.template:
+    src: backrest.service.j2
+    dest: /etc/systemd/system/backrest.service
+    mode: "0644"
+  notify: [Reload systemd, Restart backrest]
+
+- name: Apply unit/config changes now
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable + start backrest
+  ansible.builtin.systemd:
+    name: backrest
+    enabled: true
+    state: started
+
+- name: Wait for the UI to answer
+  ansible.builtin.uri:
+    url: "http://{{ backrest_listen }}/"
+    status_code: [200]
+  register: backrest_http
+  retries: 10
+  delay: 3
+  until: backrest_http.status == 200

@@ -1,0 +1,16 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DOMO",
+        "data": {
+          "url": "domo-router URL",
+          "key": "HA key (Vault secret/domo/ha)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "DOMO is already set up."
+    }
+  }
+}

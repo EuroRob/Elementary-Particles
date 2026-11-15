@@ -1,0 +1,25 @@
+---
+# =============================================================================
+# Playbook: deploy_node_exporter.yml
+#
+# Installs node_exporter (with textfile collector enabled) fleet-wide.
+# Prometheus's prometheus.yml.j2 has scraped every host on :9100 since it was
+# written, but nothing ever actually installed node_exporter anywhere —
+# discovered 2026-08-04 while investigating a gpu-01 OOM hang that had zero
+# memory/swap metrics to show for it.
+#
+# Run against one host first:
+#   ansible-playbook -i inventory/services.yml playbooks/deploy_node_exporter.yml --limit gpu-01
+#
+# Run fleet-wide once verified:
+#   ansible-playbook -i inventory/services.yml playbooks/deploy_node_exporter.yml
+# =============================================================================
+
+- name: "Deploy node_exporter"
+  hosts: all
+  become: true
+  gather_facts: true
+  tags: [node_exporter]
+
+  roles:
+    - node_exporter

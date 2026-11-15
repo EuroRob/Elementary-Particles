@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# alert.sh — post a failure notification to n8n webhook
+set -euo pipefail
+JOB="${1:-unknown}"
+MSG="${2:-backup failure}"
+curl -sf --max-time 10 \
+  -X POST "{{ restic_alert_webhook }}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"host\": \"{{ inventory_hostname }}\",
+    \"job\": \"${JOB}\",
+    \"message\": \"${MSG}\",
+    \"severity\": \"critical\",
+    \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+  }" || true   # never fail the calling script because the webhook failed

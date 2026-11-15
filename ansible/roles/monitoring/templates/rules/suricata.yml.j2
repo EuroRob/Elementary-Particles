@@ -1,0 +1,52 @@
+{# Prometheus rules for fw-01 Suricata, fed by scripts/suricata_alert_exporter.py
+   on the IaC VM (added 2026-10-22). raw block: these use Prometheus's own
+   {{ $labels }} templating, which Jinja must not touch. #}
+{% raw %}
+groups:
+  - name: suricata
+    rules:
+      # The one Suricata alert that pages: an INTERNAL host as the source of a
+      # malware / C2 / coinminer / attack-response / abuse.ch hit. Inbound
+      # probes and reputation hits are only counted (suricata_alerts_total).
+      # Second clause matters: increase() returns 0 for a series' first
+      # sample, so a brand-new src_ip/signature combination -- i.e. the very
+      # first sign of a compromise -- would otherwise never fire.
+      - alert: SuricataSuspectHost
+        expr: |
+          (sum by (src_ip, category, signature) (increase(suricata_suspect_host_alerts_total[15m])) > 0)
+          or
+          (sum by (src_ip, category, signature) (suricata_suspect_host_alerts_total unless suricata_suspect_host_alerts_total offset 15m))
+        labels:
+          severity: critical
+        annotations:
+          summary: "Suricata: {{ $labels.src_ip }} may be compromised ({{ $labels.category }})"
+          description: "fw-01 saw internal host {{ $labels.src_ip }} as the SOURCE of '{{ $labels.signature }}' in the last 15 min. Details: on the IaC VM `journalctl --user -u suricata-alert-exporter -o cat | grep {{ $labels.src_ip }}`, or OPNsense -> Services -> Intrusion Detection -> Alerts."
+
+      - alert: SuricataDown
+        expr: suricata_up == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Suricata IDS on fw-01 is not running"
+          description: "OPNsense reports the IDS service as not running for 10+ min. Check Services -> Intrusion Detection -> Log File, and fw-01 free memory."
+
+      # Would have caught the 6 weeks (2026-09-08 -> 10-22) it ran with 0 rules.
+      - alert: SuricataNoRules
+        expr: suricata_rules_installed < 1000
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Suricata on fw-01 is running blind ({{ $value }} rules)"
+          description: "Fewer than 1000 rules installed. Re-run the opnsense role with --tags suricata (enables opnsense_suricata_rulesets + update_rules) and check the Suricata log for 'rule reload complete'."
+
+      - alert: SuricataExporterDown
+        expr: up{job="suricata_alert_exporter"} == 0 or (time() - suricata_exporter_last_success_timestamp_seconds) > 600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Suricata alert exporter (IaC VM) is down or can't poll fw-01"
+          description: "No successful poll of the OPNsense IDS API for 10+ min -- Suricata alerts are not reaching Alertmanager. On the IaC VM: `systemctl --user status suricata-alert-exporter`."
+{% endraw %}

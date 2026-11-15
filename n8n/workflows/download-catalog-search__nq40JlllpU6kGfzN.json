@@ -1,0 +1,89 @@
+{
+  "active": true,
+  "connections": {
+    "Build query string": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "GET catalog-api /api/downloads",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Build query string",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "nq40JlllpU6kGfzN",
+  "name": "Download Catalog - Search",
+  "nodes": [
+    {
+      "id": "build-querystring",
+      "name": "Build query string",
+      "parameters": {
+        "jsCode": "const q = $json.query || {};\nconst qs = Object.keys(q)\n  .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(q[k]))\n  .join('&');\nreturn [{ json: { queryString: qs } }];"
+      },
+      "position": [
+        -200,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YYa0tbgQSUr1hIJB",
+          "name": "catalog-api X-API-Key"
+        }
+      },
+      "id": "proxy-to-catalog",
+      "name": "GET catalog-api /api/downloads",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {},
+        "sendHeaders": false,
+        "url": "=http://10.0.60.5:5091/api/downloads?{{ $json.queryString }}"
+      },
+      "position": [
+        -80,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "search-webhook",
+      "name": "Webhook",
+      "parameters": {
+        "httpMethod": "GET",
+        "options": {},
+        "path": "catalog-search",
+        "responseMode": "lastNode"
+      },
+      "position": [
+        -320,
+        0
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "catalog-search"
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

@@ -1,0 +1,64 @@
+---
+# =============================================================================
+# Role: homepage — defaults/main.yml
+# Deploys gethomepage.dev as the unified service dashboard on web-01.
+# =============================================================================
+
+# ── Deployment ───────────────────────────────────────────────────────────────
+homepage_version: "v0.9.10"
+homepage_image: "ghcr.io/gethomepage/homepage:{{ homepage_version }}"
+homepage_port: 3000
+homepage_config_dir: /opt/homepage/config
+
+# ── Domain / Traefik ─────────────────────────────────────────────────────────
+homepage_fqdn: "home.{{ base_domain | default('homelab.local') }}"
+homepage_traefik_enabled: true
+
+# ── Identity shown on dashboard ──────────────────────────────────────────────
+homepage_title: "Homelab"
+homepage_description: "Self-hosted infrastructure dashboard"
+homepage_logo: ""          # URL or path to logo; empty = default
+
+# ── Background ───────────────────────────────────────────────────────────────
+# Options: blur|saturate value, or a solid hex colour
+homepage_background_blur: sm
+homepage_background_saturate: 50
+
+# ── Theme ────────────────────────────────────────────────────────────────────
+homepage_theme: dark          # dark | light
+homepage_color: slate         # slate|gray|zinc|neutral|stone|red|orange|...
+
+# ── Service IP / URL overrides ────────────────────────────────────────────────
+# These are used both in homepage config and passed to sync_homepage.py.
+# Override in host_vars or group_vars where needed.
+homepage_services:
+  pve01_url:      "https://{{ hostvars['pve-01'].ansible_host | default('10.0.0.11') }}:8006"
+  pve02_url:      "https://{{ hostvars['pve-02'].ansible_host | default('10.0.0.12') }}:8006"
+  pve03_url:      "https://{{ hostvars['pve-03'].ansible_host | default('10.0.0.13') }}:8006"
+  nas01_url:      "http://{{ hostvars['nas-01'].ansible_host | default('10.0.40.20') }}:81"
+  opnsense_url:   "https://10.0.99.2"
+  pihole_url:     "http://{{ hostvars['dns-01'].ansible_host | default('10.0.30.10') }}"
+  wireguard_url:  "http://10.0.10.5:51821"
+  vault_url:      "http://vault.home.example.org:8200/ui"
+  traefik_url:    "https://traefik.{{ base_domain | default('home.example.org') }}"
+  netbox_url:     "https://netbox.{{ base_domain | default('home.example.org') }}"
+  grafana_url:    "https://grafana.{{ base_domain | default('home.example.org') }}"
+  n8n_url:        "https://n8n.{{ base_domain | default('home.example.org') }}"
+  iac_api_url:    "http://{{ iac_vm_ip | default('10.0.0.15') }}:8000/docs"
+  gitlab_url:     "https://git.{{ base_domain | default('homelab.local') }}"
+  immich_url:     "https://photos.{{ base_domain | default('homelab.local') }}"
+  jellyfin_url:   "https://media.{{ base_domain | default('homelab.local') }}"
+  outline_url:    "https://wiki.{{ base_domain | default('homelab.local') }}"
+  openwebui_url:  "https://chat.{{ base_domain | default('homelab.local') }}"
+  jira_url:       "https://jira.{{ base_domain | default('homelab.local') }}"
+  confluence_url: "https://confluence.{{ base_domain | default('homelab.local') }}"
+
+# ── Widget secrets (read from Vault by this role) ─────────────────────────────
+vault_homepage_widgets_path: "secret/homepage/widgets"
+homepage_widgets_vault_enabled: true
+
+# ── Sync scripts ─────────────────────────────────────────────────────────────
+homepage_sync_on_deploy: true
+homepage_sync_script: "/opt/iac/scripts/sync_homepage.py"
+homepage_iac_services_dir: "/opt/iac/services"
+homepage_iac_vms_dir: "/opt/iac/config/vms"

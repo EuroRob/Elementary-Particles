@@ -1,0 +1,79 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/zfs_storage.yml
+#
+# Creates the standard dataset hierarchy inside existing ZFS pools.
+# Does NOT create pools themselves — pool creation requires knowing physical
+# disk layout (mirror, raidz1/2/3, stripe). Use the host_vars to specify
+# which pools are present, then run 'zpool create' manually first.
+#
+# Required pre-condition: zpool list shows the pool name.
+# =============================================================================
+
+- name: "ZFS: Collect list of existing pools"
+  ansible.builtin.command: zpool list -H -o name
+  register: zpool_list
+  changed_when: false
+  tags: [zfs]
+
+- name: "ZFS: Display existing pools"
+  ansible.builtin.debug:
+    msg: "Found ZFS pools: {{ zpool_list.stdout_lines }}"
+  tags: [zfs]
+
+# ---------------------------------------------------------------------------
+# Process each pool defined in pve_zfs_pools
+# ---------------------------------------------------------------------------
+- name: "ZFS: Create datasets for each enabled pool"
+  ansible.builtin.include_tasks: zfs_dataset.yml
+  loop: "{{ pve_zfs_pools | selectattr('enabled', 'equalto', true) | list }}"
+  loop_control:
+    loop_var: zfs_pool
+    label: "{{ zfs_pool.name }}"
+  when: zfs_pool.name in zpool_list.stdout_lines
+  tags: [zfs]
+
+- name: "ZFS: Warn about pools defined but not present"
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: Pool '{{ item.name }}' is defined in pve_zfs_pools but not found
+      on this host. Skipping dataset creation. Create the pool first:
+        zpool create {{ item.name }} [mirror|raidz1|raidz2] /dev/disk/by-id/<disk-id> ...
+  loop: "{{ pve_zfs_pools | selectattr('enabled', 'equalto', true) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name not in zpool_list.stdout_lines
+  tags: [zfs]
+
+# ---------------------------------------------------------------------------
+# ZFS ARC max memory limit (protect host RAM from ZFS cache hogging)
+# ---------------------------------------------------------------------------
+- name: "ZFS: Set ARC max size limit"
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/zfs.conf
+    content: |
+      # ZFS ARC maximum size — set by Ansible (proxmox_host role)
+      # Protects host RAM for KVM guests and OS. Default (no file) = half RAM.
+      options zfs zfs_arc_max={{ (pve_zfs_arc_max_gb * 1073741824) | int }}
+    owner: root
+    group: root
+    mode: "0644"
+  when: pve_zfs_arc_max_gb | int > 0
+  notify: update_initramfs
+  tags: [zfs, arc]
+
+# ---------------------------------------------------------------------------
+# ZFS performance: always-on scrubs (weekly cron)
+# ---------------------------------------------------------------------------
+- name: "ZFS: Configure weekly scrub cron for each enabled pool"
+  ansible.builtin.cron:
+    name: "zfs-scrub-{{ item.name }}"
+    weekday: "0"
+    hour: "2"
+    minute: "0"
+    job: "/usr/sbin/zpool scrub {{ item.name }} 2>&1 | logger -t zfs-scrub"
+    state: present
+  loop: "{{ pve_zfs_pools | selectattr('enabled', 'equalto', true) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [zfs, scrub]

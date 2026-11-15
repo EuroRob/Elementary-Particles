@@ -1,0 +1,183 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/gpu_passthrough.yml
+#
+# Enables IOMMU and binds the GPU to vfio-pci so Proxmox can pass it through
+# to a VM (gpu-01 or gpu-02). The GPU drivers (nvidia/nouveau) are blacklisted
+# on the HOST — they only run inside the VM.
+#
+# After this task a REBOOT is required for IOMMU to take effect.
+# The play includes a reboot handler that is triggered automatically.
+#
+# Variables (set in host_vars/<pve-hostname>.yml):
+#   pve_iommu_type: "intel" | "amd"
+#   pve_gpu_pci_ids: ["10de:1e04", "10de:10f7"]  # vendor:device from lspci -nn
+#   pve_gpu_blacklist_drivers: [nouveau, nvidia]
+#
+# How to find GPU PCI IDs:
+#   lspci -nn | grep -i nvidia
+#   →  01:00.0 VGA: [10de:1e04]  01:00.1 Audio: [10de:10f7]
+#   Use BOTH IDs for correct IOMMU isolation (GPU + audio function).
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# 1. Detect IOMMU support
+# ---------------------------------------------------------------------------
+- name: "GPU: Detect IOMMU support in CPU"
+  ansible.builtin.command:
+    cmd: grep -E "^flags.*vmx|^flags.*svm" /proc/cpuinfo
+  register: iommu_cpu_check
+  changed_when: false
+  failed_when: false
+  tags: [gpu, iommu]
+
+- name: "GPU: Warn if CPU virtualisation flags not found"
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: VT-x/AMD-V CPU flags not detected in /proc/cpuinfo.
+      Ensure virtualisation is enabled in BIOS/UEFI before proceeding.
+  when: iommu_cpu_check.rc != 0
+  tags: [gpu, iommu]
+
+# ---------------------------------------------------------------------------
+# 2. Enable IOMMU in GRUB command line
+# ---------------------------------------------------------------------------
+- name: "GPU: Enable IOMMU in GRUB (Intel)"
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet intel_iommu=on iommu=pt"'
+    backup: true
+  when: pve_iommu_type == "intel"
+  register: grub_intel_result
+  notify: update_grub
+  tags: [gpu, grub, iommu]
+
+- name: "GPU: Enable IOMMU in GRUB (AMD)"
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="quiet amd_iommu=on iommu=pt"'
+    backup: true
+  when: pve_iommu_type == "amd"
+  register: grub_amd_result
+  notify: update_grub
+  tags: [gpu, grub, iommu]
+
+# ---------------------------------------------------------------------------
+# 3. Load VFIO kernel modules at boot
+# ---------------------------------------------------------------------------
+- name: "GPU: Configure VFIO kernel modules for early load"
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/vfio.conf
+    content: |
+      # VFIO modules for PCIe passthrough — managed by Ansible
+      vfio
+      vfio_iommu_type1
+      vfio_pci
+      vfio_virqfd
+    owner: root
+    group: root
+    mode: "0644"
+  register: vfio_modules_result
+  notify: update_initramfs
+  tags: [gpu, vfio, modules]
+
+# ---------------------------------------------------------------------------
+# 4. Bind GPU PCI devices to vfio-pci driver
+# ---------------------------------------------------------------------------
+- name: "GPU: Create vfio-pci binding configuration"
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/vfio.conf
+    content: |
+      # VFIO PCI device binding — managed by Ansible (proxmox_host role)
+      # GPU and its audio function must both be in the same IOMMU group.
+      # Find IDs with: lspci -nn | grep -i nvidia
+      options vfio-pci ids={{ pve_gpu_pci_ids | join(',') }}
+      options vfio-pci disable_idle_d3=1
+    owner: root
+    group: root
+    mode: "0644"
+  when: pve_gpu_pci_ids | length > 0
+  register: vfio_binding_result
+  notify: update_initramfs
+  tags: [gpu, vfio]
+
+# ---------------------------------------------------------------------------
+# 5. Blacklist host-side GPU drivers
+# The GPU will be grabbed by vfio-pci before nvidia/nouveau can claim it.
+# ---------------------------------------------------------------------------
+- name: "GPU: Blacklist GPU drivers on host"
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/gpu-blacklist.conf
+    content: |
+      # GPU driver blacklist — host must NOT load these; vfio-pci claims the GPU.
+      # Managed by Ansible (proxmox_host role)
+      {% for drv in pve_gpu_blacklist_drivers %}
+      blacklist {{ drv }}
+      {% endfor %}
+      # Hard blacklist to prevent loading via aliases
+      {% for drv in pve_gpu_blacklist_drivers %}
+      install {{ drv }} /bin/false
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+  register: gpu_blacklist_result
+  notify: update_initramfs
+  tags: [gpu, blacklist]
+
+# ---------------------------------------------------------------------------
+# 6. NVIDIA persistence mode (optional host-level tuning for the VM)
+# NOTE: This is NOT run on the PVE host — it runs inside the GPU VM (gpu-01/02).
+# Included here as a reminder. See Roles/gpu/tasks/nvidia_tweaks.yml.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# 7. Verify IOMMU group isolation
+# ---------------------------------------------------------------------------
+- name: "GPU: Check IOMMU groups are visible after boot"
+  ansible.builtin.find:
+    paths: "/sys/kernel/iommu_groups"
+    file_type: directory
+    recurse: false
+  register: iommu_groups
+  tags: [gpu, verify]
+
+- name: "GPU: Print IOMMU group count"
+  ansible.builtin.debug:
+    msg: >-
+      Found {{ iommu_groups.files | length }} IOMMU groups.
+      {{ 'IOMMU is active.' if iommu_groups.files | length > 0
+         else 'IOMMU groups empty — reboot required for IOMMU to activate.' }}
+  tags: [gpu, verify]
+
+# ---------------------------------------------------------------------------
+# 8. Reboot (required for IOMMU changes to take effect)
+# ---------------------------------------------------------------------------
+- name: "GPU: Reboot to apply IOMMU and VFIO changes"
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    msg: "Ansible: rebooting to apply IOMMU/VFIO configuration"
+  when: >-
+    (grub_intel_result is defined and grub_intel_result.changed) or
+    (grub_amd_result is defined and grub_amd_result.changed) or
+    (vfio_modules_result is defined and vfio_modules_result.changed) or
+    (vfio_binding_result is defined and vfio_binding_result.changed) or
+    (gpu_blacklist_result is defined and gpu_blacklist_result.changed)
+  tags: [gpu, reboot]
+
+- name: "GPU: Verify vfio-pci is loaded post-reboot"
+  ansible.builtin.command: lsmod
+  register: lsmod_out
+  changed_when: false
+  tags: [gpu, verify]
+
+- name: "GPU: Assert vfio-pci module is loaded"
+  ansible.builtin.assert:
+    that: "'vfio_pci' in lsmod_out.stdout"
+    success_msg: "vfio_pci module is loaded — GPU passthrough ready."
+    fail_msg: >-
+      vfio_pci not loaded after reboot. Check GRUB IOMMU flags and
+      /etc/modprobe.d/vfio.conf. Run: dmesg | grep -i iommu
+  tags: [gpu, verify]

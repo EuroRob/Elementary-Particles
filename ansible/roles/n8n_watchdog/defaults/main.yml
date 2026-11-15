@@ -1,0 +1,15 @@
+---
+# =============================================================================
+# Role: n8n_watchdog — DB-aware n8n health check + self-healing on web-01.
+# See files/n8n_watchdog.py docstring and incident_n8n_db_pool_wedged_2026-10-03.
+# =============================================================================
+n8n_watchdog_dir: /opt/n8n-watchdog
+n8n_watchdog_interval: "2min"
+n8n_watchdog_fail_threshold: 3          # consecutive failures before restarting (~6 min)
+n8n_watchdog_restart_cooldown_s: 1800   # at most one automatic restart per 30 min
+n8n_watchdog_alert_repeat_s: 3600
+n8n_watchdog_dry_run: false
+
+vault_n8n_api_path: "secret/n8n/api"                           # key: api_key
+vault_alert_bot_path: "secret/family-messaging/alertmanager-bot"  # keys: homeserver, room_id, access_token
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('http://127.0.0.1:8200') }}"

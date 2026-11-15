@@ -1,0 +1,95 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/proxmox_storage.yml
+#
+# Registers Proxmox storage definitions via pvesm.
+# Wraps the pvesm CLI since there is no stable Ansible module for PVE storage.
+# Idempotent: checks existence before adding.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# ZFS pool storage registrations
+# ---------------------------------------------------------------------------
+- name: "PVESM: Check which ZFS storages already exist"
+  ansible.builtin.command: "pvesm status --storage {{ item.id }}"
+  register: pvesm_zfs_checks
+  changed_when: false
+  failed_when: false
+  loop: >-
+    {{
+      pve_storage_definitions
+      | selectattr('type', 'equalto', 'zfspool')
+      | list
+    }}
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [storage, pvesm, zfs]
+
+- name: "PVESM: Add missing ZFS pool storages"
+  ansible.builtin.command: >-
+    pvesm add zfspool {{ item.item.id }}
+    --pool {{ item.item.pool }}
+    --content {{ item.item.content }}
+    {% if item.item.nodes | default('') %}--nodes {{ item.item.nodes }}{% endif %}
+  when: item.rc != 0
+  loop: "{{ pvesm_zfs_checks.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.id }}"
+  register: pvesm_zfs_add
+  changed_when: pvesm_zfs_add.rc == 0
+  tags: [storage, pvesm, zfs]
+
+- name: "PVESM: Log ZFS storage registration results"
+  ansible.builtin.debug:
+    msg: "Storage {{ item.item.id }}: {{ 'already exists' if item.rc == 0 else 'created' }}"
+  loop: "{{ pvesm_zfs_checks.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.id }}"
+  tags: [storage, pvesm, zfs]
+
+# ---------------------------------------------------------------------------
+# NFS storage registrations (for NAS template share)
+# ---------------------------------------------------------------------------
+- name: "PVESM: Check which NFS storages already exist"
+  ansible.builtin.command: "pvesm status --storage {{ item.id }}"
+  register: pvesm_nfs_checks
+  changed_when: false
+  failed_when: false
+  loop: >-
+    {{
+      pve_storage_definitions
+      | selectattr('type', 'equalto', 'nfs')
+      | list
+    }}
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [storage, pvesm, nfs]
+
+- name: "PVESM: Add missing NFS storages"
+  ansible.builtin.command: >-
+    pvesm add nfs {{ item.item.id }}
+    --server {{ item.item.server }}
+    --export {{ item.item.export }}
+    --content {{ item.item.content }}
+    --options {{ item.item.options | default('vers=4') }}
+  when: item.rc != 0
+  loop: "{{ pvesm_nfs_checks.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.id }}"
+  register: pvesm_nfs_add
+  changed_when: pvesm_nfs_add.rc == 0
+  tags: [storage, pvesm, nfs]
+
+# ---------------------------------------------------------------------------
+# List all registered storages (verify)
+# ---------------------------------------------------------------------------
+- name: "PVESM: List all registered storages"
+  ansible.builtin.command: pvesm status
+  register: pvesm_list
+  changed_when: false
+  tags: [storage, verify]
+
+- name: "PVESM: Print storage list"
+  ansible.builtin.debug:
+    msg: "{{ pvesm_list.stdout_lines }}"
+  tags: [storage, verify]

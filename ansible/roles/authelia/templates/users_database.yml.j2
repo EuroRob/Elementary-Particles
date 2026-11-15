@@ -1,0 +1,37 @@
+---
+# users_database.yml — managed by Ansible authelia role
+# Ref: https://www.authelia.com/reference/guides/passwords/
+#
+# Passwords are argon2id hashes. Generate with:
+#   docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --password 'YourPassword'
+#
+# Additional users should be added here and managed in Vault (secret/authelia/users).
+# For larger deployments, switch to LDAP by setting authelia_auth_backend: ldap.
+
+users:
+  {{ _authelia_users_vault.secret.admin_username | default('admin') }}:
+    disabled: false
+    displayname: "{{ _authelia_users_vault.secret.admin_display_name | default('Homelab Admin') }}"
+    password: "{{ _authelia_users_vault.secret.admin_password_hash }}"
+    email: "{{ _authelia_users_vault.secret.admin_email | default('admin@' + base_domain) }}"
+    groups:
+      - admins
+      - users
+{% if _authelia_users_vault.secret.personal_username is defined %}
+  {{ _authelia_users_vault.secret.personal_username }}:
+    disabled: false
+    displayname: "{{ _authelia_users_vault.secret.personal_display_name | default(_authelia_users_vault.secret.personal_username) }}"
+    password: "{{ _authelia_users_vault.secret.personal_password_hash }}"
+    email: "{{ _authelia_users_vault.secret.personal_email }}"
+    groups:
+      - {{ _authelia_users_vault.secret.personal_groups | default('users') }}
+{% endif %}
+{% if _authelia_users_vault.secret.mama_username is defined %}
+  {{ _authelia_users_vault.secret.mama_username }}:
+    disabled: false
+    displayname: "{{ _authelia_users_vault.secret.mama_display_name | default(_authelia_users_vault.secret.mama_username) }}"
+    password: "{{ _authelia_users_vault.secret.mama_password_hash }}"
+    email: "{{ _authelia_users_vault.secret.mama_email | default('mama@' + base_domain) }}"
+    groups:
+      - {{ _authelia_users_vault.secret.mama_groups | default('users') }}
+{% endif %}

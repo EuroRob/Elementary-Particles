@@ -1,0 +1,94 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/nas_mounts.yml
+#
+# Mounts NFS shares from NAS-01 on the Proxmox host.
+# These mounts are used for:
+#   - /mnt/nas/pve-templates  — shared template golden store
+#   - /mnt/nas/iso            — shared ISO library
+#
+# NFS v4 is used for performance and proper UID/GID mapping.
+# Mounts are registered in /etc/fstab with _netdev so they survive reboots
+# and only mount once the network is up.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# 1. Install NFS client
+# ---------------------------------------------------------------------------
+- name: "NAS: Install NFS client packages"
+  ansible.builtin.apt:
+    name:
+      - nfs-common
+      - nfs4-acl-tools
+    state: present
+    update_cache: true
+  tags: [nas, nfs]
+
+# ---------------------------------------------------------------------------
+# 2. Create local mount directories
+# ---------------------------------------------------------------------------
+- name: "NAS: Create NFS mount directories"
+  ansible.builtin.file:
+    path: "{{ item.local_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ pve_nas_mounts }}"
+  loop_control:
+    label: "{{ item.local_path }}"
+  tags: [nas, nfs]
+
+# ---------------------------------------------------------------------------
+# 3. Check NAS availability before mounting
+# ---------------------------------------------------------------------------
+- name: "NAS: Test NAS-01 reachability ({{ pve_nas_server }})"
+  ansible.builtin.wait_for:
+    host: "{{ pve_nas_server }}"
+    port: 2049
+    timeout: 30
+    msg: >-
+      NAS-01 ({{ pve_nas_server }}) is not reachable on port 2049.
+      Ensure NAS-01 is online and NFS is exported before mounting.
+  register: nas_reachability
+  ignore_errors: true
+  tags: [nas, nfs]
+
+# ---------------------------------------------------------------------------
+# 4. Mount NFS shares (if NAS is reachable)
+# ---------------------------------------------------------------------------
+- name: "NAS: Mount NFS share {{ item.name }}"
+  ansible.posix.mount:
+    path: "{{ item.local_path }}"
+    src: "{{ pve_nas_server }}:{{ item.export }}"
+    fstype: nfs
+    opts: "{{ item.options }}"
+    state: "{{ item.state | default('mounted') }}"
+    boot: true   # persist in /etc/fstab
+  loop: "{{ pve_nas_mounts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: nas_reachability is succeeded
+  tags: [nas, nfs]
+
+- name: "NAS: Skip mounting — NAS-01 unreachable (will retry next run)"
+  ansible.builtin.debug:
+    msg: >-
+      NAS-01 is not reachable — NFS mounts skipped.
+      Mounts will be attempted again when NAS-01 is online.
+  when: nas_reachability is failed
+  tags: [nas, nfs]
+
+# ---------------------------------------------------------------------------
+# 5. Verify mounts
+# ---------------------------------------------------------------------------
+- name: "NAS: Verify NFS mounts are active"
+  ansible.builtin.command: "mount | grep nfs"
+  register: mount_check
+  changed_when: false
+  tags: [nas, verify]
+
+- name: "NAS: Display active NFS mounts"
+  ansible.builtin.debug:
+    msg: "{{ mount_check.stdout_lines }}"
+  tags: [nas, verify]

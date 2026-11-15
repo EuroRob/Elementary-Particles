@@ -1,0 +1,791 @@
+{
+  "active": true,
+  "connections": {
+    "ACPI shutdown VM (no force)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 210s (guests shutting down)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "All VMs stopped?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Shutdown pve-02 host",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Retry?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "All stopped?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "All VMs stopped?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Confirm pve-02 is off": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Host still up?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Daily 07:00 Trigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "pve-02 VM list",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format abort alert": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Alert: shutdown aborted",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Host still up?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Still up?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Is pve-02 up?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "pve-02 up?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Manual Run (really shuts pve-02 down!)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "pve-02 VM list",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "One item per VM": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "ACPI shutdown VM (no force)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Pre-check VM status": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Is pve-02 up?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Re-list VMs": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Verify VM status",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Retry?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 120s (retry)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Format abort alert",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Shutdown pve-02 host": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 150s (host powering off)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Still up?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Alert: pve-02 still up",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Verify VM status": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "All stopped?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 120s (retry)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Re-list VMs",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 150s (host powering off)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Confirm pve-02 is off",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 210s (guests shutting down)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Re-list VMs",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "pve-02 VM list": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Pre-check VM status",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "pve-02 up?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "One item per VM",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Already off - nothing to do",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "H3Kc2u7uPvlUD0Um",
+  "name": "pve-02 - Daily Shutdown (07:00)",
+  "nodes": [
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "pve-02-shutdown-09",
+      "name": "ACPI shutdown VM (no force)",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        },
+        "url": "=https://iac.internal:8000/api/proxmox/pve-02/vm/{{ $json.vmid }}/shutdown?timeout=180&force_stop=false"
+      },
+      "position": [
+        1320,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "pve-02-shutdown-20",
+      "name": "Alert: pve-02 still up",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        3740,
+        -120
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "pve-02-shutdown-24",
+      "name": "Alert: shutdown aborted",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        3080,
+        240
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "pve-02-shutdown-14",
+      "name": "All VMs stopped?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "All VMs stopped?",
+              "leftValue": "={{ $json.allStopped }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        2420,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "id": "pve-02-shutdown-13",
+      "name": "All stopped?",
+      "parameters": {
+        "jsCode": "const vms = $('Re-list VMs').all().map(i => i.json);\nconst res = $input.all();\nconst results = vms.map((v, i) => {\n  const j = res[i]?.json || {};\n  return { vmid: v.vmid, name: v.name, status: j.data?.status ?? null,\n           error: j.error ? String(j.error.message || j.error).slice(0, 160) : null };\n});\nconst fmt = r => `${r.name}(${r.vmid}): ${r.status || 'ERR ' + r.error}`;\n\nconst attempt = $('Re-list VMs').first().json.attempt;\nconst notStopped = results.filter(r => r.status !== 'stopped');\nreturn [{ json: { allStopped: notStopped.length === 0, attempt, retry: notStopped.length > 0 && attempt < 3,\n                  notStopped: notStopped.map(fmt), results } }];"
+      },
+      "position": [
+        2200,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "pve-02-shutdown-07",
+      "name": "Already off - nothing to do",
+      "parameters": {},
+      "position": [
+        1100,
+        260
+      ],
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "pve-02-shutdown-17",
+      "name": "Confirm pve-02 is off",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        },
+        "url": "=https://iac.internal:8000/api/proxmox/pve-02/vm/106/status"
+      },
+      "position": [
+        3080,
+        -120
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "pve-02-shutdown-01",
+      "name": "Daily 07:00 Trigger",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "0 7 * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "pve-02-shutdown-23",
+      "name": "Format abort alert",
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst txn_id = 'pve-02-shutdown-abort-' + Date.now();\nconst body = '\\ud83d\\udea8 pve-02 daily shutdown ABORTED - host NOT powered off.\\n'\n  + `VM(s) not confirmed stopped after ${j.attempt} checks: ${j.notStopped.join(', ')}\\n`\n  + 'Nothing was force-stopped. Check the VM(s), then shut pve-02 down manually or wait for tomorrow.';\nreturn [{ json: { ...j, txn_id, matrixPayload: { msgtype: 'm.text', body } } }];"
+      },
+      "position": [
+        2860,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "pve-02-shutdown-18",
+      "name": "Host still up?",
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst up = !!j.data?.status;\nconst txn_id = 'pve-02-shutdown-hostup-' + Date.now();\nconst body = '\\u26a0\\ufe0f pve-02 daily shutdown: all VMs stopped cleanly and host shutdown was sent, '\n  + 'but pve-02 still answers 150s later. Check pve-02 (10.0.0.12) manually.';\nreturn [{ json: { up, txn_id, matrixPayload: { msgtype: 'm.text', body } } }];"
+      },
+      "position": [
+        3300,
+        -120
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "pve-02-shutdown-05",
+      "name": "Is pve-02 up?",
+      "parameters": {
+        "jsCode": "const vms = $('pve-02 VM list').all().map(i => i.json);\nconst res = $input.all();\nconst results = vms.map((v, i) => {\n  const j = res[i]?.json || {};\n  return { vmid: v.vmid, name: v.name, status: j.data?.status ?? null,\n           error: j.error ? String(j.error.message || j.error).slice(0, 160) : null };\n});\nconst fmt = r => `${r.name}(${r.vmid}): ${r.status || 'ERR ' + r.error}`;\n\nconst up = results.some(r => r.status);\nreturn [{ json: { up, running: results.filter(r => r.status === 'running').map(fmt), results } }];"
+      },
+      "position": [
+        660,
+        100
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "pve-02-shutdown-02",
+      "name": "Manual Run (really shuts pve-02 down!)",
+      "parameters": {},
+      "position": [
+        0,
+        200
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "id": "pve-02-shutdown-08",
+      "name": "One item per VM",
+      "parameters": {
+        "jsCode": "return $('pve-02 VM list').all().map(i => ({ json: i.json }));"
+      },
+      "position": [
+        1100,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "pve-02-shutdown-04",
+      "name": "Pre-check VM status",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        },
+        "url": "=https://iac.internal:8000/api/proxmox/pve-02/vm/{{ $json.vmid }}/status"
+      },
+      "position": [
+        440,
+        100
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "pve-02-shutdown-11",
+      "name": "Re-list VMs",
+      "parameters": {
+        "jsCode": "const attempt = $runIndex + 1;\nreturn $('pve-02 VM list').all().map(i => ({ json: { ...i.json, attempt } }));"
+      },
+      "position": [
+        1760,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "pve-02-shutdown-21",
+      "name": "Retry?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "Retry?",
+              "leftValue": "={{ $json.retry }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        2640,
+        120
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "pve-02-shutdown-15",
+      "name": "Shutdown pve-02 host",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        },
+        "url": "=https://iac.internal:8000/api/proxmox/pve-02/shutdown"
+      },
+      "position": [
+        2640,
+        -120
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "pve-02-shutdown-19",
+      "name": "Still up?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "Still up?",
+              "leftValue": "={{ $json.up }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        3520,
+        -120
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "pve-02-shutdown-12",
+      "name": "Verify VM status",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        },
+        "url": "=https://iac.internal:8000/api/proxmox/pve-02/vm/{{ $json.vmid }}/status"
+      },
+      "position": [
+        1980,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "pve-02-shutdown-22",
+      "name": "Wait 120s (retry)",
+      "parameters": {
+        "amount": 120
+      },
+      "position": [
+        2860,
+        60
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "pve-02-shutdown-Wait 120s (retry)"
+    },
+    {
+      "id": "pve-02-shutdown-16",
+      "name": "Wait 150s (host powering off)",
+      "parameters": {
+        "amount": 150
+      },
+      "position": [
+        2860,
+        -120
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "pve-02-shutdown-Wait 150s (host powering off)"
+    },
+    {
+      "executeOnce": true,
+      "id": "pve-02-shutdown-10",
+      "name": "Wait 210s (guests shutting down)",
+      "parameters": {
+        "amount": 210
+      },
+      "position": [
+        1540,
+        0
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "pve-02-shutdown-Wait 210s (guests shutting down)"
+    },
+    {
+      "id": "pve-02-shutdown-03",
+      "name": "pve-02 VM list",
+      "parameters": {
+        "jsCode": "return [{\"vmid\": 106, \"name\": \"OSemSearch\"}, {\"vmid\": 231, \"name\": \"es-01\"}, {\"vmid\": 234, \"name\": \"es-02\"}, {\"vmid\": 301, \"name\": \"dl-01\"}, {\"vmid\": 302, \"name\": \"grid-01\"}, {\"vmid\": 304, \"name\": \"scout-01\"}, {\"vmid\": 110, \"name\": \"Minecraft\"}].map(v => ({ json: v }));"
+      },
+      "position": [
+        220,
+        100
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "pve-02-shutdown-06",
+      "name": "pve-02 up?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "pve-02 up?",
+              "leftValue": "={{ $json.up }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        880,
+        100
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  },
+  "tags": []
+}

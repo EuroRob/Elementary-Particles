@@ -1,0 +1,57 @@
+---
+# =============================================================================
+# Playbook: deploy_backrest.yml
+#
+# Backrest (restic web UI) on nas-02, published as https://backrest.home.example.org
+# through Traefik on web-01 with Authelia two_factor. Browse/restore only —
+# all repo access goes through rest-server --append-only (VLAN 399).
+# Full plan + manual steps: docs/BACKREST_DEPLOYMENT.md.
+#
+# Prerequisites (in this order):
+#   1. Vault: secret/backrest/nas-02 → admin_password (confirm path, then seed)
+#   2. Firewall: ansible-playbook ... playbooks/deploy_opnsense.yml --tags backrest
+#   3. The BKP-TM dock drive attached + mounted on nas-02 and rest-server active
+#      (the role reads each repo's guid from the live repository)
+#
+# Usage (from IaC/Ansible, as netops):
+#   set -a; source /opt/vault/.env; set +a
+#   ansible-playbook -i inventory/services.yml playbooks/deploy_backrest.yml
+#   ansible-playbook ... --tags backrest       # nas-02 only
+#   ansible-playbook ... --tags traefik        # web-01 route only
+# =============================================================================
+
+- name: Backrest on nas-02
+  hosts: nas-02
+  become: true
+  gather_facts: false
+  tags: [backrest]
+  pre_tasks:
+    - name: Repo drive must be mounted and rest-server up (guid is read live)
+      ansible.builtin.command: "{{ item }}"
+      loop:
+        - findmnt /srv/bkp-tm
+        - systemctl is-active rest-server
+      changed_when: false
+  roles:
+    - backrest
+
+- name: Traefik route on web-01
+  hosts: web-01
+  gather_facts: false
+  tags: [traefik]
+  vars:
+    base_domain: "home.example.org"
+  tasks:
+    - name: "[backrest] Register Traefik route"
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "backrest"
+        traefik_backend_url: "http://{{ hostvars['nas-02'].backrest_listen }}"
+        traefik_domain: "backrest.{{ base_domain }}"
+        # two_factor, not one_factor like Pulse/Grafana: this UI can read every
+        # Mac's TimeMachine backup (and later every fleet backup).
+        traefik_auth: "two_factor"
+        traefik_healthcheck_path: "/"
+        traefik_cert_resolver: "letsencrypt"
+        traefik_acme_domain: "{{ base_domain }}"

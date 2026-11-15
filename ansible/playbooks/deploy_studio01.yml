@@ -1,0 +1,254 @@
+---
+# =============================================================================
+# Playbook: deploy_studio01.yml
+# studio-01 (VM 283 on pve-03, 10.0.30.59) — the music studio's own VM.
+#
+# Docker, the music-studio stack (role music_studio: catalog, assistant, beets,
+# analysis, studio-partner, field-ingest; moved from gpu-01 2026-11-01, see
+# IaC/docs/STUDIO01_MIGRATION.md) and Chromatone (theory.home.example.org).
+#
+# Prerequisite: `terraform apply` in Terraform/envs/studio-01/ (creates VM 283).
+#
+# Run (source /opt/vault/.env with `set -a` first):
+#   ansible-playbook -i inventory/services.yml playbooks/deploy_studio01.yml
+#   ... --tags music_studio     # the stack + schema + its three Traefik routes
+#   ... --tags chromatone
+# =============================================================================
+
+- name: "Deploy studio-01 (music studio VM)"
+  hosts: studio-01
+  become: true
+  gather_facts: true
+
+  vars:
+    chromatone_dir: /opt/chromatone
+    chromatone_src: "{{ playbook_dir }}/../../services/assistant/music-studio/chromatone"
+    studio01_swap_mb: 3072
+
+  pre_tasks:
+    - name: Confirm this is studio-01
+      ansible.builtin.fail:
+        msg: "This playbook targets studio-01 only."
+      when: inventory_hostname != 'studio-01'
+
+    # 2 GB of RAM since 2026-11-05 (pve-03 runs gpu-02, immich-01 and studio-01 together).
+    # Idle use is ~0.8 GB; the swap file catches the peaks: music-analysis on a 3-h WAV
+    # (~1.1 GB) and a Chromatone rebuild (~3 GB, slow but finishes). Swappiness 10: used
+    # only when RAM is really short.
+    - name: "[swap] Create {{ studio01_swap_mb }} MB swap file"
+      ansible.builtin.command: >-
+        bash -c 'fallocate -l {{ studio01_swap_mb }}M /swapfile && chmod 600 /swapfile && mkswap /swapfile'
+      args:
+        creates: /swapfile
+      register: _swapfile
+      tags: ["swap"]
+
+    - name: "[swap] Enable swap file now"
+      ansible.builtin.command: swapon /swapfile
+      when: _swapfile.changed
+      tags: ["swap"]
+
+    - name: "[swap] Enable swap file at boot"
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+      tags: ["swap"]
+
+    - name: "[swap] Swappiness 10"
+      ansible.posix.sysctl:
+        name: vm.swappiness
+        value: "10"
+        sysctl_file: /etc/sysctl.d/90-swappiness.conf
+      tags: ["swap"]
+
+  roles:
+    - role: docker
+      tags: ["docker"]
+    - role: music_studio
+      tags: ["music_studio"]
+      when: music_studio_enabled | default(false) | bool
+
+  tasks:
+    # Chromatone: clones a pinned commit and builds the static site (node, several
+    # minutes, ~3 GB peak). Rebuilt only when the Dockerfile or nginx.conf changes;
+    # to update, bump CHROMATONE_COMMIT in the Dockerfile. On gpu-01 the build was
+    # OOM-killed at a 2 GB cap (2026-10-31) — the reason this VM exists.
+    - name: "[chromatone] Create dir"
+      ansible.builtin.file:
+        path: "{{ chromatone_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      tags: ["chromatone"]
+
+    - name: "[chromatone] Copy Dockerfile, nginx.conf, compose file"
+      ansible.builtin.copy:
+        src: "{{ chromatone_src }}/{{ item }}"
+        dest: "{{ chromatone_dir }}/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: [Dockerfile, nginx.conf, docker-compose.yml]
+      register: _chromatone_files
+      tags: ["chromatone"]
+
+    - name: "[chromatone] Build image"
+      community.docker.docker_image:
+        name: chromatone
+        tag: local
+        source: build
+        build:
+          path: "{{ chromatone_dir }}"
+        force_source: "{{ _chromatone_files.results[:2] | selectattr('changed') | list | length > 0 }}"
+        state: present
+      tags: ["chromatone"]
+
+    - name: "[chromatone] Start"
+      community.docker.docker_compose_v2:
+        project_src: "{{ chromatone_dir }}"
+        state: present
+        recreate: auto
+      tags: ["chromatone"]
+
+    - name: "[chromatone] Wait for /health"
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8204/health"
+      register: _chromatone_health
+      until: _chromatone_health.status == 200
+      retries: 10
+      delay: 3
+      tags: ["chromatone"]
+
+    # Open like studio.home.example.org (static, no secrets, LAN only). DNS: Pi-hole host
+    # "10.0.30.20 theory.home.example.org" added live via the v6 REST API (one-time).
+    - name: "Register Traefik route: theory.home.example.org → studio-01 chromatone"
+      ansible.builtin.include_role:
+        name: traefik_register
+        apply:
+          tags: ["traefik_register", "chromatone"]
+      vars:
+        traefik_service_name: "chromatone"
+        traefik_backend_url: "http://10.0.30.59:8204"
+        traefik_domain: "theory.home.example.org"
+        traefik_auth: "none"
+        traefik_healthcheck_path: "/health"
+      tags: ["traefik_register", "chromatone"]
+
+    # ---- Music Studio: apply `music` schema to the shared elementary_particles DB ----
+    - name: "[music_studio] Copy schema SQL to pg-01"
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../integration/music_schema.sql"
+        dest: /tmp/music_schema.sql
+        mode: "0644"
+      delegate_to: pg-01
+      when: music_studio_enabled | default(false) | bool
+      tags: ["music_studio"]
+
+    - name: "[music_studio] Apply music schema (idempotent — CREATE ... IF NOT EXISTS)"
+      ansible.builtin.command:
+        cmd: psql -d elementary_particles -f /tmp/music_schema.sql
+      become_user: postgres
+      delegate_to: pg-01
+      changed_when: true
+      when: music_studio_enabled | default(false) | bool
+      tags: ["music_studio"]
+
+    - name: "[music_studio] Remove schema SQL from pg-01"
+      ansible.builtin.file:
+        path: /tmp/music_schema.sql
+        state: absent
+      delegate_to: pg-01
+      when: music_studio_enabled | default(false) | bool
+      tags: ["music_studio"]
+
+    # The schema runs as postgres, so its tables are owned by postgres; app_user
+    # (what the services connect as) needs these grants (missing them 500'd every
+    # DB-backed catalog endpoint, 2026-08-21). vault_pg01 is read by the role.
+    - name: "[music_studio] Grant app_user privileges on music schema"
+      ansible.builtin.command:
+        cmd: >-
+          psql -d elementary_particles -v ON_ERROR_STOP=1 -c
+          "GRANT USAGE ON SCHEMA music TO \"{{ vault_pg01.secret.app_user }}\";
+           GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA music TO \"{{ vault_pg01.secret.app_user }}\";
+           ALTER DEFAULT PRIVILEGES IN SCHEMA music GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO \"{{ vault_pg01.secret.app_user }}\";"
+      become_user: postgres
+      delegate_to: pg-01
+      changed_when: true
+      no_log: true
+      when: music_studio_enabled | default(false) | bool
+      tags: ["music_studio"]
+
+    # ---- Music Studio Traefik routes (web-01, file provider) ----
+    # catalog/assistant open (n8n/HA/DOMO call them machine-to-machine), beets
+    # one_factor. DNS: the three names point at web-01 (10.0.30.20) already.
+    - name: "Register Traefik route: music.home.example.org → music-catalog API"
+      ansible.builtin.include_role:
+        name: traefik_register
+        apply:
+          tags: ["traefik_register", "music_studio"]
+      vars:
+        traefik_service_name: "music-catalog"
+        traefik_backend_url: "http://10.0.30.59:8200"
+        traefik_domain: "music.home.example.org"
+        traefik_auth: "none"
+        traefik_healthcheck_path: "/health"
+      when: music_studio_enabled | default(false) | bool
+      tags: ["traefik_register", "music_studio"]
+
+    - name: "Register Traefik route: studio.home.example.org → music-assistant"
+      ansible.builtin.include_role:
+        name: traefik_register
+        apply:
+          tags: ["traefik_register", "music_studio"]
+      vars:
+        traefik_service_name: "music-assistant"
+        traefik_backend_url: "http://10.0.30.59:8201"
+        traefik_domain: "studio.home.example.org"
+        traefik_auth: "none"
+        traefik_healthcheck_path: "/health"
+      when: music_studio_enabled | default(false) | bool
+      tags: ["traefik_register", "music_studio"]
+
+    # music-assistant serves its UI at /ui; a higher-priority router sends the bare
+    # root there (traefik_register writes one router + service only).
+    - name: "Register Traefik redirect: studio.home.example.org/ → /ui"
+      ansible.builtin.copy:
+        dest: /etc/traefik/dynamic/music-assistant-root-redirect.yml
+        mode: "0644"
+        content: |
+          http:
+            routers:
+              music-assistant-root-redirect:
+                rule: "Host(`studio.home.example.org`) && Path(`/`)"
+                entryPoints:
+                  - "websecure"
+                tls: {}
+                priority: 100
+                middlewares:
+                  - "music-assistant-root-redirect@file"
+                service: "music-assistant"
+
+            middlewares:
+              music-assistant-root-redirect:
+                redirectRegex:
+                  regex: "^https://studio\\.home\\.example\\.org/$"
+                  replacement: "https://studio.home.example.org/ui"
+                  permanent: false
+      delegate_to: web-01
+      become: true
+      when: music_studio_enabled | default(false) | bool
+      tags: ["traefik_register", "music_studio"]
+
+    - name: "Register Traefik route: beets.home.example.org → Beets web UI"
+      ansible.builtin.include_role:
+        name: traefik_register
+        apply:
+          tags: ["traefik_register", "music_studio"]
+      vars:
+        traefik_service_name: "music-beets"
+        traefik_backend_url: "http://10.0.30.59:8337"
+        traefik_domain: "beets.home.example.org"
+        traefik_auth: "one_factor"
+      when: music_studio_enabled | default(false) | bool
+      tags: ["traefik_register", "music_studio"]

@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# restic — repo_init.yml
+# Initialise primary and offsite repos (idempotent — skip if already inited).
+# =============================================================================
+
+- name: "[restic] Initialise primary repository"
+  ansible.builtin.shell: >
+    set -a && source {{ restic_config_dir }}/primary.env && set +a &&
+    restic snapshots --quiet 2>/dev/null ||
+    restic init --repo "{{ restic_primary_repo }}"
+  args:
+    executable: /bin/bash
+  register: primary_init
+  changed_when: "'created restic repository' in primary_init.stdout"
+  no_log: true
+
+- name: "[restic] Primary repo status"
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Initialised new repo' if 'created restic repository' in primary_init.stdout
+         else 'Repo already exists — skipped init' }}
+
+- name: "[restic] Initialise offsite repository"
+  ansible.builtin.shell: >
+    set -a && source {{ restic_config_dir }}/offsite.env && set +a &&
+    restic snapshots --quiet 2>/dev/null ||
+    restic init --repo "{{ restic_offsite_repo }}"
+  args:
+    executable: /bin/bash
+  register: offsite_init
+  changed_when: "'created restic repository' in offsite_init.stdout"
+  no_log: true
+  when: restic_offsite_enabled | bool

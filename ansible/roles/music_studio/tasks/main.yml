@@ -1,0 +1,612 @@
+---
+# =============================================================================
+# Role: music_studio — tasks/main.yml
+#
+# Deploys Music Studio (music-catalog, music-assistant, music-beets) onto
+# gpu-01, NOT web-01. web-01 had no CPU/memory/disk headroom left when this
+# was sized up (2026-08-20) — service.yaml's own deployment_target comment
+# also flags gpu-vm as preferred for Demucs/Basic Pitch. Storage is NFS from
+# nas-01 (host_vars/nas-01.yml "music-studio" export), not local disk —
+# neither host had anywhere near the 500Gi service.yaml asks for.
+#
+# DB: reuses the shared elementary_particles Postgres DB + app_user (same
+# pattern as every assistant_stack service), NOT the compose file's default
+# standalone "music_studio" database/user — no new pg-01 role/DB needed.
+# music_schema.sql just creates a `music` schema inside elementary_particles.
+# =============================================================================
+
+- name: "[music_studio] Pull Vault — pg-01 app credentials"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "postgres/pg-01"
+    engine_mount_point: "secret"
+  register: vault_pg01
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[music_studio] Pull Vault — API secret key"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ vault_music_studio_api_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: "secret"
+  register: vault_music_api
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[music_studio] Pull Vault — MusicBrainz user agent"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ vault_music_studio_musicbrainz_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: "secret"
+  register: vault_music_mb
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[music_studio] Pull Vault — songbook repo (Forgejo) token"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ vault_music_studio_forgejo_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: "secret"
+  register: vault_music_forgejo
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[music_studio] Sanity-check Vault fields resolved (lengths only, never values)"
+  ansible.builtin.debug:
+    msg: >-
+      app_user_len={{ vault_pg01.secret.app_user | length }}
+      app_password_len={{ vault_pg01.secret.app_password | length }}
+      api_secret_key_len={{ vault_music_api.secret.secret_key | length }}
+      forgejo_token_len={{ vault_music_forgejo.secret.token | length }}
+
+# ---------------------------------------------------------------------------
+# NFS storage — nas-01 "music-studio" export, mounted once; the five
+# compose volumes are subfolders of it.
+# ---------------------------------------------------------------------------
+- name: "[music_studio] Ensure nfs-common installed"
+  ansible.builtin.package:
+    name: nfs-common
+    state: present
+
+# No mode: once mounted, this path IS the remote filesystem root — mode
+# belongs to the NFS server, not this role. With mode set, every run
+# chmods the live share root (nas-01 music-studio: changed 2026-10-08),
+# and on the read-only nas-02 mount the chmod fails the whole deploy
+# ("Read-only file system") — this role could not complete at all after
+# the 2026-09-28 NASTY -> nas-02 switch until this was removed.
+- name: "[music_studio] Ensure NFS mount point exists"
+  ansible.builtin.file:
+    path: /mnt/music-studio
+    state: directory
+
+- name: "[music_studio] Mount nas-01 music-studio export"
+  ansible.posix.mount:
+    path: /mnt/music-studio
+    # NFSv4 fsid=0 makes /export the pseudo-root — client paths are relative
+    # to it (/export/music-studio on the server -> /music-studio to NFSv4
+    # clients), same as media-vm's existing "nas-01.internal:/media" mount.
+    src: "nas-01.internal:/music-studio"
+    fstype: nfs4
+    opts: "rw,hard,intr,_netdev,nofail"
+    state: mounted
+
+- name: "[music_studio] Remove the retired NASTY SMB credentials file"
+  ansible.builtin.file:
+    path: /etc/samba/music-studio-nasty-credentials
+    state: absent
+
+# 'My Recordings' lived on NASTY (legacy QNAP, CIFS) until 2026-09-28; it is now
+# NFS from nas-02 (DATAGRID/Multimedia). The host path keeps its historical
+# /mnt/nasty-music name so the compose volume and Beets' stored paths don't change.
+- name: "[music_studio] Ensure recordings mount point exists"
+  ansible.builtin.file:
+    path: "{{ nasty_recordings_mount }}"
+    state: directory
+  # No `mode:` — once mounted this is a read-only NFS root and chmod fails (EROFS).
+
+- name: "[music_studio] Mount 'My Recordings' from nas-02 (read-only, PERMANENT — Beets scans + streams from here directly, like Immich's external libraries)"
+  ansible.posix.mount:
+    path: "{{ nasty_recordings_mount }}"
+    src: "{{ nas02_nfs_server | default('nas-02.internal') }}:/Multimedia/{{ nasty_recordings_subpath }}"  # mount module escapes the space as \040 itself
+    fstype: nfs4
+    opts: "ro,nfsvers=4.2,_netdev,nofail"
+    state: mounted
+
+- name: "[music_studio] Create subfolders for each compose volume"
+  ansible.builtin.file:
+    path: "/mnt/music-studio/{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0775"
+  loop:
+    - sessions
+    - field
+    - midi
+    - stems
+    - library
+    - beets-config
+
+# ---------------------------------------------------------------------------
+# App code + compose file
+# ---------------------------------------------------------------------------
+- name: "[music_studio] Create directory structure"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ music_studio_compose_dir }}"
+    - "{{ music_studio_compose_dir }}/music-catalog"
+    - "{{ music_studio_compose_dir }}/music-assistant"
+
+- name: "[music_studio] Copy docker-compose.yml"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../services/assistant/music-studio/docker-compose.yml"
+    dest: "{{ music_studio_compose_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: "[music_studio] Copy music-catalog app code"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/music_catalog_api.py"
+    dest: "{{ music_studio_compose_dir }}/music-catalog/music_catalog_api.py"
+    owner: root
+    group: root
+    mode: "0644"
+  register: _music_catalog_code
+
+# Run on demand / nightly via `docker exec`, not by uvicorn — so no restart
+# hook needed when it changes (each run is a fresh python process).
+- name: "[music_studio] Copy audio_identity_sync.py (content-hash identity for recordings)"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/audio_identity_sync.py"
+    dest: "{{ music_studio_compose_dir }}/music-catalog/audio_identity_sync.py"
+    owner: root
+    group: root
+    mode: "0644"
+
+# Phase 4: harmony.py is imported by music_catalog_api.py — a change must
+# restart music-catalog like the API code itself.
+- name: "[music_studio] Copy harmony.py (meter + key-relative progressions, imported by the catalog)"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/harmony.py"
+    dest: "{{ music_studio_compose_dir }}/music-catalog/harmony.py"
+    owner: root
+    group: root
+    mode: "0644"
+  register: _music_harmony_code
+
+- name: "[music_studio] Copy song_suggest.py (local-LLM song suggestions, run via docker exec)"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/song_suggest.py"
+    dest: "{{ music_studio_compose_dir }}/music-catalog/song_suggest.py"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: "[music_studio] Copy music-assistant app code"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/music_assistant.py"
+    dest: "{{ music_studio_compose_dir }}/music-assistant/music_assistant.py"
+    owner: root
+    group: root
+    mode: "0644"
+  register: _music_assistant_code
+
+# Music Studio web UI (browse/search/history/playback/notes/ratings) —
+# studio.home.example.org, added 2026-08-22. Jinja2Templates loads these from
+# ./templates relative to music_assistant.py inside the container.
+- name: "[music_studio] Copy Music Studio UI templates"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/music_studio_ui/templates"
+    dest: "{{ music_studio_compose_dir }}/music-assistant/"
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+  register: _music_assistant_templates
+
+# Vendored browser libraries (ChordSheetJS) — served by music-assistant at
+# /static, so the UI never depends on a CDN at runtime.
+- name: "[music_studio] Copy Music Studio UI static files"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/music_studio_ui/static"
+    dest: "{{ music_studio_compose_dir }}/music-assistant/"
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+  register: _music_assistant_static
+
+- name: "[music_studio] Seed beets config (first deploy only — NFS-persisted after that)"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/music_beets_config.yaml"
+    dest: /mnt/music-studio/beets-config/config.yaml
+    owner: "1000"
+    group: "1000"
+    mode: "0644"
+    force: false     # never clobber a config beets/the user has since edited
+
+- name: "[music_studio] Deploy beet_import_safe.sh wrapper (always refresh — ours to maintain)"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/beet_import_safe.sh"
+    dest: /mnt/music-studio/beets-config/beet_import_safe.sh
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+
+- name: "[music_studio] Deploy beet_scan.py (recursive per-file scanner — always refresh)"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/beet_scan.py"
+    dest: /mnt/music-studio/beets-config/beet_scan.py
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+
+# ---------------------------------------------------------------------------
+# .env — DSN points at the shared elementary_particles DB (music schema),
+# not the compose file's own music_studio-DB defaults.
+# ---------------------------------------------------------------------------
+- name: "[music_studio] Write .env from Vault secrets"
+  ansible.builtin.copy:
+    dest: "{{ music_studio_compose_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      # music-studio — generated by Ansible, do NOT edit manually
+      MUSIC_DATABASE_URL=postgresql://{{ vault_pg01.secret.app_user | urlencode | replace('/', '%2F') }}:{{ vault_pg01.secret.app_password | urlencode | replace('/', '%2F') }}@10.0.40.10:5432/elementary_particles
+      MUSIC_DB_PASSWORD={{ vault_pg01.secret.app_password }}
+      MUSIC_API_SECRET_KEY={{ vault_music_api.secret.secret_key }}
+      MUSICBRAINZ_USER_AGENT={{ vault_music_mb.secret.user_agent }}
+      MUSIC_SESSIONS_HOST_PATH=/mnt/music-studio/sessions
+      MUSIC_FIELD_HOST_PATH=/mnt/music-studio/field
+      MUSIC_MIDI_HOST_PATH=/mnt/music-studio/midi
+      MUSIC_STEMS_HOST_PATH=/mnt/music-studio/stems
+      MUSIC_LIBRARY_HOST_PATH=/mnt/music-studio/library
+      BEETS_CONFIG_HOST_PATH=/mnt/music-studio/beets-config
+      NASTY_RECORDINGS_HOST_PATH={{ nasty_recordings_mount }}
+      FORGEJO_URL={{ vault_music_forgejo.secret.url }}
+      FORGEJO_TOKEN={{ vault_music_forgejo.secret.token }}
+      SONGBOOK_OWNER={{ vault_music_forgejo.secret.owner }}
+      SONGBOOK_REPO={{ vault_music_forgejo.secret.repo }}
+  no_log: true
+
+# ---------------------------------------------------------------------------
+# music-analysis image (Musician Platform phase 2) — built HERE, before
+# "Start", because the compose service only references the image. Vamp
+# plugins compile from source (~3 min first time); rebuilt only when the
+# Dockerfile changes.
+# ---------------------------------------------------------------------------
+- name: "[music_studio] Create music-analysis build + app dirs"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ music_studio_compose_dir }}/music-analysis-build"
+    - "{{ music_studio_compose_dir }}/music-analysis"
+
+- name: "[music_studio] Copy music-analysis Dockerfile"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../services/assistant/music-studio/analysis/Dockerfile"
+    dest: "{{ music_studio_compose_dir }}/music-analysis-build/Dockerfile"
+    owner: root
+    group: root
+    mode: "0644"
+  register: _music_analysis_dockerfile
+  tags: ["music_studio", "studio_drift"]
+
+- name: "[music_studio] Build music-analysis image"
+  community.docker.docker_image:
+    name: music-analysis
+    tag: local
+    source: build
+    build:
+      path: "{{ music_studio_compose_dir }}/music-analysis-build"
+    force_source: "{{ _music_analysis_dockerfile.changed }}"
+    state: present
+  tags: ["music_studio", "studio_drift"]
+
+- name: "[music_studio] Copy music-analysis worker code"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/{{ item }}"
+    dest: "{{ music_studio_compose_dir }}/music-analysis/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - music_analysis_worker.py
+    - lead_sheet_draft.py          # phase 3: draft lead-sheet alignment
+  register: _music_analysis_code
+
+# studio-drift (2026-11-07): on-demand 24c/R24 timing-gap + drift check from a click recording
+# (IaC/docs/STUDIO_DRIFT.md). Runs in the music-analysis image (Vamp onset detector + numpy),
+# never as a service, so nothing restarts when it changes.
+- name: "[music_studio] Copy studio_drift.py"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/studio_drift.py"
+    dest: "{{ music_studio_compose_dir }}/music-analysis/studio_drift.py"
+    owner: root
+    group: root
+    mode: "0644"
+  tags: ["music_studio", "studio_drift"]
+
+- name: "[music_studio] Install the studio-drift command"
+  ansible.builtin.copy:
+    dest: /usr/local/bin/studio-drift
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      # studio-drift <Live set name | path under My Recordings | two files> -- IaC/docs/STUDIO_DRIFT.md
+      # Reads the recordings read-only; reports land in {{ music_studio_compose_dir }}/drift-reports.
+      set -eu
+      out={{ music_studio_compose_dir }}/drift-reports
+      mkdir -p "$out"
+      exec docker run --rm --memory 1200m --network none \
+        -v {{ nasty_recordings_mount }}:/rec:ro -v "$out":/out \
+        -v {{ music_studio_compose_dir }}/music-analysis/studio_drift.py:/app/studio_drift.py:ro \
+        -e RECORDINGS_ROOT=/rec music-analysis:local python /app/studio_drift.py --out /out "$@"
+  tags: ["music_studio", "studio_drift"]
+
+# studio-partner (2026-10-24): DOMO in the studio. Imports harmony.py too.
+- name: "[music_studio] Create studio-partner app dir"
+  ansible.builtin.file:
+    path: "{{ music_studio_compose_dir }}/studio-partner"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "[music_studio] Copy studio-partner code"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/{{ item }}"
+    dest: "{{ music_studio_compose_dir }}/studio-partner/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - studio_partner.py
+    - als_reader.py
+    - music_theory.py
+    - harmony.py
+    - practice.py                  # ear training + keyboard drills (2026-10-31)
+  register: _studio_partner_code
+
+# field-ingest (2026-10-25): field recorders -> sessions. The container asks for a
+# Beets import of a new batch by dropping a .req file in field-triggers/; the host
+# unit below runs Beets' safe import + the identity sync (containers can't docker exec).
+- name: "[music_studio] Create field-ingest app + trigger dirs"
+  ansible.builtin.file:
+    path: "{{ music_studio_compose_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: [field-ingest, field-triggers]
+
+- name: "[music_studio] Copy field-ingest code"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/field_ingest.py"
+    dest: "{{ music_studio_compose_dir }}/field-ingest/field_ingest.py"
+    owner: root
+    group: root
+    mode: "0644"
+  register: _field_ingest_code
+
+- name: "[music_studio] field catalogue runner (Beets safe import of one batch)"
+  ansible.builtin.copy:
+    dest: /usr/local/sbin/field-catalogue
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      # Managed by Ansible (Roles/music_studio). Runs the requests field-ingest drops in
+      # {{ music_studio_compose_dir }}/field-triggers: Beets' safe import of ONE folder under
+      # "/import/nasty/Field Recordings/" (never the whole tree, see MUSIC_STUDIO.md), then the
+      # identity sync so the analysis worker can see the new takes.
+      set -u
+      dir={{ music_studio_compose_dir }}/field-triggers
+      ran=0
+      for req in "$dir"/*.req; do
+        [ -e "$req" ] || continue
+        target=$(head -1 "$req")
+        case "$target" in
+          "/import/nasty/Field Recordings/"*/*) ;;
+          *) echo "refused: $target" > "${req%.req}.done"; rm -f "$req"; continue ;;
+        esac
+        if docker exec music-beets /etc/beets/beet_import_safe.sh "$target" > "${req%.req}.log" 2>&1; then
+          ran=1; echo "ok $(date -Is) $target" > "${req%.req}.done"
+        else
+          echo "failed $(date -Is) $target (see .log)" > "${req%.req}.done"
+        fi
+        rm -f "$req"
+      done
+      [ "$ran" = 1 ] && docker exec music-catalog python3 /app/audio_identity_sync.py > "$dir/identity-sync.log" 2>&1
+      exit 0
+  register: _field_runner
+
+- name: "[music_studio] field catalogue path + service units"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.body }}"
+  loop:
+    - name: field-catalogue.service
+      body: |
+        [Unit]
+        Description=Field recordings: Beets import of new batches (requests from field-ingest)
+
+        [Service]
+        Type=oneshot
+        Nice=10
+        ExecStart=/usr/local/sbin/field-catalogue
+    - name: field-catalogue.path
+      body: |
+        [Unit]
+        Description=Watch for field-ingest catalogue requests
+
+        [Path]
+        PathExistsGlob={{ music_studio_compose_dir }}/field-triggers/*.req
+
+        [Install]
+        WantedBy=multi-user.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: _field_units
+
+- name: "[music_studio] enable field catalogue path unit"
+  ansible.builtin.systemd_service:
+    name: field-catalogue.path
+    enabled: true
+    state: started
+    daemon_reload: "{{ _field_units.changed }}"
+
+- name: "[music_studio] Start music-studio services"
+  community.docker.docker_compose_v2:
+    project_src: "{{ music_studio_compose_dir }}"
+    env_files:
+      - "{{ music_studio_compose_dir }}/.env"
+    state: present
+    recreate: auto
+
+# music-catalog/music-assistant are bind-mounted files (./music-catalog:/app:ro
+# etc), not baked into an image — docker_compose_v2's `recreate: auto` only
+# reacts to changes in the compose file/service definition itself, so it
+# does NOT restart a container just because a bind-mounted source file's
+# CONTENTS changed, and uvicorn isn't run with --reload either. Without
+# this, updated app code silently keeps running the OLD process — found
+# live 2026-08-21 (new intents in music_assistant.py had zero effect until
+# a manual `docker restart`). Placed after "Start" so the container is
+# guaranteed to exist (handles first-ever deploy, where it wouldn't yet).
+- name: "[music_studio] Restart music-catalog if its code changed"
+  ansible.builtin.command: docker restart music-catalog
+  when: _music_catalog_code.changed or _music_harmony_code.changed
+
+- name: "[music_studio] Restart music-analysis if its code changed or the image was rebuilt"
+  ansible.builtin.command: docker restart music-analysis
+  when: _music_analysis_code.changed or _music_analysis_dockerfile.changed
+
+- name: "[music_studio] Restart field-ingest if its code changed"
+  ansible.builtin.command: docker restart field-ingest
+  when: _field_ingest_code.changed
+
+- name: "[music_studio] Restart studio-partner if its code changed"
+  ansible.builtin.command: docker restart studio-partner
+  when: _studio_partner_code.changed
+
+- name: "[music_studio] Restart music-assistant if its code or UI templates changed"
+  ansible.builtin.command: docker restart music-assistant
+  when: _music_assistant_code.changed or _music_assistant_templates.changed or _music_assistant_static.changed
+
+- name: "[music_studio] Wait for music-catalog to be healthy"
+  ansible.builtin.command:
+    cmd: >
+      docker exec music-catalog
+      python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8200/health')"
+  register: catalog_health
+  until: catalog_health.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+
+- name: "[music_studio] Wait for music-assistant to be healthy"
+  ansible.builtin.command:
+    cmd: >
+      docker exec music-assistant
+      python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8201/health')"
+  register: assistant_health
+  until: assistant_health.rc == 0
+  retries: 20
+  delay: 5
+  changed_when: false
+
+- name: "[music_studio] Wait for music-beets to respond (no /health endpoint — checks the web UI root)"
+  ansible.builtin.command:
+    cmd: >
+      docker exec music-beets
+      python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8337/')"
+  register: beets_health
+  until: beets_health.rc == 0
+  retries: 30     # first boot installs beets + plugins via pip, can take a while
+  delay: 10
+  changed_when: false
+
+# ---------------------------------------------------------------------------
+# Nightly audio identity sync (Musician Platform phase 0). Hashes only new or
+# changed files (size+mtime) — unchanged ones cost a stat() each — so this is
+# seconds on a quiet night. 04:15: after the 03:00 vzdump window, before the
+# 05:00 patch window. Exit 1 = it found drift (a rating/note whose Beets id
+# now points at different audio) — read the log, nothing was rewritten.
+# First run is seeded by hand from labcat (see audio_identity_sync.py
+# docstring and IaC/docs/MUSIC_STUDIO.md), not by this job.
+# ---------------------------------------------------------------------------
+# The Debian cloud image (studio-01) ships without cron; gpu-01 had it.
+- name: "[music_studio] Ensure cron installed"
+  ansible.builtin.package:
+    name: cron
+    state: present
+
+- name: "[music_studio] Nightly audio identity sync (cron)"
+  ansible.builtin.cron:
+    name: music-audio-identity-sync
+    cron_file: music-audio-identity-sync
+    user: root
+    minute: "15"
+    hour: "4"
+    job: >-
+      docker exec music-catalog python3 /app/audio_identity_sync.py
+      >> /mnt/music-studio/beets-config/audio_identity_sync.log 2>&1
+
+# Songbook index: git is the source of truth; this re-reads the repo so songs
+# and files added straight in git (iPad/desktop ChordPro apps) show up even if
+# nobody presses "Re-read songbook repo" in the UI. Reads only Forgejo.
+- name: "[music_studio] Nightly songbook reindex (cron)"
+  ansible.builtin.cron:
+    name: music-songbook-reindex
+    cron_file: music-songbook-reindex
+    user: root
+    minute: "25"
+    hour: "4"
+    job: >-
+      docker exec music-catalog python3 -c "import urllib.request;
+      print(urllib.request.urlopen(urllib.request.Request('http://localhost:8200/api/v1/songbook/reindex', method='POST'), timeout=300).read().decode())"
+      >> /mnt/music-studio/beets-config/songbook_reindex.log 2>&1
+
+# Phase 4: harmony + progression catalogue. Incremental for recordings
+# (only new/re-analysed ones), full for songs (re-reads each song.cho) and
+# the catalogue. After the 04:25 songbook reindex so git-side edits count.
+- name: "[music_studio] Nightly harmony rebuild (cron)"
+  ansible.builtin.cron:
+    name: music-harmony-rebuild
+    cron_file: music-harmony-rebuild
+    user: root
+    minute: "40"
+    hour: "4"
+    job: >-
+      docker exec music-catalog python3 -c "import urllib.request;
+      print(urllib.request.urlopen(urllib.request.Request('http://localhost:8200/api/v1/harmony/rebuild', method='POST'), timeout=1800).read().decode())"
+      >> /mnt/music-studio/beets-config/harmony_rebuild.log 2>&1

@@ -1,0 +1,97 @@
+{
+  "active": true,
+  "connections": {
+    "Alertmanager Webhook": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send to Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "6lsK8GWNIzPr22WZ",
+  "name": "Alertmanager -> System Alerts (Matrix)",
+  "nodes": [
+    {
+      "id": "wh1",
+      "name": "Alertmanager Webhook",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "alertmanager",
+        "responseMode": "onReceived"
+      },
+      "position": [
+        400,
+        300
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "cbe2551d-93b7-49de-a902-456d8ea0f779"
+    },
+    {
+      "id": "code1",
+      "name": "Format Message",
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst body = item.body || item;\nconst alerts = body.alerts || [];\n\nconst lines = alerts.map(a => {\n  const emoji = a.status === 'firing' ? '\\uD83D\\uDD34' : '\\u2705';\n  const sev = (a.labels && a.labels.severity) || 'unknown';\n  const summary = (a.annotations && a.annotations.summary) || (a.labels && a.labels.alertname) || 'Alert';\n  const desc = (a.annotations && a.annotations.description) || '';\n  return `${emoji} [${sev}] ${summary}${desc ? '\\n' + desc : ''}`;\n});\n\nconst text = lines.length ? lines.join('\\n\\n') : 'Alertmanager webhook received with no alerts.';\nconst txn_id = 'am-' + Date.now() + '-' + Math.random().toString(36).slice(2);\n\nreturn [{\n  json: {\n    txn_id,\n    matrixPayload: { msgtype: 'm.text', body: text }\n  }\n}];"
+      },
+      "position": [
+        620,
+        300
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "http1",
+      "name": "Send to Matrix",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        840,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

@@ -1,0 +1,254 @@
+---
+- name: "[monitoring] Fetch homepage widget secrets from Vault"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "{{ vault_homepage_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: _homepage_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[monitoring] Fetch postgres credentials from Vault"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "{{ vault_postgres_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: _pg_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[monitoring] Fetch iac-api's bearer token from Vault (for the PostgresRestarted receiver)"
+  # Mirrored copy — IAC_API_TOKEN's authoritative source is still
+  # /opt/iac/iac-api.env on the IaC VM (deliberately not Vault-first, see
+  # api_server.py's load_api_token() docstring), but Alertmanager's config
+  # needs it templated in from somewhere Ansible can read, so it's mirrored
+  # to secret/iac/api_token for this and any other future Ansible consumer.
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "iac/api_token"
+    engine_mount_point: secret
+  register: _iac_api_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[monitoring] Fetch Home Assistant API token from Vault (for the ha-bridge alert forwarder)"
+  # Added 2026-09-13 -- a genuinely independent alert delivery path
+  # (phone push via the Home Assistant Companion app), built after a real
+  # incident where the ONLY existing path (n8n -> Matrix) went dark
+  # because n8n itself got stuck as a downstream consequence of the very
+  # outage that needed alerting. See incident_iac_api_n8n_cascade_2026-09-13.
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "home-assistant/api"
+    engine_mount_point: secret
+  register: _ha_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[monitoring] Fetch dead man's switch webhook id from Vault"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "{{ vault_ha_deadman_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: _deadman_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[monitoring] Create directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ monitoring_compose_dir }}"
+    - "{{ prometheus_data_dir }}"
+    - "{{ grafana_data_dir }}"
+    - "{{ monitoring_compose_dir }}/grafana/provisioning/datasources"
+    - "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards"
+    - "{{ alertmanager_rules_dir }}"
+    - "{{ alertmanager_data_dir }}"
+    - "{{ monitoring_compose_dir }}/ha-bridge"
+
+- name: "[monitoring] Copy ha-bridge script"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../integration/alertmanager_ha_bridge.py"
+    dest: "{{ monitoring_compose_dir }}/ha-bridge/alertmanager_ha_bridge.py"
+    mode: "0644"
+  register: _ha_bridge_code_copy
+  # Bind-mounted, not baked into an image (zero external dependencies --
+  # pure stdlib) -- same bind-mount-staleness risk this repo has hit
+  # before (feedback_docker_bind_mount_staleness), handled by the
+  # `notify: restart monitoring` below plus the explicit restart task
+  # after compose-up, same pattern as serge-nextcloud-mcp/voice-chat.
+  notify: restart monitoring
+
+- name: "[monitoring] Fix Grafana data dir ownership (UID 472)"
+  ansible.builtin.file:
+    path: "{{ grafana_data_dir }}"
+    owner: "472"
+    group: "472"
+    recurse: true
+
+- name: "[monitoring] Fix Prometheus data dir ownership (UID 65534)"
+  ansible.builtin.file:
+    path: "{{ prometheus_data_dir }}"
+    owner: "65534"
+    group: "65534"
+    recurse: true
+
+# Found live 2026-09-08: alertmanager runs as the same "nobody" UID
+# (65534) as Prometheus's official image, but only Prometheus ever got
+# this fix -- alertmanager's data dir was left root:root, so its periodic
+# nflog/silences maintenance snapshots (every 15m) had been silently
+# failing with "permission denied" since the container was first created
+# (confirmed via docker logs going back hours). Non-fatal on its own, but
+# it meant the container landed on its `unless-stopped` restart policy
+# (not auto-restarted) after a clean shutdown during the 2026-09-08
+# pve-01 memory-pressure incident, leaving alerting dark until manually
+# restarted -- the exact wrong time for that gap to matter.
+- name: "[monitoring] Fix Alertmanager data dir ownership (UID 65534)"
+  ansible.builtin.file:
+    path: "{{ alertmanager_data_dir }}"
+    owner: "65534"
+    group: "65534"
+    recurse: true
+
+- name: "[monitoring] Write Prometheus config"
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_compose_dir }}/prometheus.yml"
+    mode: "0644"
+  # FOUND 2026-09-08, distinct from the rules-file gap already documented in
+  # handlers/main.yml: the "reload prometheus rules" wget trick (Prometheus's
+  # own /-/reload endpoint) reliably picks up rule_files changes, but NOT
+  # this file specifically -- prometheus.yml is bind-mounted as a SINGLE
+  # FILE (`{{ monitoring_compose_dir }}/prometheus.yml:/etc/prometheus/
+  # prometheus.yml:ro`), not a directory like rules/ is. Docker pins a
+  # single-file bind mount to the inode present at container start;
+  # Ansible's template module writes via atomic rename (a new inode), so
+  # the container's mount kept serving the OLD file's content even after a
+  # successful reload signal -- confirmed live: `docker exec prometheus cat
+  # ...` showed the old scrape config for 3+ minutes across two full
+  # "changed" Ansible runs and an explicit /-/reload, until an actual
+  # `docker restart prometheus` re-established the mount fresh. Directory
+  # bind mounts (rules/) don't have this problem -- the container looks up
+  # the directory entry fresh each time, not a pinned file inode. Real fix
+  # would be mounting a directory here too; cheaper fix applied instead:
+  # a dedicated handler that actually restarts the container.
+  notify: restart prometheus container
+
+- name: "[monitoring] Write pg-01 backup/archiving alert rules"
+  ansible.builtin.template:
+    src: rules/pg01_backup.yml.j2
+    dest: "{{ alertmanager_rules_dir }}/pg01_backup.yml"
+    mode: "0644"
+  notify: restart monitoring
+
+- name: "[monitoring] Write Grafana datasource provisioning"
+  ansible.builtin.template:
+    src: grafana-datasources.yml.j2
+    dest: "{{ monitoring_compose_dir }}/grafana/provisioning/datasources/prometheus.yml"
+    mode: "0644"
+  notify: restart monitoring
+
+- name: "[monitoring] Write Alertmanager config"
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ monitoring_compose_dir }}/alertmanager.yml"
+    mode: "0644"
+  notify: restart monitoring
+
+- name: "[monitoring] Write Prometheus alert rules"
+  ansible.builtin.template:
+    src: rules/critical_infra.yml.j2
+    dest: "{{ alertmanager_rules_dir }}/critical_infra.yml"
+    mode: "0644"
+  notify: restart monitoring
+
+- name: "[monitoring] Write Suricata alert rules"
+  ansible.builtin.template:
+    src: rules/suricata.yml.j2
+    dest: "{{ alertmanager_rules_dir }}/suricata.yml"
+    mode: "0644"
+  notify: restart monitoring
+
+- name: "[monitoring] Write IoT watch alert rules"
+  ansible.builtin.template:
+    src: rules/iot_watch.yml.j2
+    dest: "{{ alertmanager_rules_dir }}/iot_watch.yml"
+    mode: "0644"
+  notify: restart monitoring
+
+- name: "[monitoring] Write docker-compose.yml"
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ monitoring_compose_dir }}/docker-compose.yml"
+    mode: "0644"
+  notify: restart monitoring
+
+- name: "[monitoring] Write Nextcloud CrowdSec alert rules"
+  ansible.builtin.template:
+    src: rules/nextcloud_crowdsec.yml.j2
+    dest: "{{ alertmanager_rules_dir }}/nextcloud_crowdsec.yml"
+    mode: "0644"
+  notify: restart monitoring
+
+- name: "[monitoring] Pull images"
+  community.docker.docker_image:
+    name: "{{ item }}"
+    source: pull
+  loop:
+    - "{{ prometheus_image }}"
+    - "{{ grafana_image }}"
+    - "prometheuscommunity/postgres-exporter:latest"
+    - "{{ alertmanager_image }}"
+
+- name: "[monitoring] Start Prometheus + Grafana"
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_compose_dir }}"
+    state: present
+    pull: policy
+
+- name: "[monitoring] Wait for Grafana to be ready"
+  ansible.builtin.command:
+    cmd: "docker exec grafana wget -qO- http://localhost:{{ grafana_port }}/api/health"
+  retries: 12
+  delay: 5
+  register: _grafana_health
+  until: _grafana_health.rc == 0
+  changed_when: false
+
+- name: "[monitoring] Register grafana.{{ base_domain }} in Traefik"
+  ansible.builtin.include_role:
+    name: traefik_register
+  vars:
+    traefik_service_name: grafana
+    traefik_backend_url:  "http://grafana:{{ grafana_port }}"
+    traefik_domain:       "{{ grafana_host }}"
+    traefik_auth:         one_factor
+
+- name: "[monitoring] Show endpoints"
+  ansible.builtin.debug:
+    msg:
+      - "Grafana:    https://{{ grafana_host }}"
+      - "Prometheus: http://{{ ansible_host }}:{{ prometheus_port }} (internal)"
+
+- name: "[monitoring] Self-heal watchdog timer"
+  ansible.builtin.import_tasks: watchdog.yml

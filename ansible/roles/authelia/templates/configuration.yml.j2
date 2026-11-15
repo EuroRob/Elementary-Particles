@@ -1,0 +1,159 @@
+# =============================================================================
+# Authelia configuration.yml — managed by Ansible authelia role
+# Ref: https://www.authelia.com/configuration/prologue/introduction/
+# =============================================================================
+
+server:
+  host: 0.0.0.0
+  port: {{ authelia_port }}
+  buffers:
+    read: 4096
+    write: 4096
+
+log:
+  level: info
+  format: text
+
+totp:
+  issuer: {{ authelia_totp_issuer }}
+  period: {{ authelia_totp_period }}
+  skew: 1
+
+authentication_backend:
+{% if authelia_auth_backend == 'file' %}
+  file:
+    path: /config/users_database.yml
+    password:
+      algorithm: argon2id
+      iterations: 3
+      memory: 65536
+      parallelism: 4
+{% else %}
+  ldap:
+    implementation: custom
+    url: {{ authelia_ldap_url | default('ldap://ldap:389') }}
+    base_dn: {{ authelia_ldap_base_dn | default('dc=homelab,dc=local') }}
+    username_attribute: uid
+    additional_users_dn: ou=users
+    users_filter: "(&({username_attribute}={input})(objectClass=person))"
+    additional_groups_dn: ou=groups
+    groups_filter: "(&(member={dn})(objectClass=groupOfNames))"
+    group_name_attribute: cn
+    mail_attribute: mail
+    display_name_attribute: displayName
+    user: {{ authelia_ldap_bind_user | default('cn=admin,dc=homelab,dc=local') }}
+    password: {{ authelia_ldap_bind_password | default('') }}
+{% endif %}
+
+session:
+  name: authelia_session
+  secret:
+    path: /secrets/session_secret
+  expiration: 12h
+  inactivity: 24h
+  remember_me: 1M
+  cookies:
+    - name: authelia_session
+      domain: {{ base_domain }}
+      authelia_url: {{ authelia_url }}
+      default_redirection_url: https://home.{{ base_domain }}
+      same_site: lax
+  redis:
+    host: {{ authelia_redis_host }}
+    port: {{ authelia_redis_port }}
+
+storage:
+  encryption_key:
+    path: /secrets/storage_encryption_key
+  postgres:
+    host: {{ authelia_pg_host }}
+    port: {{ authelia_pg_port }}
+    database: {{ authelia_pg_db }}
+    username: {{ authelia_pg_user }}
+    password:
+      path: /secrets/pg_password
+    ssl:
+      mode: disable
+
+notifier:
+{% if authelia_smtp_enabled %}
+  smtp:
+    username: {{ authelia_smtp_user }}
+    password:
+      path: /secrets/smtp_password
+    host: {{ authelia_smtp_host }}
+    port: {{ authelia_smtp_port }}
+    sender: {{ authelia_smtp_sender }}
+    subject: "[Authelia] {title}"
+    startup_check_address: {{ authelia_smtp_user }}
+{% else %}
+  # Filesystem notifier — OTP tokens written here for dev/testing.
+  # /config is mounted :ro so use /tmp (ephemeral but always writable).
+  filesystem:
+    filename: /tmp/notification.txt
+{% endif %}
+
+# =============================================================================
+# Access Control
+# Rules are evaluated top-to-bottom; first match wins.
+# default_policy: deny ensures everything is protected unless explicitly allowed.
+# =============================================================================
+access_control:
+  default_policy: deny
+  rules:
+{% for rule in authelia_access_rules %}
+    # {{ rule.comment | default('') }}
+{% if rule.domain is string %}
+    - domain: "{{ rule.domain }}"
+{% else %}
+    - domain:
+{% for d in rule.domain %}
+        - "{{ d }}"
+{% endfor %}
+{% endif %}
+{% if rule.resources is defined %}
+      resources:
+{% for r in rule.resources %}
+        - "{{ r }}"
+{% endfor %}
+{% endif %}
+      policy: {{ rule.policy }}
+{% endfor %}
+
+# =============================================================================
+# OIDC Identity Provider
+# =============================================================================
+identity_providers:
+  oidc:
+    hmac_secret:
+      path: /secrets/jwt_secret
+    jwks:
+      - key_id: main
+        algorithm: RS256
+        use: sig
+        key: |
+{{ _authelia_oidc_vault.secret.private_key | indent(10, first=True) }}
+    # Access token TTL — shorter = more secure; clients refresh automatically
+    access_token_lifespan: 1h
+    authorize_code_lifespan: 1m
+    id_token_lifespan: 1h
+    refresh_token_lifespan: 90m
+    enable_client_debug_messages: false
+    enforce_pkce: public_clients_only
+    clients:
+{% for client in authelia_oidc_clients %}
+      - client_id: {{ client.id }}
+        client_name: "{{ client.description }}"
+        client_secret: "{{ _oidc_client_hashes[client.id] }}"
+        redirect_uris:
+{% for uri in client.redirect_uris %}
+          - "{{ uri }}"
+{% endfor %}
+        scopes:
+{% for scope in client.scopes %}
+          - {{ scope }}
+{% endfor %}
+        userinfo_signed_response_alg: {{ client.userinfo_signing_algorithm | default('none') }}
+        authorization_policy: {{ client.authorization_policy | default('one_factor') }}
+        token_endpoint_auth_method: {{ client.client_auth_method | default('client_secret_post') }}
+{% endfor %}

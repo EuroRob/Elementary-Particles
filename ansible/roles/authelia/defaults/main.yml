@@ -1,0 +1,250 @@
+---
+# =============================================================================
+# Role: authelia — defaults/main.yml
+# SSO / 2FA gateway protecting all Traefik-proxied services.
+# =============================================================================
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+# 2026-10-16: 4.38.19 -> 4.39.28 via the patch window container pass. 4.39 needs the
+# authelia login to have CREATE on its public schema (Roles/postgres/tasks/users.yml).
+authelia_version: "4.39.28"
+authelia_image: "authelia/authelia:{{ authelia_version }}"
+authelia_redis_image: "redis:7-alpine"
+
+# ── Directories ───────────────────────────────────────────────────────────────
+authelia_config_dir:  /opt/authelia/config
+authelia_secrets_dir: /opt/authelia/secrets    # files pulled from Vault
+authelia_data_dir:    /opt/authelia/data
+
+# ── Network / Traefik ─────────────────────────────────────────────────────────
+authelia_port: 9091
+authelia_fqdn: "auth.{{ base_domain | default('homelab.local') }}"
+authelia_url:  "https://{{ authelia_fqdn }}"
+
+# ── Domain — used in session cookie + access control rules ───────────────────
+base_domain: "homelab.local"    # override in group_vars or inventory
+
+# ── PostgreSQL backend (pg-01, Layer 3) ───────────────────────────────────────
+authelia_pg_host:   "{{ hostvars['pg-01'].ansible_host | default('10.0.40.10') }}"
+authelia_pg_port:   5432
+authelia_pg_db:     authelia
+authelia_pg_user:   authelia
+
+# ── Redis (co-deployed on web-01) ────────────────────────────────────────────
+authelia_redis_host: authelia-redis
+authelia_redis_port: 6379
+
+# ── Vault secret paths ────────────────────────────────────────────────────────
+vault_authelia_path:        "secret/authelia"
+vault_authelia_oidc_path:   "secret/authelia/oidc"
+vault_authelia_smtp_path:   "secret/authelia/smtp"     # optional
+vault_authelia_users_path:  "secret/authelia/users"
+
+# ── SMTP notifier (optional — set authelia_smtp_enabled: true to enable) ─────
+authelia_smtp_enabled: false
+authelia_smtp_host:    ""
+authelia_smtp_port:    587
+authelia_smtp_user:    ""
+authelia_smtp_sender:  "authelia@{{ base_domain }}"
+
+# ── TOTP settings ─────────────────────────────────────────────────────────────
+authelia_totp_issuer: "{{ base_domain }}"
+authelia_totp_period: 30
+
+# ── Authentication backend ────────────────────────────────────────────────────
+# Options: file | ldap
+# 'file' uses users_database.yml managed by this role.
+# 'ldap' requires additional vars (authelia_ldap_*).
+authelia_auth_backend: file
+
+# ── OIDC clients ──────────────────────────────────────────────────────────────
+# Each entry defines an OIDC client. Secrets come from Vault (secret/authelia/oidc.{id}_secret).
+# Redirect URIs must match what each service registers.
+authelia_oidc_clients:
+  - id: n8n
+    description: "n8n Workflow Automation"
+    redirect_uris:
+      - "https://n8n.{{ base_domain }}/rest/oauth2-credential/callback"
+    scopes: [openid, profile, email, groups]
+    userinfo_signing_algorithm: none
+    authorization_policy: one_factor
+
+  - id: grafana
+    description: "Grafana Metrics"
+    redirect_uris:
+      - "https://grafana.{{ base_domain }}/login/generic_oauth"
+    scopes: [openid, profile, email, groups]
+    userinfo_signing_algorithm: none
+    authorization_policy: two_factor
+
+  - id: netbox
+    description: "NetBox DCIM/IPAM"
+    redirect_uris:
+      # python-social-auth's actual callback path is /oauth/complete/<backend>/,
+      # NOT /oidc/callback/ — confirmed from the live redirect NetBox generates.
+      - "https://netbox.{{ base_domain }}/oauth/complete/oidc/"
+    scopes: [openid, profile, email]
+    userinfo_signing_algorithm: none
+    # python-social-auth's OIDC backend authenticates via HTTP Basic Auth
+    # (client_secret_basic) at the token endpoint by default — confirmed from
+    # Authelia's own rejection log ("client registration does not allow this
+    # method... only supports client_secret_post").
+    client_auth_method: client_secret_basic
+    authorization_policy: one_factor
+
+  - id: gitlab
+    description: "GitLab CE (decommissioned 2026-07-29 — replaced by forgejo client below; kept for reference, safe to remove once confirmed unused)"
+    redirect_uris:
+      - "https://git.{{ base_domain }}/users/auth/openid_connect/callback"
+    scopes: [openid, profile, email, groups]
+    userinfo_signing_algorithm: none
+    authorization_policy: one_factor
+
+  - id: forgejo
+    description: "Forgejo (git-01)"
+    redirect_uris:
+      # Case must match Forgejo's registered OAuth2 source name exactly ("Authelia",
+      # capital A — set via `forgejo admin auth add-oauth --name Authelia`). Forgejo's
+      # URL routing for the callback path is case-sensitive; a lowercase mismatch here
+      # causes Authelia to reject with "redirect_uri does not match" (confirmed 2026-07-29).
+      - "https://git.{{ base_domain }}/user/oauth2/Authelia/callback"
+      # Forgejo's GITEA__server__ROOT_URL is still forgejo.home.example.org (temporary
+      # hostname, predates the git.home.example.org Traefik cutover on 2026-07-29 — see
+      # deploy_forgejo01.yml). Forgejo builds its redirect_uri from ROOT_URL, not
+      # the request Host header, so both domains must stay registered here until
+      # ROOT_URL is actually cut over. Confirmed via Authelia's own rejection log
+      # ("redirect_uris registered... did not match 'redirect_uri' value
+      # 'https://forgejo.home.example.org/...'") 2026-08-03.
+      - "https://forgejo.{{ base_domain }}/user/oauth2/Authelia/callback"
+    scopes: [openid, profile, email, groups]
+    userinfo_signing_algorithm: none
+    # Forgejo's OAuth2 client authenticates at the token endpoint via HTTP
+    # Basic Auth (client_secret_basic) by default — same gotcha as netbox
+    # and paperless above. Confirmed from Authelia's own rejection log
+    # ("registered client... only support 'token_endpoint_auth_method'
+    # method 'client_secret_post'") 2026-08-03.
+    client_auth_method: client_secret_basic
+    authorization_policy: one_factor
+
+  - id: outline
+    description: "Outline Wiki"
+    # outline.{{ base_domain }}, NOT wiki.{{ base_domain }} — that's still
+    # Confluence's domain as of 2026-08-26. Update this (and Outline's own
+    # outline_public_domain) together if/when the actual cutover happens.
+    redirect_uris:
+      - "https://outline.{{ base_domain }}/auth/oidc.callback"
+    scopes: [openid, profile, email]
+    userinfo_signing_algorithm: none
+    authorization_policy: one_factor
+
+  - id: immich
+    description: "Immich Photo Manager"
+    # Standardized on immich.{{ base_domain }} 2026-08-09 — was "photos.*",
+    # which never matched the Traefik route (immich.internal) or the
+    # service.yaml tags either. Now consistent everywhere: Traefik route,
+    # traefik_backends inventory group, and this redirect_uri all use
+    # immich.home.example.org (same "real domain, no fake .internal TLD" pattern
+    # already used by paperless/git/chronicle).
+    redirect_uris:
+      - "https://immich.{{ base_domain }}/auth/login"
+      - "app.immich:///oauth-callback"
+    scopes: [openid, profile, email]
+    userinfo_signing_algorithm: none
+    authorization_policy: one_factor
+
+  - id: jellyfin
+    description: "Jellyfin Media Server"
+    redirect_uris:
+      - "https://media.{{ base_domain }}/sso/OID/redirect/authelia"
+    scopes: [openid, profile, email, groups]
+    userinfo_signing_algorithm: RS256
+    authorization_policy: one_factor
+
+  - id: paperless
+    description: "Paperless-ngx Document Manager"
+    redirect_uris:
+      - "https://paperless.{{ base_domain }}/accounts/oidc/authelia/login/callback/"
+    scopes: [openid, profile, email]
+    userinfo_signing_algorithm: none
+    # django-allauth's "openid_connect" provider authenticates at the token
+    # endpoint via HTTP Basic Auth (client_secret_basic) by default — same
+    # gotcha as netbox above. Confirmed from Authelia's own rejection log
+    # ("registration does not allow this method... only supports
+    # client_secret_post") 2026-08-01.
+    client_auth_method: client_secret_basic
+    authorization_policy: one_factor
+
+  - id: tandoor
+    description: "Tandoor Recipes"
+    redirect_uris:
+      - "https://recipes.{{ base_domain }}/accounts/oidc/authelia/login/callback/"
+    scopes: [openid, profile, email]
+    userinfo_signing_algorithm: none
+    # django-allauth's "openid_connect" provider authenticates at the token
+    # endpoint via HTTP Basic Auth (client_secret_basic) by default — same
+    # gotcha already hit and documented for netbox/paperless above.
+    client_auth_method: client_secret_basic
+    authorization_policy: one_factor
+
+  - id: adventurelog
+    description: "AdventureLog (Travel Concierge)"
+    redirect_uris:
+      - "https://travel.{{ base_domain }}/accounts/oidc/authelia/login/callback/"
+    scopes: [openid, profile, email]
+    userinfo_signing_algorithm: none
+    # django-allauth "openid_connect" — client_secret_basic, same as tandoor.
+    # Secret: Vault secret/authelia/oidc key adventurelog_secret (mirrored in
+    # secret/adventurelog/oidc client_secret).
+    client_auth_method: client_secret_basic
+    authorization_policy: one_factor
+
+  - id: wanderer
+    description: "wanderer (hiking trails)"
+    redirect_uris:
+      - "https://hike.{{ base_domain }}/login/redirect"
+    scopes: [openid, profile, email]
+    userinfo_signing_algorithm: none
+    # PocketBase's OAuth2 client (golang.org/x/oauth2, AuthStyle auto-detect)
+    # tries HTTP Basic first. Secret: Vault secret/authelia/oidc key
+    # wanderer_secret (mirrored in secret/wanderer/oidc client_secret).
+    client_auth_method: client_secret_basic
+    authorization_policy: one_factor
+
+  - id: wger
+    description: "wger Fitness & Nutrition Tracker"
+    redirect_uris:
+      - "https://wger.{{ base_domain }}/en/user/google-oauth2/login/callback/"
+    scopes: [openid, profile, email]
+    userinfo_signing_algorithm: none
+    authorization_policy: one_factor
+
+# ── Access control rules ──────────────────────────────────────────────────────
+# Applied in order — first match wins.
+authelia_access_rules:
+  # ── Public / bypass ──────────────────────────────────────────────────────
+  - domain: "{{ authelia_fqdn }}"
+    policy: bypass
+    comment: "Authelia itself — no auth loop"
+
+  - domain: "*.{{ base_domain }}"
+    resources:
+      - "^/api/.*$"
+      - "^/.well-known/.*$"
+      - "^/api/health$"
+    policy: bypass
+    comment: "Health checks and ACME challenge endpoints"
+
+  # ── Two-factor — high-privilege admin UIs ────────────────────────────────
+  - domain:
+      - "traefik.{{ base_domain }}"
+      - "vault.{{ base_domain }}"
+      - "grafana.{{ base_domain }}"
+      - "vpn.{{ base_domain }}"
+      - "pihole.{{ base_domain }}"
+    policy: two_factor
+    comment: "Admin-level services require TOTP"
+
+  # ── One-factor — standard SSO for all other services ─────────────────────
+  - domain: "*.{{ base_domain }}"
+    policy: one_factor
+    comment: "Default SSO for all homelab services"

@@ -1,0 +1,4 @@
+---
+- name: "[traefik] Install and configure Traefik"
+  import_tasks: install.yml
+  tags: ["traefik", "install"]

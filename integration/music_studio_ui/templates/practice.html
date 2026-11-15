@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+{% block title %}Practice — Music Studio{% endblock %}
+{% block content %}
+<style>
+  .p-row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.8rem; }
+  .p-group { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); min-width: 2.6rem; }
+  .chip { cursor: pointer; background: none; }
+  .prompt { font-size: 1.35rem; font-weight: 700; margin: 0.2rem 0 0.6rem; }
+  .steps { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+  .step { padding: 0.25rem 0.7rem; border-radius: 8px; border: 1px solid var(--border); font-weight: 700; color: var(--text-dim); }
+  .step.now { border-color: var(--accent); color: var(--accent); }
+  .step.done { border-color: var(--green); color: var(--green); }
+  .choices { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.6rem 0; }
+  .choices button { min-width: 3.4rem; }
+  .choices button.right { background: var(--green); color: var(--bg); border-color: var(--green); }
+  .choices button.wrong { background: var(--coral); color: var(--bg); border-color: var(--coral); }
+  .feedback { min-height: 2.6rem; margin: 0.5rem 0; }
+  .feedback b.ok { color: var(--green); } .feedback b.err { color: var(--coral); }
+  .dots { display: flex; gap: 0.3rem; margin-bottom: 0.5rem; }
+  .dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; border: 1px solid var(--border); }
+  .dot.on { background: var(--accent); border-color: var(--accent); } .dot.bad { background: var(--coral); border-color: var(--coral); }
+  .kbd-wrap { overflow-x: auto; padding-bottom: 0.3rem; }
+  .kbd { position: relative; height: 150px; display: flex; user-select: none; min-width: 640px; }
+  .kw { flex: 1; border: 1px solid #0a1930; background: #e9eef8; border-radius: 0 0 6px 6px; position: relative; cursor: pointer; }
+  .kb { position: absolute; top: 0; height: 60%; background: #1b2438; border-radius: 0 0 4px 4px; z-index: 2; cursor: pointer;
+        border: 1px solid #0a1930; }
+  .kw span { position: absolute; bottom: 4px; width: 100%; text-align: center; font-size: 0.65rem; color: #5b6b8a; }
+  .k-held { background: var(--accent) !important; }
+  .k-show { background: var(--green) !important; }
+  .k-play { background: var(--gold) !important; }
+  .k-sel { background: #a9c8ff !important; }
+  .k-bad { background: var(--coral) !important; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.9rem; }
+  kbd.key { font: inherit; font-size: 0.75rem; border: 1px solid var(--border); border-radius: 4px; padding: 0 0.3rem; color: var(--text-dim); }
+  @media (max-width: 600px) { .prompt { font-size: 1.1rem; } }
+</style>
+
+<h2>Practice</h2>
+<p class="muted">Ear training and keyboard drills. Every exercise is made and graded by code, with notes spelled by letter;
+  what you miss comes back more often. Play on the N61 (Brave or Chrome: allow MIDI when asked) or click the keys.
+  To explore keys, scales and the circle of fifths, use the <a href="{{ theory_url }}" target="_blank" rel="noopener">theory explorer (Chromatone)</a>.</p>
+
+{% if error %}<p class="err">{{ error }}</p>{% endif %}
+
+<div class="card">
+  <div class="p-row">
+    <button id="midiBtn" type="button">Connect keyboard</button>
+    <span id="midiStatus" class="muted">No keyboard connected; clicking the keys below works too.</span>
+  </div>
+  <div class="p-row">
+    <label class="muted"><input type="checkbox" id="hearKeys" checked> Hear my keys here</label>
+    <span class="muted">(turn off if Ableton is already playing the N61)</span>
+  </div>
+  <div class="p-row muted" id="today">…</div>
+</div>
+
+<div class="card">
+  <div class="p-row"><span class="p-group">Ear</span><span id="earDecks" class="chips" style="margin:0"></span></div>
+  <div class="p-row"><span class="p-group">Play</span><span id="playDecks" class="chips" style="margin:0"></span></div>
+  <div class="p-row">
+    <select id="level"></select>
+    <button id="startBtn" type="button">Start</button>
+  </div>
+</div>
+
+<div class="card" id="exCard" style="display:none">
+  <div class="meta" id="exMeta"></div>
+  <div class="prompt" id="prompt"></div>
+  <div class="steps" id="steps"></div>
+  <div class="dots" id="dots"></div>
+  <div class="choices" id="choices"></div>
+  <div class="row-actions">
+    <button id="replayBtn" type="button" title="Space">▶ Play</button>
+    <button id="hintBtn" type="button">Show me</button>
+    <button id="enterBtn" type="button" style="display:none" title="Use the keys you clicked">Enter chord</button>
+    <button id="retryBtn" type="button" style="display:none">Try again</button>
+    <button id="nextBtn" type="button" title="Enter">Next</button>
+    <span class="muted"><kbd class="key">Space</kbd> play · <kbd class="key">Enter</kbd> next</span>
+  </div>
+  <div class="feedback" id="feedback"></div>
+</div>
+
+<div class="kbd-wrap"><div class="kbd" id="kbd"></div></div>
+<p class="muted" style="margin-top:0.3rem">
+  <span style="color:var(--accent)">■</span> you play ·
+  <span style="color:var(--gold)">■</span> sounding ·
+  <span style="color:var(--green)">■</span> the answer ·
+  <span style="color:#a9c8ff">■</span> clicked</p>
+
+<div class="stats" style="margin-top:1rem">
+  <div class="card"><h3>Last 7 days</h3><div id="deckStats" class="muted">—</div></div>
+  <div class="card"><h3>To work on</h3><div id="weakest" class="muted">—</div></div>
+</div>
+
+<script>
+const USER = {{ current_user | tojson }};
+const DECKS = {{ decks | tojson }};
+const LOW = 48, HIGH = 84;
+const $ = id => document.getElementById(id);
+const store = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+// Accidentals as music signs, only on note and chord names (never on words).
+function pretty(s) {
+  return String(s ?? '')
+    .replace(/\b([A-G])##/g, '$1𝄪').replace(/\b([A-G])bb(?=$|[^a-z]|m|dim|aug|maj)/g, '$1𝄫')
+    .replace(/\b([A-G])#/g, '$1♯').replace(/\b([A-G])b(?=$|[^a-z]|m|dim|aug|maj)/g, '$1♭')
+    .replace(/(^|[\s–(/])b(?=(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)\b)/g, '$1♭').replace(/m7b5/g, 'm7♭5');
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ── sound: a small piano-like voice in Web Audio (no samples, nothing loaded) ──
+let ctx, out;
+function audio() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = ctx.createDynamicsCompressor();
+    out = ctx.createGain(); out.gain.value = 0.9;
+    out.connect(comp).connect(ctx.destination);
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+function voice(midi, when, vel = 0.7) {
+  const c = audio(), f = 440 * Math.pow(2, (midi - 69) / 12);
+  const g = c.createGain(), lp = c.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = Math.min(6000, f * 7);
+  g.gain.setValueAtTime(0, when);
+  g.gain.linearRampToValueAtTime(0.2 * vel, when + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.07 * vel, when + 0.4);
+  const oscs = [[1, 'triangle', 1], [2, 'sine', 0.3], [3, 'sine', 0.1]].map(([m, type, a]) => {
+    const o = c.createOscillator(), og = c.createGain();
+    o.type = type; o.frequency.value = f * m; og.gain.value = a;
+    o.connect(og).connect(lp); o.start(when); return o;
+  });
+  lp.connect(g).connect(out);
+  return { stop(at) {
+    const t = Math.max(at, c.currentTime);
+    g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0.0001, t, 0.12);
+    oscs.forEach(o => o.stop(t + 0.8));
+  } };
+}
+let playTimers = [];
+function playGroups(groups, light = true) {
+  playTimers.forEach(clearTimeout); playTimers = [];
+  const c = audio(); let t = c.currentTime + 0.05, ms = 50;
+  for (const g of groups || []) {
+    g.notes.forEach(n => voice(n, t).stop(t + g.dur));
+    const notes = g.notes;
+    if (light) playTimers.push(setTimeout(() => mark('k-play', notes), ms));
+    t += g.dur; ms += g.dur * 1000;
+  }
+  playTimers.push(setTimeout(() => mark('k-play', []), ms));
+}
+
+// ── keyboard drawing ──
+const keyEls = {};
+(function drawKeyboard() {
+  const kbd = $('kbd'), whites = [];
+  for (let n = LOW; n <= HIGH; n++) if (![1, 3, 6, 8, 10].includes(n % 12)) whites.push(n);
+  const w = 100 / whites.length;
+  for (let n = LOW; n <= HIGH; n++) {
+    const black = [1, 3, 6, 8, 10].includes(n % 12);
+    const el = document.createElement('div');
+    el.className = black ? 'kb' : 'kw';
+    if (black) {
+      const left = whites.indexOf(n - 1);
+      el.style.left = `calc(${(left + 1) * w}% - ${w * 0.3}%)`; el.style.width = `${w * 0.6}%`;
+    } else if (n % 12 === 0) el.innerHTML = `<span>C${n / 12 - 1}</span>`;
+    el.addEventListener('mousedown', e => { e.preventDefault(); clickKey(n); });
+    kbd.appendChild(el); keyEls[n] = el;
+  }
+})();
+const marks = { 'k-held': new Set(), 'k-show': new Set(), 'k-play': new Set(), 'k-sel': new Set(), 'k-bad': new Set() };
+function mark(cls, notes) {
+  marks[cls] = new Set(notes);
+  for (const [n, el] of Object.entries(keyEls)) el.classList.toggle(cls, marks[cls].has(+n));
+}
+
+// ── MIDI in ──
+const held = new Set(), live = {};
+async function connectMidi() {
+  if (!navigator.requestMIDIAccess) {
+    $('midiStatus').textContent = 'This browser has no Web MIDI (Safari has none). Use Brave or Chrome.'; return;
+  }
+  try {
+    const access = await navigator.requestMIDIAccess();
+    const bind = () => {
+      const names = [];
+      access.inputs.forEach(i => { i.onmidimessage = onMidi; names.push(i.name); });
+      $('midiStatus').textContent = names.length ? `Listening to: ${names.join(', ')}` : 'No MIDI keyboard found: plug in the N61.';
+    };
+    bind(); access.onstatechange = bind;
+    store.set('practice.midi', 'on'); $('midiBtn').style.display = 'none';
+  } catch (e) {
+    $('midiStatus').textContent = 'MIDI access was blocked. In Brave: click the icon left of the address bar, allow MIDI devices, reload.';
+  }
+}
+function onMidi(e) {
+  const [st, n, v] = e.data, cmd = st & 0xf0;
+  if ((st & 0x0f) === 9) return;                     // channel 10 = drums (TD-25), not the piano
+  if (cmd === 0x90 && v > 0) noteOn(n, v);
+  else if (cmd === 0x80 || (cmd === 0x90 && v === 0)) noteOff(n);
+}
+function noteOn(n, v = 90) {
+  held.add(n); mark('k-held', [...held]);
+  if ($('hearKeys').checked) { live[n]?.stop(0); live[n] = voice(n, audio().currentTime, v / 127); }
+  onPlayed(n);
+}
+function noteOff(n) {
+  held.delete(n); mark('k-held', [...held]);
+  live[n]?.stop(0); delete live[n];
+  onReleased();
+}
+
+// ── the exercise ──
+let deck = store.get('practice.deck', 'ear-intervals'), ex = null, t0 = 0, hintUsed = false, done = false;
+let step = 0, groups = [], seq = [], maxHeld = [], clicked = new Set(), round = 0;
+
+function pcsOf(notes) { return [...new Set(notes.map(n => n % 12))].sort((a, b) => a - b).join(','); }
+function targetNow() { return ex.targets ? [...new Set(ex.targets[step])].sort((a, b) => a - b).join(',') : null; }
+
+function onPlayed(n) {
+  if (!ex || done) return;
+  if (ex.kind === 'play-scale') {
+    seq.push(n); drawDots();
+    const i = seq.length - 1;
+    if (n % 12 !== ex.sequence[i] || (i && n <= seq[i - 1]) || seq.length === ex.sequence.length) submit(seq);
+    return;
+  }
+  if (ex.kind === 'play-chord' || ex.kind === 'play-progression') {
+    if ([...held].length > maxHeld.length) maxHeld = [...held];
+    if (pcsOf([...held]) === targetNow()) accept([...held]);
+  }
+}
+function onReleased() {
+  if (!ex || done || !(ex.kind === 'play-chord' || ex.kind === 'play-progression')) return;
+  if (held.size && pcsOf([...held]) === targetNow()) return accept([...held]);
+  if (held.size === 0 && maxHeld.length >= 2) wrongGroup(maxHeld);
+}
+function accept(notes) {
+  maxHeld = [];
+  if (ex.kind === 'play-chord') return submit(notes);
+  groups.push(notes); step++; drawSteps();
+  if (step === ex.targets.length) submit(groups);
+}
+function wrongGroup(notes) {
+  maxHeld = [];
+  submit(ex.kind === 'play-chord' ? notes : groups.concat([notes]));
+}
+function clickKey(n) {
+  const c = audio(); voice(n, c.currentTime).stop(c.currentTime + 0.6);
+  if (!ex || done) return;
+  if (ex.kind === 'play-scale') return onPlayed(n);
+  if (ex.kind === 'play-chord' || ex.kind === 'play-progression') {
+    clicked.has(n) ? clicked.delete(n) : clicked.add(n);
+    mark('k-sel', [...clicked]);
+  }
+}
+$('enterBtn').onclick = () => {
+  if (!ex || done || clicked.size < 2) return;
+  const notes = [...clicked]; clicked = new Set(); mark('k-sel', []);
+  const c = audio(); notes.forEach(n => voice(n, c.currentTime).stop(c.currentTime + 1));
+  pcsOf(notes) === targetNow() ? accept(notes) : wrongGroup(notes);
+};
+
+function drawSteps() {
+  $('steps').innerHTML = (ex?.labels || []).map((l, i) =>
+    `<span class="step ${i < step ? 'done' : i === step && !done ? 'now' : ''}">${esc(pretty(l))}</span>`).join('');
+}
+function drawDots() {
+  if (ex?.kind !== 'play-scale') { $('dots').innerHTML = ''; return; }
+  $('dots').innerHTML = ex.sequence.map((p, i) =>
+    `<span class="dot ${i < seq.length ? (seq[i] % 12 === p ? 'on' : 'bad') : ''}"></span>`).join('');
+}
+
+function reset() {
+  step = 0; groups = []; seq = []; maxHeld = []; clicked = new Set(); hintUsed = false; done = false; round++;
+  ['k-show', 'k-sel', 'k-bad', 'k-play'].forEach(c => mark(c, []));
+  $('feedback').innerHTML = ''; $('retryBtn').style.display = 'none';
+  t0 = performance.now();
+}
+function render() {
+  $('exCard').style.display = '';
+  const d = DECKS[ex.deck];
+  $('exMeta').textContent = `${d.mode === 'ear' ? 'Ear' : 'Play'} · ${d.title} · level ${ex.level}`;
+  $('prompt').innerHTML = esc(pretty(ex.prompt));
+  const ear = ex.kind === 'ear';
+  $('choices').innerHTML = ear ? ex.choices.map(c =>
+    `<button type="button" data-v="${esc(c.value)}" title="${esc(c.title || '')}">${esc(pretty(c.label))}${c.title === 'from your recordings' ? ' ★' : ''}</button>`).join('') : '';
+  $('choices').querySelectorAll('button').forEach(b => b.onclick = () => !done && submit(b.dataset.v, b));
+  $('replayBtn').style.display = ex.play ? '' : 'none';
+  $('replayBtn').textContent = ear ? '▶ Play again' : '▶ Hear it';
+  $('hintBtn').style.display = ear ? 'none' : '';
+  $('enterBtn').style.display = (ex.kind === 'play-chord' || ex.kind === 'play-progression') ? '' : 'none';
+  drawSteps(); drawDots();
+  if (ear) playGroups(ex.play);
+}
+
+async function next() {
+  const level = +$('level').value || 1;
+  store.set('practice.deck', deck); store.set(`practice.level.${deck}`, level);
+  const r = await fetch(`/api/practice/next?user=${encodeURIComponent(USER)}&deck=${deck}&level=${level}`);
+  const body = await r.json();
+  if (!r.ok) { $('exCard').style.display = ''; $('feedback').innerHTML = `<b class="err">${esc(body.detail)}</b>`; return; }
+  ex = body; reset(); render();
+}
+
+async function submit(answer, button) {
+  if (done) return;
+  done = true;
+  const r = await fetch('/api/practice/attempt', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: USER, exercise: ex, answer, ms: Math.round(performance.now() - t0), hint_used: hintUsed }),
+  });
+  const res = await r.json();
+  if (!r.ok) { $('feedback').innerHTML = `<b class="err">${esc(res.detail)}</b>`; return; }
+  const ok = res.correct && !hintUsed;
+  let html = res.correct ? `<b class="ok">✓ Right</b> — ${esc(pretty(res.expected))}` : `<b class="err">✗ Not quite</b> — ${esc(pretty(res.expected))}`;
+  if (res.detail) html += `<br><span class="muted">${esc(pretty(res.detail))}</span>`;
+  if (res.movement !== undefined) {
+    html += `<br><span class="muted">Your right hand moved ${res.movement} semitones across the changes; ` +
+            (res.movement <= res.smoothest ? 'that is as smooth as it gets.' :
+             `the smoothest voicing moves ${res.smoothest}. <a href="#" id="smoothLink">See and hear it</a>.`) + '</span>';
+  }
+  $('feedback').innerHTML = html;
+  if (button) {
+    button.classList.add(res.correct ? 'right' : 'wrong');
+    $('choices').querySelectorAll('button').forEach(b => b.dataset.v === res.value && b.classList.add('right'));
+  }
+  if (res.show) showVoicings(res.show, !res.correct);
+  if (ex.kind === 'play-scale' && !res.correct) mark('k-bad', seq.filter((n, i) => n % 12 !== ex.sequence[i]));
+  const smooth = $('smoothLink');
+  if (smooth) smooth.onclick = e => { e.preventDefault(); showVoicings(res.show, true); };
+  drawSteps();
+  $('retryBtn').style.display = res.correct ? 'none' : '';
+  loadStats();
+  const thisRound = round;
+  if (ok && ex.kind !== 'play-progression') setTimeout(() => { if (done && round === thisRound) next(); }, 1600);
+}
+
+function showVoicings(show, sound) {
+  if (show.length === 1) { mark('k-show', show[0]); if (sound) playGroups([{ notes: show[0], dur: 1.2 }]); return; }
+  playTimers.forEach(clearTimeout); playTimers = [];
+  const c = audio(); let t = c.currentTime + 0.05;
+  show.forEach((v, i) => {
+    if (sound) v.forEach(n => voice(n, t).stop(t + 1.0));
+    playTimers.push(setTimeout(() => mark('k-show', v), i * 1000 + 50)); t += 1.0;
+  });
+}
+
+$('hintBtn').onclick = () => {
+  if (!ex || done) return;
+  hintUsed = true;
+  const names = ex.hint.map(h => h.join(' ')).join('  |  ');
+  $('feedback').innerHTML = `<span class="muted">Notes: ${esc(pretty(names))} (counts as a miss, so it comes back soon)</span>`;
+  showVoicings(ex.show, false);
+};
+// Hearing a play exercise is help, but lighting its keys would give the answer away.
+const replay = () => ex?.play && playGroups(ex.play, ex.kind === 'ear' || done);
+$('replayBtn').onclick = replay;
+$('retryBtn').onclick = () => { reset(); render(); };
+$('nextBtn').onclick = next;
+$('startBtn').onclick = () => { audio(); next(); };
+$('midiBtn').onclick = connectMidi;
+$('hearKeys').checked = store.get('practice.hear', 'on') === 'on';
+$('hearKeys').onchange = e => store.set('practice.hear', e.target.checked ? 'on' : 'off');
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, select, textarea')) return;
+  if (e.code === 'Space' && ex?.play) { e.preventDefault(); replay(); }
+  if (e.code === 'Enter' && ex) { e.preventDefault(); next(); }
+});
+
+// ── deck picker ──
+function drawDecks() {
+  for (const mode of ['ear', 'play']) {
+    $(mode + 'Decks').innerHTML = Object.entries(DECKS).filter(([, d]) => d.mode === mode).map(([k, d]) =>
+      `<button type="button" class="chip ${k === deck ? 'active' : ''}" data-deck="${k}">${esc(d.title)}</button>`).join('');
+  }
+  document.querySelectorAll('[data-deck]').forEach(b => b.onclick = () => { deck = b.dataset.deck; drawDecks(); });
+  const levels = DECKS[deck]?.levels || {};
+  const saved = store.get(`practice.level.${deck}`, '1');
+  $('level').innerHTML = Object.entries(levels).map(([l, txt]) =>
+    `<option value="${l}" ${l === saved ? 'selected' : ''}>Level ${l}: ${esc(pretty(txt))}</option>`).join('');
+}
+if (!DECKS[deck]) deck = Object.keys(DECKS)[0];
+if (Object.keys(DECKS).length) drawDecks();
+$('level').onchange = () => store.set(`practice.level.${deck}`, $('level').value);
+
+// ── progress ──
+async function loadStats() {
+  const r = await fetch(`/api/practice/stats?user=${encodeURIComponent(USER)}`);
+  const s = await r.json();
+  if (!r.ok) { $('today').textContent = s.detail || 'No practice record for this person.'; return; }
+  const t = s.today;
+  $('today').innerHTML = `Today: <b>${t.attempts}</b> answers, ${t.correct} right, about ${t.minutes} min · ` +
+    `streak <b>${s.streak}</b> day${s.streak === 1 ? '' : 's'} (${s.day_min}+ answers a day)`;
+  const ds = Object.entries(s.decks);
+  $('deckStats').innerHTML = ds.length ? ds.map(([k, v]) =>
+    `${esc(DECKS[k] ? (DECKS[k].mode === 'ear' ? 'Ear · ' : 'Play · ') + DECKS[k].title : k)}: ${v.tries} tries, ${Math.round(v.accuracy * 100)}% right`).join('<br>') : 'Nothing yet.';
+  $('weakest').innerHTML = s.weakest.length ? s.weakest.map(w =>
+    `${esc(pretty(w.item.replace(/^(major|minor):/, '')))} <span class="muted">(${esc(DECKS[w.deck]?.title || w.deck)}, missed ${w.missed} of last ${w.tries})</span>`).join('<br>')
+    : 'Nothing missed lately, or not enough tries yet.';
+}
+loadStats();
+if (store.get('practice.midi', '') === 'on') connectMidi();
+</script>
+{% endblock %}

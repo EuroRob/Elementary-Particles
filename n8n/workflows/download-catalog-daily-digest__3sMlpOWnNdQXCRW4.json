@@ -1,0 +1,173 @@
+{
+  "active": true,
+  "connections": {
+    "Daily 23:30 (after pve-02 wakes)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "GET catalog-api summary",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Digest": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send to Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "GET catalog-api summary": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "GET file-scanner by-type",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "GET file-scanner by-type": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Digest",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "3sMlpOWnNdQXCRW4",
+  "name": "Download Catalog - Daily Digest",
+  "nodes": [
+    {
+      "id": "digest-cron",
+      "name": "Daily 23:30 (after pve-02 wakes)",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "30 23 * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        -400,
+        0
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "format-digest",
+      "name": "Format Digest",
+      "parameters": {
+        "jsCode": "const summary = $('GET catalog-api summary').first().json || {};\nconst byType = $('GET file-scanner by-type').first().json || {};\n\nconst lines = ['\\uD83D\\uDCE5 Download Catalog - Daily Digest'];\n\n// Real shape from download_catalog.py's /api/analytics/summary:\n// { by_category: [{category,total,imported,downloaded,downloading,total_bytes}],\n//   by_status: [{status,count}], by_source: [{source_app,count}], research: {...} }\nif (summary.error) lines.push('', '(catalog-api unreachable - catalog section skipped)');\nif (byType.error) lines.push('', '(file-scanner unreachable - library section skipped)');\nconst byCategory = summary.by_category || [];\nif (byCategory.length) {\n  lines.push('', 'Catalog (by category):');\n  for (const row of byCategory.slice(0, 20)) {\n    const gb = row.total_bytes ? (row.total_bytes / 1e9).toFixed(1) : '0.0';\n    lines.push(`  ${row.category}: ${row.total} total (${row.imported} imported, ${row.downloading} downloading), ${gb} GB`);\n  }\n}\nconst byStatus = summary.by_status || [];\nif (byStatus.length) {\n  lines.push('', 'By status:');\n  for (const row of byStatus.slice(0, 20)) {\n    lines.push(`  ${row.status}: ${row.count}`);\n  }\n}\n\nconst types = byType.by_type || [];\nif (Array.isArray(types) && types.length) {\n  lines.push('', 'Existing library (file-scanner, by type):');\n  for (const row of types.slice(0, 20)) {\n    const gb = row.total_gb ? Number(row.total_gb).toFixed(1) : '?';\n    lines.push(`  ${row.file_type}: ${row.count} files, ${gb} GB, ${row.duplicates || 0} dupes`);\n  }\n}\n\nconst body = lines.join('\\n');\nreturn [{\n  json: {\n    txn_id: Date.now().toString(),\n    matrixPayload: { msgtype: 'm.text', body },\n  },\n}];"
+      },
+      "position": [
+        100,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YYa0tbgQSUr1hIJB",
+          "name": "catalog-api X-API-Key"
+        }
+      },
+      "id": "get-catalog-summary",
+      "name": "GET catalog-api summary",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {},
+        "sendHeaders": false,
+        "url": "http://10.0.60.5:5091/api/analytics/summary"
+      },
+      "position": [
+        -160,
+        -80
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YYa0tbgQSUr1hIJB",
+          "name": "catalog-api X-API-Key"
+        }
+      },
+      "id": "get-scanner-bytype",
+      "name": "GET file-scanner by-type",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {},
+        "sendHeaders": false,
+        "url": "http://10.0.60.5:5092/api/analytics/by-type"
+      },
+      "position": [
+        -160,
+        80
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "send-to-matrix",
+      "name": "Send to Matrix",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        340,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  },
+  "tags": []
+}

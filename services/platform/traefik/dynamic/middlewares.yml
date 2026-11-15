@@ -1,0 +1,56 @@
+# =============================================================================
+# /etc/traefik/dynamic/middlewares.yml
+# Shared middleware definitions for the file provider.
+#
+# These are available to ALL routes — both Docker provider routes
+# (via authelia@docker) and file provider routes (via authelia@file).
+#
+# NOTE: authelia@docker already exists from the Authelia container labels.
+# This file defines the SAME middleware for file-provider routes that need
+# to reference it as authelia@file.  Both point to the same Authelia endpoint.
+# =============================================================================
+
+http:
+  middlewares:
+
+    # ---- Authelia forwardauth -----------------------------------------------
+    # Referenced by file-provider routes as: authelia@file
+    # Docker-provider routes use:           authelia@docker  (auto-generated)
+    authelia:
+      forwardAuth:
+        address: "http://authelia:9091/api/verify?rd=https://auth.internal"
+        trustForwardHeader: true
+        authResponseHeaders:
+          - "Remote-User"
+          - "Remote-Groups"
+          - "Remote-Name"
+          - "Remote-Email"
+
+    # ---- Security headers ---------------------------------------------------
+    secure-headers:
+      headers:
+        sslRedirect: true
+        forceSTSHeader: true
+        stsSeconds: 63072000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customResponseHeaders:
+          X-Robots-Tag: "none,noarchive,nosnippet,notranslate,noimageindex"
+          Server: ""    # hide server identity
+
+    # ---- Rate limit for API/inference endpoints -----------------------------
+    rate-limit-api:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: "1s"
+
+    # ---- Strip /api prefix (used by some backends) --------------------------
+    strip-api-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api"

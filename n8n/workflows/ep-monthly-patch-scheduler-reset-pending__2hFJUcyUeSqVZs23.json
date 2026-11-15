@@ -1,0 +1,361 @@
+{
+  "active": false,
+  "connections": {
+    "Format Failure Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Notify: cycle failed (Matrix)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Success Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Notify: cycle started (Matrix)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Monthly (15th, 03:00)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Reset patch_status=pending via IaC API",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Poll task status": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Still running?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Reset patch_status=pending via IaC API": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 15s for task to initialize",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Still running?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 10s before next poll",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Success or failure?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Success or failure?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Success Message",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Format Failure Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 10s before next poll": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Poll task status",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 15s for task to initialize": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Poll task status",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "2hFJUcyUeSqVZs23",
+  "name": "EP: Monthly Patch Scheduler -> reset_pending",
+  "nodes": [
+    {
+      "id": "6e20cdb7-6f8f-4a66-bf40-164b33c5dc34",
+      "name": "Format Failure Message",
+      "parameters": {
+        "jsCode": "const t = $('Reset patch_status=pending via IaC API').item.json;\nconst text = `🔴 Monthly patch scheduler FAILED to reset patch_status in NetBox. No VMs will be patched this cycle.\\nCheck IaC API logs — task ${t.task_id}.`;\nreturn [{ json: { txn_id: 'patchcycle-fail-' + Date.now(), matrixPayload: { msgtype: 'm.text', body: text } } }];",
+        "mode": "runOnceForEachItem"
+      },
+      "position": [
+        1750,
+        400
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "83053375-ce8c-43f1-823b-9e36e8f9d4b9",
+      "name": "Format Success Message",
+      "parameters": {
+        "jsCode": "const text = '🗓️ Monthly patch cycle started — patch_status=pending set on all registered patchable VMs. Watch this room over the next hour for individual VM results (each patches one at a time, snapshot-backed, auto-rolled-back on failure).';\nreturn [{ json: { txn_id: 'patchcycle-ok-' + Date.now(), matrixPayload: { msgtype: 'm.text', body: text } } }];",
+        "mode": "runOnceForEachItem"
+      },
+      "position": [
+        1750,
+        200
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "63a929eb-1482-4211-99b7-7ad604954524",
+      "name": "Monthly (15th, 03:00)",
+      "notes": "CHANGED 2026-08-17: was weekly (every Monday) -> monthly, per explicit request:\npatch roughly once a month, about 1-2 weeks after updates typically land, giving\nthem time to shake out upstream before this fleet applies them unattended.\nDebian/Ubuntu don't have a single 'Patch Tuesday' the way Windows does, so this\npicks a fixed, easy-to-reason-about day (the 15th) as a ~2-week-into-the-month\nbuffer rather than trying to track individual CVE/release calendars. Adjust the\nday here if a different reference point is wanted.\n\nThis is the piece that was missing: nothing previously set patch_status=pending\non a schedule. rolling_update.yml + patch_trigger.json already existed and\nworked, but only fired when something manually flipped a VM to pending in\nNetBox. This workflow closes the loop: monthly, it resets patch_status=pending\non all patchable VMs via netbox_setup_patch_fields.yml --tags reset_pending.\nNetBox's existing Event Rule then fires the 'NetBox Patch Trigger' webhook per\nVM exactly as if a human had done it — full snapshot/health-check/rollback\nsafety, no new code path.\n\nZERO-DAY / OUT-OF-BAND PATCHING: this monthly cycle is NOT the mechanism for\nan urgent CVE — see the separate 'EP: Zero-Day Patch Warning' workflow, which\nposts an immediate Matrix warning and can be used to hand-trigger rolling_update.yml\nfor just the affected host(s) without waiting for this schedule.",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "0 3 15 * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        250,
+        300
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "2991a143-3c21-407c-8c3d-ba48783f0f63",
+      "name": "Notify: cycle failed (Matrix)",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        2000,
+        400
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "276cafd3-ecec-4444-9a30-c3cedb576916",
+      "name": "Notify: cycle started (Matrix)",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        2000,
+        200
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "d327bd7d-a1ef-4eb0-9fbc-22c291d82fe8",
+      "name": "Poll task status",
+      "notes": "This task itself just flips NetBox fields — it finishes in seconds. The actual per-VM patch runs happen asynchronously afterward, triggered independently by patch_trigger.json, and are reported separately in System Alerts by that workflow.",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "url": "=https://iac.internal:8000/api/tasks/{{ $node['Reset patch_status=pending via IaC API'].json.task_id }}"
+      },
+      "position": [
+        1000,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "77936fdb-91bc-4d67-ae98-ec91e344a484",
+      "name": "Reset patch_status=pending via IaC API",
+      "notes": "Runs netbox_setup_patch_fields.yml --tags reset_pending.\nThis flips patch_status=pending on every patchable VM in NetBox.\nEach flip fires the NetBox Event Rule -> 'NetBox Patch Trigger' webhook -> rolling_update.yml per VM, one at a time (serial: 1), each snapshot-backed.\n\nCORRECTED 2026-08-17: dropped the dead Vault-fetch node (n8n env vars\nVAULT_TOKEN/NETBOX_VAULT_PATH were never actually set) in favor of the\nalready-configured 'IaC API (iac-api Bearer)' credential.\n\nKNOWN GAP as of 2026-08-17, not yet closed: only 7 of 12 patchable_vms hosts\nare currently registered in NetBox (dns-01, vpn-01, pg-01, web-01, web-02,\ngit-01, media-vm) — immich-01, jellyfin-01, dmz-nc-01, dmz-pg-01, and\nhome-assistant need `scripts/sync_netbox.py --all` (which needs config/vms/*.yaml\nmanifests that don't exist yet for them) before this monthly cycle will include\nthem. Until then, this cycle only covers the 7 registered hosts.",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ JSON.stringify({ playbook: 'netbox_setup_patch_fields', inventory: 'production', tags: ['reset_pending'] }) }}",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "https://iac.internal:8000/api/tasks/ansible/netbox_setup_patch_fields"
+      },
+      "position": [
+        500,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "859a5dd5-10fb-4e5e-ad0e-f7146bd167d9",
+      "name": "Still running?",
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "operation": "equal",
+              "value1": "={{ $json.status }}",
+              "value2": "running"
+            }
+          ]
+        }
+      },
+      "position": [
+        1250,
+        300
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1
+    },
+    {
+      "id": "f775d6f4-b0ab-47c2-91bc-7eb5eeb56746",
+      "name": "Success or failure?",
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "operation": "equal",
+              "value1": "={{ $json.status }}",
+              "value2": "success"
+            }
+          ]
+        }
+      },
+      "position": [
+        1500,
+        300
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1
+    },
+    {
+      "id": "02794502-aa1a-4b4a-9cac-db7e3916b15a",
+      "name": "Wait 10s before next poll",
+      "parameters": {
+        "unit": "seconds",
+        "value": 10
+      },
+      "position": [
+        1250,
+        450
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "webhookId": "e68370d3-ebc0-4a2e-9503-111e1d53d054"
+    },
+    {
+      "id": "1a908318-7fbd-4ebb-92c9-80e9838587b3",
+      "name": "Wait 15s for task to initialize",
+      "parameters": {
+        "unit": "seconds",
+        "value": 15
+      },
+      "position": [
+        750,
+        300
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "webhookId": "10f25a52-123d-4a37-85a2-ec4b4ce33cf3"
+    }
+  ],
+  "settings": {
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "Europe/Berlin"
+  },
+  "tags": []
+}

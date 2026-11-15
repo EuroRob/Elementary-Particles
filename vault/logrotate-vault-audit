@@ -1,0 +1,14 @@
+# Vault audit log (IaC/docs/AGENT_ACCESS_LANES.md, step 0). Vault REFUSES every request
+# when it can't write its audit log, so the file must never fill the disk.
+# Install (owner, sudo): sudo install -m 0644 vault/logrotate-vault-audit /etc/logrotate.d/vault-audit
+# copytruncate: Vault keeps the file open; no signal to the container needed.
+/opt/vault/logs/audit.log {
+    daily
+    rotate 30
+    maxsize 200M
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

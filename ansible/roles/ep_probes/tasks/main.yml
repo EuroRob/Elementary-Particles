@@ -1,0 +1,121 @@
+---
+# Role: ep_probes — see defaults/main.yml and files/ep_probe.py.
+- name: "[ep_probes] Pull Vault secrets used by probes"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ item.path }}"
+    engine_mount_point: secret
+  loop:
+    - {key: alert_bot, path: "family-messaging/alertmanager-bot"}
+    - {key: wanderer, path: "wanderer/osm_import"}
+    - {key: oc_owner, path: "openclaw/gateway"}
+    - {key: oc_partner, path: "openclaw/gateway-partner"}
+    - {key: ha, path: "home-assistant/api"}
+  loop_control:
+    label: "{{ item.path }}"
+  register: ep_vault
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[ep_probes] Index secrets"
+  ansible.builtin.set_fact:
+    _ep: "{{ dict(ep_vault.results | map(attribute='item.key') | zip(ep_vault.results | map(attribute='secret'))) }}"
+  no_log: true
+
+- name: "[ep_probes] Create directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop: ["{{ ep_probes_dir }}", /var/lib/ep-probes]
+
+- name: "[ep_probes] Install probe runner"
+  ansible.builtin.copy:
+    src: ep_probe.py
+    dest: "{{ ep_probes_dir }}/ep_probe.py"
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: "[ep_probes] Write probe config"
+  ansible.builtin.copy:
+    dest: "{{ ep_probes_dir }}/probes.json"
+    owner: root
+    group: root
+    mode: "0600"
+    content: "{{ ep_probes | to_nice_json }}\n"
+
+- name: "[ep_probes] Write env file (root-only)"
+  ansible.builtin.copy:
+    dest: "{{ ep_probes_dir }}/probes.env"
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      MATRIX_HOMESERVER={{ _ep.alert_bot.homeserver }}
+      MATRIX_ROOM_ID={{ _ep.alert_bot.room_id }}
+      MATRIX_BOT_SECRET={{ _ep.alert_bot.access_token }}
+      WANDERER_TOKEN={{ _ep.wanderer.api_token }}
+      OPENCLAW_ROB={{ _ep.oc_owner.gateway_token }}
+      OPENCLAW_PARTNER={{ _ep.oc_partner.gateway_token }}
+      HA_TOKEN={{ _ep.ha['token'] }}
+  no_log: true
+
+- name: "[ep_probes] Install systemd units"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: ep-probes@.service
+      content: |
+        [Unit]
+        Description=Elementary Particles probes (%i)
+        After=docker.service network-online.target
+
+        [Service]
+        Type=oneshot
+        EnvironmentFile={{ ep_probes_dir }}/probes.env
+        ExecStart=/usr/bin/python3 {{ ep_probes_dir }}/ep_probe.py --config {{ ep_probes_dir }}/probes.json --group %i
+        SuccessExitStatus=1
+        TimeoutStartSec=15min
+    - name: ep-probes-health.timer
+      content: |
+        [Unit]
+        Description=Elementary Particles health probes every {{ ep_probes_health_interval }}
+        [Timer]
+        OnBootSec=3min
+        OnUnitActiveSec={{ ep_probes_health_interval }}
+        AccuracySec=10s
+        Unit=ep-probes@health.service
+        [Install]
+        WantedBy=timers.target
+    - name: ep-probes-canary.timer
+      content: |
+        [Unit]
+        Description=Elementary Particles daily canary questions
+        [Timer]
+        OnCalendar={{ ep_probes_canary_schedule }}
+        Persistent=true
+        Unit=ep-probes@canary.service
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: ep_units
+
+- name: "[ep_probes] Enable timers"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: "{{ ep_units is changed }}"
+  loop: [ep-probes-health.timer, ep-probes-canary.timer]

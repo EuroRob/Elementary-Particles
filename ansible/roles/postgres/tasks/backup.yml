@@ -1,0 +1,37 @@
+---
+# Simple pg_dumpall backup — pgbackrest deferred until nas-01 S3 is ready.
+- name: Ensure backup directory exists
+  ansible.builtin.file:
+    path: "{{ postgres_simple_backup_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  when: postgres_simple_backup_enabled
+
+# Reworked 2026-10-23 (measured on pg-01):
+#  - the 02:00 UTC dump ran INSIDE pve-01's vzdump of this VM (job "03:00"
+#    Europe/Berlin, VM 230 at ~01:56-02:19 UTC, reading all 220 GiB from the
+#    same NVMe pool) -> iowait on pg-01 up to 51%. Now runs at
+#    postgres_simple_backup_hour:minute (00:15 UTC), clear of that window.
+#  - it wrote 11 GB of plain SQL per night onto the database's own disk
+#    (87 GB for 8 days, all re-read by every vzdump). Now zstd -3 (-T2) at
+#    nice 10; write to .tmp and rename only on success (pipefail), so a failed
+#    dump can never look like a complete one.
+#  - retention pattern covers both old .sql and new .sql.zst files.
+# Restore: zstd -dc pg_dumpall_YYYYMMDD.sql.zst | psql -X -d postgres
+- name: Install nightly pg_dumpall cron job
+  ansible.builtin.cron:
+    name: "PostgreSQL nightly dump"
+    user: postgres
+    job: >-
+      /bin/bash -c 'set -o pipefail;
+      f={{ postgres_simple_backup_dir }}/pg_dumpall_$(date +\%Y\%m\%d).sql.zst;
+      nice -n 10 pg_dumpall | nice -n 10 zstd -q -3 -T2 -o "$f.tmp"
+      && mv -f "$f.tmp" "$f"
+      && find {{ postgres_simple_backup_dir }} -name "pg_dumpall_*.sql.zst" -mtime +{{ postgres_simple_backup_keep_days }} -delete
+      && find {{ postgres_simple_backup_dir }} -name "pg_dumpall_*.sql" -mtime +7 -delete'
+    minute: "{{ postgres_simple_backup_minute }}"
+    hour: "{{ postgres_simple_backup_hour }}"
+    weekday: "{{ postgres_simple_backup_weekday }}"
+  when: postgres_simple_backup_enabled

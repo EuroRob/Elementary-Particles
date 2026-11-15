@@ -1,0 +1,268 @@
+{
+  "active": true,
+  "connections": {
+    "Is Travel": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Travel Assistant (travel-api)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Ollama Generate (bounded)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Ollama Generate (bounded)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Respond to Webhook",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Receive Prompt": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Travel Question?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Travel Assistant (travel-api)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Travel Handled",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Travel Handled": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Respond (Travel)",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Ollama Generate (bounded)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Travel Question?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Is Travel",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "HX2M3HKNKL9PMjvo",
+  "name": "Echo - Direct Ollama Chat (no HA routing)",
+  "nodes": [
+    {
+      "id": "travelif1",
+      "name": "Is Travel",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "is-travel-1",
+              "leftValue": "={{ $json.isTravel }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        440,
+        0
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "id": "ollama1",
+      "name": "Ollama Generate (bounded)",
+      "parameters": {
+        "contentType": "json",
+        "jsonBody": "={{ { \"model\": \"gpu01-primary\", \"prompt\": $('Receive Prompt').item.json.body.prompt, \"stream\": false, \"options\": { \"num_predict\": 400 } } }}",
+        "method": "POST",
+        "options": {
+          "timeout": 30000
+        },
+        "responseFormat": "json",
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/api/generate"
+      },
+      "position": [
+        1100,
+        60
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "webhook1",
+      "name": "Receive Prompt",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "echo-chat",
+        "responseMode": "responseNode"
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "07d788d1-79db-458a-b442-b73f10da13cf"
+    },
+    {
+      "id": "travelrespond1",
+      "name": "Respond (Travel)",
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "json",
+        "responseBody": "={{ { \"response\": $json.answer, \"source\": \"travel-api\", \"saved\": $json.saved || [] } }}"
+      },
+      "position": [
+        1100,
+        -220
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1
+    },
+    {
+      "id": "respond1",
+      "name": "Respond to Webhook",
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "json",
+        "responseBody": "={{ { \"response\": $json.response } }}"
+      },
+      "position": [
+        1320,
+        60
+      ],
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1
+    },
+    {
+      "id": "travelask1",
+      "name": "Travel Assistant (travel-api)",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "contentType": "json",
+        "jsonBody": "={{ { \"text\": $('Receive Prompt').item.json.body.text, \"speaker\": $('Receive Prompt').item.json.body.speaker, \"history\": $('Receive Prompt').item.json.body.history || [] } }}",
+        "method": "POST",
+        "options": {
+          "timeout": 25000
+        },
+        "responseFormat": "json",
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://travel-api:5240/assistant/ask"
+      },
+      "position": [
+        660,
+        -120
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "travelhandled1",
+      "name": "Travel Handled",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "handled-1",
+              "leftValue": "={{ $json.handled === true && !!$json.answer }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        880,
+        -120
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "id": "travelcheck1",
+      "name": "Travel Question?",
+      "parameters": {
+        "jsCode": "// Cheap pre-filter: only travel-ish messages go to travel-api (/assistant/ask),\n// everything else keeps the old direct-Ollama path and speed. travel-api itself\n// answers {handled:false} for anything that isn't really about travel.\nconst b = $input.item.json.body || {};\nconst text = (b.text || '').toLowerCase();\nconst re = /\\b(trip|trips|travel|travell?ing|vacation|holiday|journey|itinerar|flight|fly|flying|plane|airport|train|trains|rail|station|platform|departure|depart|arriv|delay|ferry|bus|hotel|hostel|stay|staying|check.?in|check.?out|booking|book|pack|packing|hike|hikes|hiking|trail|walk|weather|rain|snow|forecast|adventurelog|reise|reisen|urlaub|ferien|flug|flughafen|zug|züge|bahn|bahnhof|gleis|abfahrt|ankunft|verspätung|fähre|unterkunft|übernacht|wander|wanderung|wanderweg|wetter|regen|schnee|packliste)/i;\nreturn { json: { ...$input.item.json, isTravel: !!b.speaker && !!b.text && re.test(text) } };"
+      },
+      "position": [
+        220,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

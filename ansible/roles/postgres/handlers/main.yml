@@ -1,0 +1,12 @@
+---
+- name: Restart PostgreSQL
+  ansible.builtin.service:
+    name: postgresql
+    state: restarted
+
+# Default for config changes since 2026-10-23: a reload applies every
+# sighup-context setting without dropping a single app connection.
+- name: Reload PostgreSQL
+  ansible.builtin.service:
+    name: postgresql
+    state: reloaded

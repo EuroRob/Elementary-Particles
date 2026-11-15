@@ -1,0 +1,258 @@
+---
+name: wireguard
+version: "1.0"
+tier: "network"
+description: >
+  WireGuard VPN gateway — secure remote access for client devices and
+  servers that cannot reach internal VLANs directly. Deployed as a VM
+  from the Debian template with wg-easy for peer management. Integrates
+  with Pi-hole (DNS), Traefik (ingress) and Authelia (auth) so that
+  VPN-connected clients have the same service experience as clients on
+  the LAN. Handles both split-tunnel (routes to internal VLANs) and can
+  be switched to full-tunnel per peer.
+owner: "network-team"
+runbook: "https://docs.internal/wireguard-runbook"
+
+tags:
+  expose: "true"           # wg-easy admin UI via Traefik
+  ingress: "https"
+  auth: "oidc"             # Authelia two-factor for admin UI
+  auth_provider: "authelia"
+  network: "vlan10"        # vpn-01 lives on the management/gateway VLAN
+  dns: "true"              # register vpn.internal in Pi-hole
+  tier: "network"
+  category: "VPN"
+  icon: "shield"
+  color: "#88C0D0"
+  sla: "critical"
+  backup: "daily"
+  owner: "network-infra"
+  environment: "production"
+  data_classification: "restricted"
+  # WireGuard-specific
+  vpn_provider: "true"
+  wireguard_server: "true"
+  nat_reflection: "required"    # firewall must hairpin UDP 51820
+
+deployment:
+  platform: "hybrid"            # VM (from Debian template) + Docker (wg-easy UI)
+  deployment_target: "vpn-01"
+  vm_template_id: 9000          # Debian 12 template on Proxmox
+  namespace: "network"
+  replicas: 1
+  resources:
+    cpu: "2"
+    memory: "2Gi"
+    storage: "20Gi"
+  datastore: "ssd"
+  vm_network:
+    vlan: "vlan10"
+    ip: "10.0.10.5"          # Static IP — update to match your subnet
+    gateway: "10.0.10.1"
+    dns: "10.0.30.10"        # Pi-hole on DNS-01
+
+services:
+  - name: "wg-easy"
+    image: "ghcr.io/wg-easy/wg-easy:latest"
+    port: 51820
+    admin_port: 51821
+    protocol: "udp+tcp"
+    description: "WireGuard server with web management UI"
+
+  - name: "wireguard-kernel"
+    type: "kernel-module"
+    description: "WireGuard kernel module loaded on vpn-01 host"
+
+# ---------------------------------------------------------------------------
+# Network interfaces exposed by this particle
+# ---------------------------------------------------------------------------
+interfaces:
+  - name: "wireguard-udp"
+    protocol: "udp"
+    port: 51820
+    internal_port: 51820
+    external: true              # NAT-reflected from physical firewall
+
+  - name: "wg-easy-admin"
+    protocol: "tcp"
+    port: 51821
+    internal_port: 51821
+    external: false             # only via Traefik ingress
+
+# ---------------------------------------------------------------------------
+# Traefik / Authelia ingress for admin UI
+# ---------------------------------------------------------------------------
+ingress:
+  - name: "wg-easy-ui"
+    enabled: true
+    traefik_router: true
+    host: "vpn.internal"
+    port: 51821
+    protocol: "http"
+    tls: true
+    auth: true
+    auth_policy: "two_factor"   # must be 2FA to manage peers
+
+# ---------------------------------------------------------------------------
+# VPN subnet pushed to all peers
+# ---------------------------------------------------------------------------
+vpn_config:
+  server_subnet: "10.8.0.0/24"
+  server_address: "10.8.0.1/24"
+  listen_port: 51820
+  # Routes pushed to clients (split-tunnel — internal VLANs only)
+  allowed_ips:
+    - "10.8.0.0/24"            # VPN subnet
+    - "10.0.10.0/24"        # vlan10 — management
+    - "10.0.30.0/24"        # vlan30 — services
+    - "10.0.40.0/24"        # vlan40 — storage / NAS
+  # DNS pushed to WireGuard clients
+  # Only Pi-hole is listed — no public fallback by design.
+  # Rationale: a fallback to 9.9.9.9 / 8.8.8.8 would bypass Pi-hole filtering
+  # if the DNS-01 VM is unreachable. Quad9 is configured as Pi-hole's upstream
+  # resolver (see services/pihole/docker-compose.yml PIHOLE_DNS_1), not here.
+  # iptables DNAT on vpn-01 (dns_enforcement.yml) intercepts any client that
+  # tries to hard-code a different resolver.
+  dns_servers:
+    - "10.0.30.10"          # Pi-hole on DNS-01 (vlan30) — sole VPN resolver
+  dns_enforcement:
+    method: "iptables PREROUTING DNAT"
+    interface: "wg0"
+    redirects_to: "10.0.30.10:53"
+    covers: "UDP+TCP/53 — all client destinations"
+    doh_bypass_risk: true      # DoH on port 443 cannot be caught by port-53 DNAT
+  persistent_keepalive: 25     # seconds — keep NAT mappings alive
+  mtu: 1420
+
+# ---------------------------------------------------------------------------
+# Host-level routing required on vpn-01
+# ---------------------------------------------------------------------------
+host_routing:
+  ip_forward: true
+  iptables_masquerade:
+    - interface: "eth0"        # or the correct uplink interface
+      comment: "NAT WireGuard VPN traffic to internal VLANs"
+  nftables_compatible: true
+
+# ---------------------------------------------------------------------------
+# Firewall (physical) requirements
+# ---------------------------------------------------------------------------
+firewall_requirements:
+  nat_reflection: true         # hairpin NAT so LAN clients can use public endpoint
+  port_forwards:
+    - protocol: "udp"
+      external_port: 51820
+      destination_ip: "10.0.10.5"   # vpn-01 static IP
+      destination_port: 51820
+  vlan_routing:
+    - from: "vpn-subnet:10.8.0.0/24"
+      to: "vlan10"
+    - from: "vpn-subnet:10.8.0.0/24"
+      to: "vlan30"
+    - from: "vpn-subnet:10.8.0.0/24"
+      to: "vlan40"
+
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+dependencies:
+  - name: dns                  # Pi-hole — vpn-01 uses it for DNS and pushes it to peers
+    tier: network
+    reason: "DNS pushed to VPN clients; internal hostname resolution"
+    critical: true
+
+  - name: traefik
+    tier: platform
+    reason: "wg-easy admin UI served via Traefik reverse proxy"
+    critical: false
+
+  - name: authelia
+    tier: platform
+    reason: "Two-factor auth guards access to wg-easy admin UI"
+    critical: false
+
+# ---------------------------------------------------------------------------
+# What this particle provides to others
+# ---------------------------------------------------------------------------
+provides:
+  - interface: "udp:51820"
+    description: "WireGuard VPN endpoint — client devices connect here"
+    consumers: ["all-vpn-clients"]
+
+  - interface: "tcp:51821"
+    description: "wg-easy admin UI"
+    consumers: ["traefik"]
+
+  - capability: "vpn-gateway"
+    description: "Provides encrypted tunnel to all internal VLANs"
+    consumers: ["mobile-clients", "remote-servers", "work-devices"]
+
+# ---------------------------------------------------------------------------
+# Secrets (all stored in Vault)
+# ---------------------------------------------------------------------------
+secrets:
+  - name: "wireguard_private_key"
+    vault_path: "secret/vpn/wireguard"
+    vault_key: "private_key"
+    description: "Server WireGuard private key — generated once, never rotated without peer updates"
+
+  - name: "wireguard_public_key"
+    vault_path: "secret/vpn/wireguard"
+    vault_key: "public_key"
+
+  - name: "wg_easy_password"
+    vault_path: "secret/vpn/wg-easy"
+    vault_key: "admin_password"
+    description: "wg-easy admin password (bcrypt hashed)"
+
+  - name: "wg_easy_jwt_secret"
+    vault_path: "secret/vpn/wg-easy"
+    vault_key: "jwt_secret"
+    description: "wg-easy session JWT secret"
+
+# ---------------------------------------------------------------------------
+# Monitoring
+# ---------------------------------------------------------------------------
+monitoring:
+  health_check: "http://localhost:51821/api/healthz"
+  health_check_interval: "30s"
+  metrics:
+    - name: "wireguard_peer_count"
+      type: "gauge"
+      description: "Number of active WireGuard peers"
+    - name: "wireguard_bytes_rx"
+      type: "counter"
+      description: "Bytes received per peer"
+    - name: "wireguard_bytes_tx"
+      type: "counter"
+      description: "Bytes transmitted per peer"
+    - name: "wireguard_latest_handshake"
+      type: "gauge"
+      description: "Seconds since last handshake per peer"
+
+# ---------------------------------------------------------------------------
+# Backup
+# ---------------------------------------------------------------------------
+backup:
+  enabled: true
+  schedule: "daily"
+  retention: "30d"
+  items:
+    - "/opt/wireguard/config/wg0.conf"     # server config + peer list
+    - "/opt/wireguard/config/wg_confs/"    # individual peer configs
+
+# ---------------------------------------------------------------------------
+# Networking metadata
+# ---------------------------------------------------------------------------
+networking:
+  vlan: "vlan10"
+  dns_enabled: true
+  dns_names:
+    - "vpn.internal"
+    - "wg.internal"
+  static_ip: "10.0.10.5"
+
+metadata:
+  data_classification: "restricted"
+  compliance: ["security-baseline"]
+  critical_path: true          # losing VPN = losing remote access to everything

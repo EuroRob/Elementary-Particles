@@ -1,0 +1,115 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/nas_backup_storage.yml
+#
+# Registers NAS-backed NFS storages (backups/iso/templates from nas-01) via
+# the Proxmox REST API — NOT pvesm-over-SSH (proxmox_storage.yml's approach),
+# because there is no working SSH login to Proxmox hosts for automation (see
+# IaC/CLAUDE.md "Proxmox Access — API only, no CLI"). Every task here is an
+# HTTPS call to the target host's own Proxmox API, so it delegates to
+# localhost (the Ansible controller) rather than running on the PVE host.
+#
+# The real Proxmox node name comes from Vault (secret/proxmox/api/<pve_hostname>
+# → node), NOT from pve_hostname/inventory_hostname — pve-01/pve-01 is the
+# canonical example where these differ (pve_hostname="pve-01", real PVE node
+# name="pve-01"; see IaC/CLAUDE.md).
+#
+# CRITICAL NFSv4 pseudo-root gotcha (root-caused 2026-08-10 after a live
+# incident — see project_pve_nas_backup_automation memory for the full story):
+# nas-01 exports its NFSv4 pseudo-root at fsid=0 on /export. NFSv4 clients
+# (and this "export" field) must address exports RELATIVE to that pseudo-
+# root (e.g. "/backups"), NOT the real absolute path ("/export/backups") —
+# the absolute path only works for NFSv3. Getting this wrong doesn't fail at
+# storage-definition time; it fails later, either as a clean fast
+# "storage not online" from pvestatd, or — worse — as an indefinitely HUNG
+# mount if a stale NFSv3 handshake happens to already be cached client-side.
+# Always verify with a real `mount -t nfs4 ... /tmp/test` before trusting a
+# green `pvesm status`.
+#
+# ALSO forcing vers=4.2 explicitly sidesteps a second, independent problem:
+# NFSv3 needs rpc.mountd's port, which is EPHEMERAL and changes on every
+# nfs-server restart on nas-01. This environment's OPNSense NAS_PORTS alias
+# only allows static ports (80,81,443,445,2049,111) from the client network
+# to the Storage VLAN — not mountd's dynamic port. An already-mounted NFSv3
+# client survives nas-01 restarts fine (ongoing I/O only needs port 2049),
+# which is exactly why this went undetected for weeks — it only breaks the
+# moment a FRESH mount is needed. NFSv4 needs only port 2049 for everything
+# (mount handshake included), so it works cleanly through the existing
+# firewall alias with zero firewall changes required.
+#
+# Proxmox API quirk: PUT /storage/<id> rejects changes to `export`
+# ("property is not defined in schema") — it's immutable after creation.
+# Fixing a wrong export path requires DELETE + POST (recreate), not
+# update-in-place. This role always recreates on mismatch rather than
+# trying to PUT export/server/options changes.
+# =============================================================================
+
+- name: "PVE-API: Read Proxmox API token from Vault"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "proxmox/api/{{ pve_hostname }}"
+  register: pve_api_secret
+  delegate_to: localhost   # hvac lives on the controller, not on the PVE host itself
+  become: false
+  no_log: true
+  tags: [storage, nas, pve-api]
+
+- name: "PVE-API: Set auth header + real node-name facts"
+  ansible.builtin.set_fact:
+    pve_api_url: "{{ pve_api_secret.secret.api_url }}"
+    pve_api_node: "{{ pve_api_secret.secret.node }}"
+    pve_api_headers:
+      Authorization: "PVEAPIToken={{ pve_api_secret.secret.token_id }}={{ pve_api_secret.secret.token_secret }}"
+  no_log: true
+  tags: [storage, nas, pve-api]
+
+- name: "PVE-API: Read existing storage definitions (config only, never hangs)"
+  ansible.builtin.uri:
+    url: "{{ pve_api_url }}/storage"
+    headers: "{{ pve_api_headers }}"
+    validate_certs: false
+    method: GET
+  register: pve_storage_existing
+  delegate_to: localhost
+  become: false
+  no_log: true
+  tags: [storage, nas, pve-api]
+
+- name: "PVE-API: Build name->config lookup for existing storages"
+  ansible.builtin.set_fact:
+    pve_storage_existing_map: >-
+      {{ dict(pve_storage_existing.json.data | map(attribute='storage')
+              | zip(pve_storage_existing.json.data)) }}
+  tags: [storage, nas, pve-api]
+
+- name: "PVE-API: Recreate NFS storage on missing/wrong export or NFS version"
+  ansible.builtin.include_tasks: nas_backup_storage_recreate_one.yml
+  when: >-
+    item.id not in pve_storage_existing_map
+    or pve_storage_existing_map[item.id].export != item.export
+    or pve_storage_existing_map[item.id].options | default('') != 'vers=4.2'
+  loop: "{{ pve_nas_backup_storage }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [storage, nas, pve-api]
+
+- name: "PVE-API: Verify storage comes online (pvestatd needs a poll cycle)"
+  ansible.builtin.uri:
+    url: "{{ pve_api_url }}/nodes/{{ pve_api_node }}/storage/{{ item.id }}/status"
+    headers: "{{ pve_api_headers }}"
+    validate_certs: false
+    method: GET
+    timeout: 15
+  register: pve_storage_status
+  delegate_to: localhost
+  become: false
+  retries: 4
+  delay: 10
+  until: pve_storage_status.json.data.active == 1
+  loop: "{{ pve_nas_backup_storage }}"
+  loop_control:
+    label: "{{ item.id }}"
+  tags: [storage, nas, pve-api, verify]

@@ -1,0 +1,13 @@
+[Unit]
+Description=Restic backup timer — {{ item.name }} on {{ inventory_hostname }}
+
+[Timer]
+# schedule format: "*-*-* HH:MM:SS"
+OnCalendar=*-*-* {{ item.schedule | default('02:00') }}:00
+# Randomly delay up to 2 min to avoid all hosts hitting MinIO simultaneously
+RandomizedDelaySec=120
+# Run missed jobs after a reboot
+Persistent=true
+
+[Install]
+WantedBy=timers.target

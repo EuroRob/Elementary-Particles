@@ -1,0 +1,29 @@
+---
+# =============================================================================
+# Playbook: deploy_n8n_watchdog.yml
+# Installs the n8n watchdog (DB-aware health check + self-healing) on web-01.
+#
+# See Roles/n8n_watchdog and incident_n8n_db_pool_wedged_2026-10-03.
+#
+# Usage:
+#   export VAULT_ROLE_ID=<role-id>
+#   export VAULT_SECRET_ID=<secret-id>   # note: VAULT_ROLE_SECRET_ID env var
+#                                         # per feedback_vault_role_secret_id_env_mismatch
+#   ansible-playbook -i inventory/services.yml playbooks/deploy_n8n_watchdog.yml
+# =============================================================================
+
+- name: "Deploy n8n watchdog on web-01"
+  hosts: web-01
+  become: true
+  gather_facts: true
+
+  vars:
+    vault_role_id: "{{ lookup('env', 'VAULT_ROLE_ID') }}"
+    # NOT VAULT_SECRET_ID — that env var doesn't exist in /opt/vault/.env, only
+    # VAULT_ROLE_SECRET_ID does. See feedback_vault_role_secret_id_env_mismatch
+    # memory / Terraform/CLAUDE.md "Ansible Vault env-var mismatch" note.
+    vault_secret_id: "{{ lookup('env', 'VAULT_ROLE_SECRET_ID') }}"
+    base_domain: "home.example.org"
+
+  roles:
+    - n8n_watchdog

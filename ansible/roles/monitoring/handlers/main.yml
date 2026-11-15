@@ -1,0 +1,55 @@
+---
+- name: restart monitoring
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_compose_dir }}"
+    state: present
+    pull: policy
+
+# docker_compose_v2 above only recreates containers when the compose file
+# itself changes (image, env, volumes, ...) — a rules-file-only edit (bind
+# mounted from the host, not part of the compose definition) leaves
+# Prometheus running with its originally-loaded rules, silently stale,
+# with no error anywhere. Found 2026-09-05: the nas-01 HostLowDiskSpace
+# fix deployed "changed" but the live rule kept the old query until this
+# was added. --web.enable-lifecycle is already on in the compose command,
+# so just hit the reload endpoint explicitly every time.
+- name: reload prometheus rules
+  ansible.builtin.command:
+    cmd: docker exec prometheus wget -q -O - --post-data= http://localhost:9090/-/reload
+  changed_when: true
+  listen: restart monitoring
+
+# Dedicated handler for prometheus.yml itself, NOT folded into the reload
+# above -- see the "[monitoring] Write Prometheus config" task's comment
+# for why the reload endpoint alone doesn't work for this specific file
+# (single-file bind mount + atomic-rename writes = stale inode). A real
+# container restart re-establishes the mount and is the only mechanism
+# confirmed live to actually pick up a prometheus.yml change. Found
+# 2026-09-08 while wiring pve-02/pve-03 into the pve scrape job -- two
+# "changed" Ansible runs plus an explicit /-/reload all left the running
+# container serving the pre-edit scrape config until this ran.
+- name: restart prometheus container
+  ansible.builtin.command:
+    cmd: docker restart prometheus
+  changed_when: true
+
+# Same gap as Prometheus rules above, just discovered 2026-09-06 while
+# adding the PostgresRestarted route: alertmanager.yml is ALSO a host
+# bind-mount, not part of the compose service definition, so changing it
+# never took effect on its own either — every previous alertmanager.yml
+# edit before this one has been silently stale in the running container
+# until something else happened to restart it.
+#
+# NOT the same fix as Prometheus, though — this Alertmanager build has no
+# --web.enable-lifecycle flag at all (confirmed live: "unknown long flag",
+# and it's simply absent from --help — this version dropped the HTTP
+# lifecycle endpoint). SIGHUP is the mechanism this version actually
+# supports for a config reload without a full restart.
+# Was `docker kill --signal=HUP` until 2026-10-22: alertmanager.yml is a
+# single-file bind mount, so after Ansible's atomic-rename write the HUP
+# re-read the OLD pinned inode (same trap as prometheus.yml, see tasks).
+- name: reload alertmanager config
+  ansible.builtin.command:
+    cmd: docker restart alertmanager
+  changed_when: true
+  listen: restart monitoring

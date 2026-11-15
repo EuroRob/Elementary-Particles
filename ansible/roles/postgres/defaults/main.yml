@@ -1,0 +1,82 @@
+---
+postgres_version: 15
+postgres_port: 5432
+
+# Extension packages from the PGDG repo. pgvector was installed by hand on
+# pg-01 before this list existed; postgis added 2026-10-03 for AdventureLog.
+postgres_extra_packages:
+  - "postgresql-{{ postgres_version }}-pgvector"
+  - "postgresql-{{ postgres_version }}-postgis-3"
+postgres_data_dir: "/var/lib/postgresql/{{ postgres_version }}/main"
+
+# Tuning — overridden by inventory
+postgres_listen_address: "0.0.0.0"
+postgres_max_connections: 200
+postgres_shared_buffers: "512MB"
+postgres_work_mem: "4MB"
+postgres_maintenance_work_mem: "64MB"
+postgres_effective_cache_size: "1GB"
+postgres_wal_buffers: "16MB"
+postgres_wal_level: replica
+postgres_max_wal_senders: 3
+postgres_wal_keep_size: "500MB"
+postgres_archive_mode: "off"
+postgres_archive_command: ""
+# Force a WAL segment switch at least this often when archiving, so a quiet
+# database still ships WAL; it is the worst-case data loss (RPO) for PITR.
+postgres_archive_timeout: "0"
+postgres_log_min_duration_statement: 1000
+# Added 2026-10-23 with PostgreSQL's OWN defaults, so hosts that don't set
+# them (dmz-pg-01) render exactly what they ran before. pg-01 overrides them
+# in inventory/services.yml.
+postgres_checkpoint_timeout: "5min"
+postgres_max_wal_size: "1GB"
+postgres_min_wal_size: "80MB"
+postgres_wal_compression: "off"
+postgres_bgwriter_lru_maxpages: 100
+postgres_bgwriter_lru_multiplier: 2.0
+postgres_log_temp_files: -1
+postgres_track_io_timing: "off"
+# Config changes RELOAD by default. A setting that needs a restart (e.g.
+# shared_buffers) only restarts if this is true -- otherwise the play warns.
+# A pg-01 restart orphans app connections (see the pg-01 restart remediation).
+postgres_allow_restart: false
+# Per-database settings (ALTER DATABASE ... SET), applied without a reload.
+postgres_database_settings: []
+
+# Vault path for postgres credentials
+vault_postgres_path: "secret/postgres/pg-01"
+
+# Databases to create (applications create their own schemas inside these)
+postgres_databases:
+  - name: authelia
+  - name: netbox
+  - name: n8n
+  - name: grafana
+  - name: elementary_particles
+
+# Backup — pgbackrest deferred until nas-01 S3 is available
+postgres_simple_backup_enabled: true
+postgres_simple_backup_dir: /var/backups/postgresql
+# 00:15 UTC: clear of pve-01's nightly vzdump window (see tasks/backup.yml).
+postgres_simple_backup_hour: "0"
+postgres_simple_backup_minute: "15"
+postgres_simple_backup_weekday: "*"   # "0" = Sundays only (pg-01, once pgBackRest covers the days)
+postgres_simple_backup_keep_days: 7
+
+# pgBackRest (tasks/pgbackrest.yml, added 2026-10-23). Off by default; pg-01
+# enables it. Repo = NFS from nas-01 (ETBs/backups, replicated to nas-02).
+postgres_pgbackrest_enabled: false
+postgres_pgbackrest_stanza: "{{ inventory_hostname }}"
+postgres_pgbackrest_nfs_source: ""
+postgres_pgbackrest_repo_path: /var/lib/pgbackrest
+postgres_pgbackrest_retention_full: 2
+postgres_pgbackrest_process_max: 2
+postgres_pgbackrest_queue_max: "4GiB"
+# UTC (the hosts run UTC). Full on Sunday, incremental the other days.
+# 05:30 UTC since 2026-10-24: the patch window is 05:00 Europe/Berlin, i.e.
+# 03:00 UTC in summer but 04:00 UTC in winter (from 2026-10-25), and a run that
+# patches pg-01 restarts it ~30+ min in (2026-10-19: 34 min). 04:30 UTC would
+# have collided every winter; 05:30 UTC is clear of it all year.
+postgres_pgbackrest_backup_hour: "5"
+postgres_pgbackrest_backup_minute: "30"

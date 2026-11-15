@@ -1,0 +1,86 @@
+---
+name: studio-partner
+version: "0.1.0"
+tier: "assistant"
+description: "DOMO in the studio. Watches every Ableton Live set under My Recordings on DATAGRID (read-only): each save becomes a snapshot and a line of what changed (tracks, devices, loops, tempo, key, arrangement length, locators), Live's own Backup/ copies give the history before that. Notes, ideas and to-dos said to DOMO are filed under the set being worked on. 'studio session' is a conversation on gpu01-primary grounded in the open set, chords computed in code (music_theory.py, spelled by letter) and the owner's own most-played progressions. Reads and suggests only: never writes to a Live set."
+owner: "infra"
+
+tags:
+  expose: "false"
+  network: "vlan30"
+  dns: "false"
+  tier: "assistant"
+  category: "Music"
+  icon: "music-clef-treble"
+  color: "#5b9dff"
+  sla: "low"
+  backup: "pg-01"
+  owner: "infra"
+  environment: "production"
+  data_classification: "personal"
+
+status: "managed"
+design_doc: "IaC/docs/STUDIO_PARTNER.md"
+part_of: "music-studio (IaC/services/assistant/music-studio)"
+
+household_decisions:            # 2026-10-24, AskUserQuestion
+  sets: "saved on DATAGRID (My Recordings); recommended since: record on the Mac's SSD, Syncthing one-way to DATAGRID (not set up)"
+  live: "Live 12 Suite on the Intel MacBook"
+  control: "read + suggest; owner makes every change himself (live link via AbletonOSC: not built yet)"
+  journal: "studio chronicle in Music Studio's database, not the private journal"
+
+deployment:
+  platform: "docker"
+  deployment_target: "studio-01"
+  compose: "IaC/services/assistant/music-studio/docker-compose.yml (service studio-partner)"
+  ansible:
+    playbook: "IaC/Ansible/playbooks/deploy_gpu.yml --tags music_studio"
+    role: "IaC/Ansible/Roles/music_studio"
+  resources:
+    memory: "384m"
+
+sources:
+  - path: "integration/studio_partner.py"
+    role: "watcher, chronicle, notes, sessions, FastAPI (port 8202)"
+  - path: "integration/als_reader.py"
+    role: "reads a .als (Live 8+ gzip XML) into a summary; diff between saves"
+  - path: "integration/music_theory.py"
+    role: "diatonic/borrowed chords, secondary dominants, related keys, bar maths"
+  - path: "integration/music_studio_ui/templates/studio*.html"
+    role: "studio.home.example.org/ui/studio pages (served by music-assistant)"
+  - path: "integration/test_studio_partner.py"
+  - path: "integration/practice.py"
+    role: "ear training + keyboard drills: exercises, grading, voicing, weighting (2026-10-31)"
+  - path: "integration/music_studio_ui/templates/practice.html"
+    role: "studio.home.example.org/ui/practice (Web Audio + Web MIDI, served by music-assistant)"
+  - path: "integration/test_practice.py"
+
+interfaces:
+  - name: "api"
+    protocol: "http"
+    port: 8202
+    routes:
+      - "GET  /projects, /projects/{id}   — sets, chronicle, files"
+      - "POST /notes?kind=                — note | idea | todo"
+      - "GET  /talk/active; POST /talk/start | /talk/turn | /talk/end"
+      - "GET  /chronicle/today?speaker=, /files?q=, /theory?key=&tempo="
+      - "POST /scan?full=true"
+      - "GET  /practice/decks, /practice/next?speaker=&deck=&level=, /practice/stats?speaker="
+      - "POST /practice/attempt           — graded from the exercise spec, stored"
+      - "GET  /practice/summary?speaker=&since=&until=  — domo-winddown ticks 'instrument'"
+
+dependencies:
+  - {name: "nas-02 My Recordings (NFS, ro)", role: "the Live sets", required: true, interface: "/mnt/nasty-music -> /import/nasty"}
+  - {name: "postgres", role: "music.sessions + music.studio_* + audio_locations + progressions", required: true}
+  - {name: "ollama-gpu-01", role: "studio sessions (gpu01-primary, num_ctx 16384)", required: true}
+
+provides:
+  - interface: "http:8202"
+    for_services: ["domo-router", "music-assistant", "ep-probes"]
+
+egress:
+  new: "none"
+
+monitoring:
+  health_check: "http://10.0.30.59:8202/health"
+  probes: ["studio-partner (ep_probes on web-01, every 10 min)"]

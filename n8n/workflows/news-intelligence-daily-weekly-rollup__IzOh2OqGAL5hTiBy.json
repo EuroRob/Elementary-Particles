@@ -1,0 +1,632 @@
+{
+  "active": true,
+  "connections": {
+    "Check If Sunday": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "If Sunday (Weekly Rollup)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Clear Short-Term Memory": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Check If Sunday",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Daily Rollup Trigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get Short-Term Articles",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Daily Summary for Matrix": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Post Daily Summary to Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Weekly Summary for Matrix": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Post Weekly Summary to Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Get Daily Rollups (7d)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Group Weekly By Category",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Get Short-Term Articles": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Group Short-Term By Category",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Group Short-Term By Category": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Synthesize Daily Summary",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Group Weekly By Category": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Synthesize Weekly Summary",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "If Sunday (Weekly Rollup)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get Daily Rollups (7d)",
+            "type": "main"
+          }
+        ],
+        []
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get Short-Term Articles",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Prepare Daily Rollup Rows": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Store Daily Rollup",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Format Daily Summary for Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Prepare Weekly Rollup Rows": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Store Weekly Rollup",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Format Weekly Summary for Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Store Daily Rollup": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Clear Short-Term Memory",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Synthesize Daily Summary": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Prepare Daily Rollup Rows",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Synthesize Weekly Summary": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Prepare Weekly Rollup Rows",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "IzOh2OqGAL5hTiBy",
+  "name": "News Intelligence - Daily & Weekly Rollup",
+  "nodes": [
+    {
+      "id": "8",
+      "name": "Check If Sunday",
+      "parameters": {
+        "jsCode": "return [{ json: { isSunday: $now.weekday === 7 } }];",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1880,
+        400
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "7",
+      "name": "Clear Short-Term Memory",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "DxJWTxf8omV3oo2i"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "condition": "gte",
+              "keyName": "importance_score",
+              "keyValue": "0"
+            }
+          ]
+        },
+        "matchType": "allConditions",
+        "operation": "deleteRows",
+        "resource": "row"
+      },
+      "position": [
+        1640,
+        400
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1
+    },
+    {
+      "id": "1",
+      "name": "Daily Rollup Trigger",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "0 5 * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        200,
+        400
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "format-daily-summary-for-matrix-001",
+      "name": "Format Daily Summary for Matrix",
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst periodType = (items[0] && items[0].json.period_type) || 'daily';\nconst isWeekly = periodType === 'weekly';\nconst dateLabel = $now.toFormat('yyyy-MM-dd');\nconst header = (isWeekly ? '\\ud83d\\udcd6 Weekly' : '\\ud83d\\udcd6 Daily') + ' News Summary \\u2014 ' + dateLabel;\nconst sections = items.map(i => {\n  const j = i.json;\n  return '**' + j.category + '** (' + j.article_count + ' articles)\\n' + j.summary;\n}).join('\\n\\n');\nconst text = header + '\\n\\n' + sections + '\\n\\n_' + items.length + ' categories \\u2014 posted by news-bot_';\nconst txn_id = periodType + '-summary-' + Date.now();\nreturn [{ json: { txn_id, matrixPayload: { msgtype: 'm.text', body: text } } }];\n",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1160,
+        560
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "format-weekly-summary-for-matrix-001",
+      "name": "Format Weekly Summary for Matrix",
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst periodType = (items[0] && items[0].json.period_type) || 'daily';\nconst isWeekly = periodType === 'weekly';\nconst dateLabel = $now.toFormat('yyyy-MM-dd');\nconst header = (isWeekly ? '\\ud83d\\udcd6 Weekly' : '\\ud83d\\udcd6 Daily') + ' News Summary \\u2014 ' + dateLabel;\nconst sections = items.map(i => {\n  const j = i.json;\n  return '**' + j.category + '** (' + j.article_count + ' articles)\\n' + j.summary;\n}).join('\\n\\n');\nconst text = header + '\\n\\n' + sections + '\\n\\n_' + items.length + ' categories \\u2014 posted by news-bot_';\nconst txn_id = periodType + '-summary-' + Date.now();\nreturn [{ json: { txn_id, matrixPayload: { msgtype: 'm.text', body: text } } }];\n",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        3080,
+        460
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "10",
+      "name": "Get Daily Rollups (7d)",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "MVh3LZNC76wgU5Un"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "condition": "eq",
+              "keyName": "period_type",
+              "keyValue": "daily"
+            }
+          ]
+        },
+        "matchType": "allConditions",
+        "operation": "get",
+        "resource": "row",
+        "returnAll": true
+      },
+      "position": [
+        2360,
+        300
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1
+    },
+    {
+      "id": "2",
+      "name": "Get Short-Term Articles",
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "DxJWTxf8omV3oo2i"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "condition": "gte",
+              "keyName": "importance_score",
+              "keyValue": "0"
+            }
+          ]
+        },
+        "matchType": "allConditions",
+        "operation": "get",
+        "resource": "row",
+        "returnAll": true
+      },
+      "position": [
+        440,
+        400
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1
+    },
+    {
+      "id": "3",
+      "name": "Group Short-Term By Category",
+      "parameters": {
+        "jsCode": "\nconst VALID_CATEGORIES = [\"technology\", \"market\", \"health\", \"science\", \"business\", \"trending\", \"general\"];\nconst items = $input.all();\nconst byCategory = {};\nfor (const it of items) {\n  const cat = it.json.category;\n  if (!byCategory[cat]) byCategory[cat] = [];\n  byCategory[cat].push(it.json);\n}\nconst out = [];\nfor (const cat of VALID_CATEGORIES) {\n  const arts = byCategory[cat];\n  if (!arts || arts.length === 0) continue;\n  const bulletText = arts.map(a => `- ${a.title}: ${a.summary}`).join('\\n');\n  out.push({ json: {\n    category: cat,\n    article_count: arts.length,\n    bulletText: bulletText,\n    period_type: 'daily',\n    period_start: $now.toFormat('yyyy-MM-dd'),\n    period_end: $now.toFormat('yyyy-MM-dd')\n  } });\n}\nreturn out;\n",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        680,
+        400
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "11",
+      "name": "Group Weekly By Category",
+      "parameters": {
+        "jsCode": "\nconst VALID_CATEGORIES = [\"technology\", \"market\", \"health\", \"science\", \"business\", \"trending\", \"general\"];\nconst cutoff = $now.minus({ days: 7 });\nconst items = $input.all().filter(it => {\n  const d = new Date(it.json.period_start);\n  return d >= new Date(cutoff.toISODate());\n});\nconst byCategory = {};\nfor (const it of items) {\n  const cat = it.json.category;\n  if (!byCategory[cat]) byCategory[cat] = [];\n  byCategory[cat].push(it.json);\n}\nconst out = [];\nfor (const cat of VALID_CATEGORIES) {\n  const days = byCategory[cat];\n  if (!days || days.length === 0) continue;\n  const bulletText = days.map(d => `- ${d.period_start}: ${d.summary}`).join('\\n');\n  const totalArticles = days.reduce((s,d) => s + (Number(d.article_count) || 0), 0);\n  out.push({ json: {\n    category: cat, article_count: totalArticles, bulletText: bulletText,\n    period_type: 'weekly',\n    period_start: cutoff.toFormat('yyyy-MM-dd'),\n    period_end: $now.toFormat('yyyy-MM-dd')\n  } });\n}\nreturn out;\n",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2600,
+        300
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "9",
+      "name": "If Sunday (Weekly Rollup)",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.isSunday }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        2120,
+        400
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "manual-trigger-rollup-001",
+      "name": "Manual Trigger",
+      "parameters": {},
+      "position": [
+        200,
+        560
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ikF6zjgA4yiQhGmj",
+          "name": "News Bot Matrix Token"
+        }
+      },
+      "id": "post-daily-summary-to-matrix-001",
+      "name": "Post Daily Summary to Matrix",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/%21CxjkhySGFQnfuphsZl%3Ahome.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        1400,
+        560
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ikF6zjgA4yiQhGmj",
+          "name": "News Bot Matrix Token"
+        }
+      },
+      "id": "post-weekly-summary-to-matrix-001",
+      "name": "Post Weekly Summary to Matrix",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/%21CxjkhySGFQnfuphsZl%3Ahome.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        3320,
+        460
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "5",
+      "name": "Prepare Daily Rollup Rows",
+      "parameters": {
+        "jsCode": "\nconst enrichItems = $input.all();\nconst srcItems = $('Group Short-Term By Category').all();\nconst out = [];\nfor (let i = 0; i < enrichItems.length; i++) {\n  const raw = (enrichItems[i].json.response || '').trim();\n  const src = srcItems[i].json;\n  out.push({ json: {\n    period_type: src.period_type, period_start: src.period_start, period_end: src.period_end,\n    category: src.category, summary: raw || 'No summary generated', article_count: src.article_count,\n    top_entities: '', created_at: $now.toISO()\n  }});\n}\nreturn out;\n",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1160,
+        400
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "13",
+      "name": "Prepare Weekly Rollup Rows",
+      "parameters": {
+        "jsCode": "\nconst enrichItems = $input.all();\nconst srcItems = $('Group Weekly By Category').all();\nconst out = [];\nfor (let i = 0; i < enrichItems.length; i++) {\n  const raw = (enrichItems[i].json.response || '').trim();\n  const src = srcItems[i].json;\n  out.push({ json: {\n    period_type: src.period_type, period_start: src.period_start, period_end: src.period_end,\n    category: src.category, summary: raw || 'No summary generated', article_count: src.article_count,\n    top_entities: '', created_at: $now.toISO()\n  }});\n}\nreturn out;\n",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        3080,
+        300
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "6",
+      "name": "Store Daily Rollup",
+      "parameters": {
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_count": "={{ $json.article_count }}",
+            "category": "={{ $json.category }}",
+            "created_at": "={{ $json.created_at }}",
+            "period_end": "={{ $json.period_end }}",
+            "period_start": "={{ $json.period_start }}",
+            "period_type": "={{ $json.period_type }}",
+            "summary": "={{ $json.summary }}",
+            "top_entities": "={{ $json.top_entities }}"
+          }
+        },
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "MVh3LZNC76wgU5Un"
+        },
+        "operation": "insert",
+        "resource": "row"
+      },
+      "position": [
+        1400,
+        400
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1
+    },
+    {
+      "id": "14",
+      "name": "Store Weekly Rollup",
+      "parameters": {
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "article_count": "={{ $json.article_count }}",
+            "category": "={{ $json.category }}",
+            "created_at": "={{ $json.created_at }}",
+            "period_end": "={{ $json.period_end }}",
+            "period_start": "={{ $json.period_start }}",
+            "period_type": "={{ $json.period_type }}",
+            "summary": "={{ $json.summary }}",
+            "top_entities": "={{ $json.top_entities }}"
+          }
+        },
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "MVh3LZNC76wgU5Un"
+        },
+        "operation": "insert",
+        "resource": "row"
+      },
+      "position": [
+        3320,
+        300
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1
+    },
+    {
+      "id": "4",
+      "name": "Synthesize Daily Summary",
+      "parameters": {
+        "jsonBody": "={{ { \"model\": \"gpu01-primary\", \"prompt\": ('Write ONE concise paragraph (3-4 sentences) summarizing the key developments below for the \\'' + $json.category + '\\' category over the past day, as a news digest. Respond with ONLY the paragraph, no preamble, no markdown.\\n\\n' + $json.bulletText), \"stream\": false, \"options\": { \"num_predict\": 250 } } }}",
+        "method": "POST",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchInterval": 1000,
+              "batchSize": 1
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/api/generate"
+      },
+      "position": [
+        920,
+        400
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "12",
+      "name": "Synthesize Weekly Summary",
+      "parameters": {
+        "jsonBody": "={{ { \"model\": \"gpu01-primary\", \"prompt\": ('Write ONE concise paragraph (4-6 sentences) summarizing the week\\'s key developments below for the \\'' + $json.category + '\\' category, as a weekly news digest. Respond with ONLY the paragraph, no preamble, no markdown.\\n\\n' + $json.bulletText), \"stream\": false, \"options\": { \"num_predict\": 250 } } }}",
+        "method": "POST",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchInterval": 1000,
+              "batchSize": 1
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/api/generate"
+      },
+      "position": [
+        2840,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  },
+  "tags": []
+}

@@ -1,0 +1,53 @@
+---
+# forgejo_runner -- a Forgejo Actions runner in host mode (no Docker) for this
+# repository's checks (.forgejo/workflows/ci.yml -> scripts/ci/check.sh).
+#
+# Placement: code-01, the "repo lane" VM (docs/AGENT_ACCESS_LANES.md). A runner
+# executes pull-request code, so it lives where there is no credential to anything
+# else. The systemd unit pins its network to git-01: jobs cannot reach the internet
+# or any other host, and every tool they need is installed here at deploy time.
+
+forgejo_runner_version: "13.2.1"
+forgejo_runner_sha256: "bb369fe1ecb50fdc983c0b1d993f19b0920df6e5864511892b3cdbf16d858b34"
+forgejo_runner_url: "https://code.forgejo.org/forgejo/runner/releases/download/v{{ forgejo_runner_version }}/forgejo-runner-{{ forgejo_runner_version }}-linux-amd64"
+
+forgejo_runner_user: forgejo-runner
+forgejo_runner_bin_dir: /opt/forgejo-runner        # binary, root-owned
+forgejo_runner_conf_dir: /etc/forgejo-runner       # config.yaml, root-owned
+forgejo_runner_state_dir: /var/lib/forgejo-runner  # .runner (its own credential), job workspaces, HOME
+
+forgejo_runner_name: "{{ inventory_hostname }}"
+forgejo_runner_labels: ["ci-host:host"]            # host mode: steps run as the runner user on this VM
+forgejo_runner_capacity: 1
+forgejo_runner_job_timeout: "30m"
+forgejo_runner_memory_max: "1G"
+
+# Forgejo is reached directly on git-01, not through Traefik/Authelia.
+forgejo_instance_url: "http://10.0.30.31:3000"
+forgejo_api_url: "{{ forgejo_instance_url }}/api/v1"
+forgejo_runner_git_host_ip: "10.0.30.31"           # the only address the unit may talk to
+forgejo_runner_repo: "owner/GitOps"                  # registration scope: this repository only
+vault_forgejo_admin_path: "secret/forgejo/admin"   # keys: username, password (used once, to mint a registration token)
+
+# --- CI toolchain, on PATH for every job step ---------------------------------
+ci_tools_dir: /opt/ci-tools
+ci_python_packages:
+  - "ansible-core>=2.17,<2.22"
+  - "pytest>=8,<10"
+  - "pyyaml>=6"
+  - "numpy>=1.26"
+  - "fastapi>=0.110"
+  - "httpx>=0.27"
+  - "pydantic>=2"
+  - "python-dotenv>=1"
+  - "asyncpg>=0.29"        # imported at module level by field_ingest, mail_desk, studio_partner
+  - "python-multipart>=0.0.9"   # FastAPI form parsing (code_partner voice endpoint test)
+ci_ansible_requirements: "{{ playbook_dir }}/../requirements.yml"
+
+ci_terraform_version: "1.14.8"
+ci_terraform_sha256: "56a5d12f47cbc1c6bedb8f5426ae7d5df984d1929572c24b56f4c82e9f9bf709"
+ci_terraform_url: "https://releases.hashicorp.com/terraform/{{ ci_terraform_version }}/terraform_{{ ci_terraform_version }}_linux_amd64.zip"
+
+ci_gitleaks_version: "8.21.2"
+ci_gitleaks_sha256: "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba"
+ci_gitleaks_url: "https://github.com/gitleaks/gitleaks/releases/download/v{{ ci_gitleaks_version }}/gitleaks_{{ ci_gitleaks_version }}_linux_x64.tar.gz"

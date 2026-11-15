@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ p.pattern }} — Progressions — Music Studio{% endblock %}
+{% block content %}
+<p><a href="/ui/progressions?user={{ current_user }}">&larr; all progressions</a></p>
+<h2 style="margin-bottom:0.2rem">{{ p.pattern }}</h2>
+<div class="meta">{{ p.mode }} · {{ p.length }} chords · {{ p.songs }} song{{ '' if p.songs == 1 else 's' }} ·
+  {{ p.recordings }} recording{{ '' if p.recordings == 1 else 's' }} · {{ p.occurrences }} loop{{ '' if p.occurrences == 1 else 's' }}
+  {% if p.meters %} · {% for m, n in p.meters.items() %}{{ m }} ×{{ n }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}</div>
+
+<div class="card">
+  <form method="get" action="/ui/progression" class="row-actions">
+    <input type="hidden" name="pattern" value="{{ p.pattern }}">
+    <input type="hidden" name="user" value="{{ current_user }}">
+    <span class="muted">In</span>
+    <select name="key" onchange="this.form.submit()">
+      {% set keys = (['C','Db','D','Eb','E','F','F#','G','Ab','A','Bb','B'] if p.mode == 'major' else ['Am','Bbm','Bm','Cm','C#m','Dm','Ebm','Em','Fm','F#m','Gm','G#m']) %}
+      {% for k in keys %}<option {{ 'selected' if k == p.in_key else '' }}>{{ k }}</option>{% endfor %}
+    </select>
+    <span style="font-size:1.5rem; font-weight:700; color:var(--gold); margin-left:0.6rem">{{ p.chords_in_key | join('  ') }}</span>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Start a song from this</h3>
+  <p class="muted" style="margin-top:0">Creates a draft song and a sketch sheet in the songbook (verse ×2 + chorus on this progression) to build on.</p>
+  <div class="row-actions">
+    <input type="text" id="ns-title" placeholder="Working title" style="flex:1; min-width:12rem">
+    <select id="ns-key">{% for k in keys %}<option {{ 'selected' if k == p.in_key else '' }}>{{ k }}</option>{% endfor %}</select>
+    <select id="ns-time">
+      {% for t in ['4/4', '3/4', '6/8', '12/8', '2/4', '5/4', '7/8'] %}
+      <option {{ 'selected' if p.meters and (p.meters | dictsort(by='value') | last)[0] == t else '' }}>{{ t }}</option>
+      {% endfor %}
+    </select>
+    <input type="number" id="ns-tempo" placeholder="bpm" min="30" max="300" style="width:5rem">
+    <button type="button" id="ns-go">Create song</button>
+    <span id="ns-result" class="muted"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Songs using it ({{ p.songs | length }})</h3>
+  {% for s in p.songs %}
+  <div class="annotation">
+    <a href="/ui/song/{{ s.song_id }}?user={{ current_user }}"><b>{{ s.title }}</b></a>
+    <span class="muted">
+      {% for h in s.hits[:4] %}{{ h.section or (h.name ~ (' @ %d:%02d' % (h.t_start // 60, h.t_start % 60) if h.t_start is not none else '')) }} ({{ h.key }}: {{ h.chords }}){{ ' · ' if not loop.last }}{% endfor %}
+    </span>
+  </div>
+  {% else %}
+  <p class="muted">No songs yet — accept suggestions, or start one above.</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3>Recordings not yet in a song ({{ p.takes | length }})</h3>
+  <table class="files">
+    {% for h in p.takes %}
+    <tr>
+      <td>{% if h.beets_item_id %}<a href="/ui/track/{{ h.beets_item_id }}?user={{ current_user }}">{{ h.name }}</a>{% else %}{{ h.name }}{% endif %}</td>
+      <td>{{ h.chords }}{% if h.repeats %} <span class="muted">×{{ h.repeats }}</span>{% endif %}</td>
+      <td class="muted">{{ h.key }}</td>
+      <td class="muted">{{ '%d:%02d' % (h.t_start // 60, h.t_start % 60) if h.t_start is not none else '' }}</td>
+      <td>{% if h.beets_item_id %}<audio controls preload="none" src="{{ beets_public }}/item/{{ h.beets_item_id }}/file#t={{ '%.1f' % (h.t_start or 0) }}" style="height:2rem; width:12rem"></audio>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<script>
+document.getElementById('ns-go').onclick = async () => {
+  const out = document.getElementById('ns-result');
+  const body = {pattern: {{ p.pattern | tojson }}, title: document.getElementById('ns-title').value,
+                key: document.getElementById('ns-key').value, time: document.getElementById('ns-time').value,
+                tempo: parseInt(document.getElementById('ns-tempo').value) || null};
+  out.className = 'muted'; out.textContent = 'creating…';
+  const r = await fetch('/api/progressions/new-song', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { out.className = 'err'; out.textContent = d.detail || ('error ' + r.status); return; }
+  location.href = '/ui/song/' + d.song_id + '?user={{ current_user }}';
+};
+</script>
+{% endblock %}

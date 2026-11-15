@@ -1,0 +1,136 @@
+---
+# =============================================================================
+# Role: syncthing — tasks/main.yml (2026-10-24). See defaults/main.yml.
+# Configured through `syncthing cli` (the local REST API), never by editing
+# config.xml under a running daemon.
+# =============================================================================
+
+- name: "Syncthing: apt keyring"
+  ansible.builtin.get_url:
+    url: https://syncthing.net/release-key.gpg
+    dest: /etc/apt/keyrings/syncthing-archive-keyring.gpg
+    mode: "0644"
+  tags: [syncthing]
+
+# Pinned 2026-10-24 (binary key, "Syncthing Release Management", created 2024-11-24).
+# A different key at that URL stops the play instead of being trusted silently.
+- name: "Syncthing: keyring is the pinned release key"
+  ansible.builtin.shell: gpg --show-keys --with-colons /etc/apt/keyrings/syncthing-archive-keyring.gpg | grep '^fpr' | head -1
+  register: _st_fpr
+  changed_when: false
+  failed_when: "'FBA2E162F2F44657B38F0309E5665F9BD5970C47' not in _st_fpr.stdout"
+  tags: [syncthing]
+
+- name: "Syncthing: apt repository ({{ syncthing_apt_channel }})"
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/syncthing.list
+    mode: "0644"
+    content: |
+      # Managed by Ansible (Roles/syncthing)
+      deb [signed-by=/etc/apt/keyrings/syncthing-archive-keyring.gpg] https://apt.syncthing.net/ syncthing {{ syncthing_apt_channel }}
+  register: _st_repo
+  tags: [syncthing]
+
+# Above 1000 and for this package only: FOUND 2026-10-24 the Debian mirror carries priority
+# 995 on nas-02, so a 990 pin installed Debian's 1.19.2 instead of 2.x.
+- name: "Syncthing: prefer the Syncthing repo over Debian's old package"
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/syncthing.pref
+    mode: "0644"
+    content: |
+      Package: syncthing
+      Pin: origin apt.syncthing.net
+      Pin-Priority: 1001
+  tags: [syncthing]
+
+# Refresh only the Syncthing list: FOUND 2026-10-24 packages.openmediavault.org answering 503
+# made a full `apt update` (and so update_cache) fail on nas-02.
+- name: "Syncthing: refresh the Syncthing apt list only"
+  ansible.builtin.command: >-
+    apt-get update -o Dir::Etc::sourcelist=sources.list.d/syncthing.list
+    -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0
+  when: _st_repo.changed
+  tags: [syncthing]
+
+- name: "Syncthing: install"
+  ansible.builtin.apt:
+    name: syncthing
+    state: latest
+  tags: [syncthing]
+
+- name: "Syncthing: system user"
+  ansible.builtin.user:
+    name: "{{ syncthing_user }}"
+    group: "{{ syncthing_group }}"
+    home: "{{ syncthing_home }}"
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: true
+  tags: [syncthing]
+
+- name: "Syncthing: override dir"
+  ansible.builtin.file:
+    path: "/etc/systemd/system/syncthing@{{ syncthing_user }}.service.d"
+    state: directory
+    mode: "0755"
+  tags: [syncthing]
+
+- name: "Syncthing: service limits (small NAS; files group-readable)"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/syncthing@{{ syncthing_user }}.service.d/override.conf"
+    mode: "0644"
+    content: |
+      # Managed by Ansible (Roles/syncthing)
+      [Service]
+      MemoryMax={{ syncthing_memory_max }}
+      Nice=10
+      IOSchedulingClass=idle
+      UMask=0002
+      Environment=STNOUPGRADE=1
+      Environment=STNODEFAULTFOLDER=1
+  register: _st_override
+  tags: [syncthing]
+
+- name: "Syncthing: enable + start"
+  ansible.builtin.systemd_service:
+    name: "syncthing@{{ syncthing_user }}.service"
+    enabled: true
+    state: "{{ 'restarted' if _st_override.changed else 'started' }}"
+    daemon_reload: true
+  tags: [syncthing]
+
+- name: "Syncthing: folder directories"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ syncthing_user }}"
+    group: "{{ syncthing_group }}"
+    mode: "2775"
+  loop: "{{ syncthing_folders }}"
+  loop_control:
+    label: "{{ item.path }}"
+  tags: [syncthing]
+
+# Config through the REST API (localhost, the API key read on the box, never printed):
+# FOUND 2026-10-24 that Syncthing 2's `cli config options` names don't map 1:1 to the
+# config keys (uraccepted -1 parses as a flag, some keys have no subcommand at all).
+- name: "Syncthing: apply script"
+  ansible.builtin.copy:
+    src: syncthing_apply.py
+    dest: /usr/local/sbin/syncthing-apply
+    mode: "0755"
+  tags: [syncthing]
+
+- name: "Syncthing: apply LAN-only options, devices and folders"
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/syncthing-apply
+    stdin: "{{ lookup('template', 'state.json.j2') | from_json | to_json }}"
+  become_user: "{{ syncthing_user }}"
+  register: _st_apply
+  changed_when: "'CHANGED' in _st_apply.stdout"
+  tags: [syncthing]
+
+- name: "Syncthing: this NAS's device ID (give it to the Mac)"
+  ansible.builtin.debug:
+    msg: "{{ _st_apply.stdout_lines }}"
+  tags: [syncthing]

@@ -1,0 +1,85 @@
+---
+# =============================================================================
+# Role: traefik_register — tasks/main.yml
+#
+# Writes a Traefik file-provider dynamic config for a remote service
+# (i.e., a service NOT running on the same Docker host as Traefik).
+#
+# Traefik hot-reloads files in /etc/traefik/dynamic/ — no restart needed.
+#
+# Called by:
+#   - deploy_gpu.yml      (open-webui, ollama API, yolo, immich-ml)
+#   - deploy_wireguard.yml (wg-easy admin UI)
+#   - Any future playbook deploying a service on a non-web-01 VM
+#
+# Required variables (set in playbook vars or host_vars):
+#   traefik_service_name  — unique slug, becomes filename + router name
+#   traefik_backend_url   — full URL of backend, e.g. http://10.0.30.50:3000
+#   traefik_domain        — FQDN to match, e.g. chat.internal
+#   traefik_auth          — one_factor | two_factor | none
+# =============================================================================
+
+- name: "[traefik_register] Build middleware list for {{ traefik_service_name }}"
+  ansible.builtin.set_fact:
+    # secure-headers@file's default Permissions-Policy denies every browser
+    # feature (microphone, camera, etc.) for every service — correct default
+    # for read-only content apps, wrong for anything that actually needs one
+    # of those (found live 2026-08-14: voice-chat's mic worked in the browser
+    # permission prompt but was still silently blocked, because
+    # Permissions-Policy overrides user consent regardless of what's clicked).
+    # Services that need an exception set traefik_permissions_policy_override
+    # (e.g. "microphone=(self)") to get their own per-service headers
+    # middleware instead of the shared one — everyone else is unaffected.
+    _traefik_middlewares: >-
+      {{
+        (['authelia@file'] if traefik_auth in ['one_factor', 'two_factor'] else [])
+        + ([traefik_service_name + '-headers@file'] if traefik_permissions_policy_override | default('') else ['secure-headers@file'])
+        + (['rate-limit-api@file'] if traefik_rate_limit | default(false) | bool else [])
+      }}
+  # traefik_auth values:
+  #   one_factor / two_factor → forward-auth (Authelia intercepts every request)
+  #   oidc                    → no forward-auth; service does its own OIDC redirect to Authelia
+  #   none                    → public route, no auth
+
+- name: "[traefik_register] Build Host rule for {{ traefik_service_name }}"
+  ansible.builtin.set_fact:
+    _traefik_hosts: >-
+      {{
+        'Host(`' + traefik_domain + '`)'
+        + ((' || Host(`' + traefik_extra_domains | join('`) || Host(`') + '`)')
+           if traefik_extra_domains | default([]) | length > 0 else '')
+      }}
+
+# Optional path restriction (added 2026-10-23 for home.example.org/.well-known/matrix):
+# unset -> the rule is exactly the Host() expression above, as before.
+- name: "[traefik_register] Add optional PathPrefix to the rule for {{ traefik_service_name }}"
+  ansible.builtin.set_fact:
+    _traefik_host_rule: >-
+      {{
+        ('(' + _traefik_hosts + ') && PathPrefix(`' + traefik_path_prefix + '`)')
+        if traefik_path_prefix | default('') else _traefik_hosts
+      }}
+
+- name: "[traefik_register] Ensure dynamic config directory exists on Traefik host"
+  ansible.builtin.file:
+    path: "{{ traefik_dynamic_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ traefik_host }}"
+  become: true
+
+- name: "[traefik_register] Write dynamic config for {{ traefik_service_name }}"
+  ansible.builtin.template:
+    src: route.yml.j2
+    dest: "{{ traefik_dynamic_dir }}/{{ traefik_service_name }}.yml"
+    mode: "0644"
+  delegate_to: "{{ traefik_host }}"
+  become: true
+  notify: verify traefik reload
+
+- name: "[traefik_register] Confirm route file written"
+  ansible.builtin.debug:
+    msg: >-
+      Route registered: {{ traefik_domain }} →
+      {{ traefik_backend_url }} (auth: {{ traefik_auth | default('none') }})
+      File: {{ traefik_dynamic_dir }}/{{ traefik_service_name }}.yml

@@ -1,0 +1,31 @@
+---
+# =============================================================================
+# Ansible Galaxy collection requirements
+# Install: ansible-galaxy collection install -r Ansible/requirements.yml
+# =============================================================================
+
+collections:
+  # Vault integration (secret reads in every role)
+  - name: community.hashi_vault
+    version: ">=6.0.0"
+
+  # Docker management (web-01, web-02, git-01, gpu-01, media-vm)
+  - name: community.docker
+    version: ">=3.0.0"
+
+  # General utilities: zfs, parted, filesystem, ufw, modprobe
+  - name: community.general
+    version: ">=9.0.0"
+
+  # Proxmox modules (proxmox_kvm, ...): moved out of community.general; the
+  # community.general.* redirects are gone as of community.general 14 (2026-11-14)
+  - name: community.proxmox
+    version: ">=1.0.0"
+
+  # PostgreSQL management (pg-01)
+  - name: community.postgresql
+    version: ">=3.0.0"
+
+  # POSIX: mount, sysctl, synchronize
+  - name: ansible.posix
+    version: ">=1.5.0"

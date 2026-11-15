@@ -1,0 +1,227 @@
+{
+  "active": true,
+  "connections": {
+    "Compute Overlap + Build Prompt": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Synthesize with Ollama",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Matrix Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Post to Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Get News Trends": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Compute Overlap + Build Prompt",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Get Podcast Trends": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get News Trends",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Manual Test": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get Podcast Trends",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Synthesize with Ollama": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Matrix Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Weekly Trigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get Podcast Trends",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "0XdgKXYaAhlo3liu",
+  "name": "Cross-Medium Trends - Weekly",
+  "nodes": [
+    {
+      "id": "trends-build-prompt-001",
+      "name": "Compute Overlap + Build Prompt",
+      "parameters": {
+        "jsCode": "const podcastData = $('Get Podcast Trends').first().json;\nconst newsData = $json;\nconst podcastEntities = podcastData.entities || [];\nconst newsEntities = newsData.entities || [];\n\nconst newsSet = new Map(newsEntities.map(e => [e.entity_text.toLowerCase(), e]));\nconst overlap = [];\nfor (const pe of podcastEntities) {\n  const match = newsSet.get(pe.entity_text.toLowerCase());\n  if (match) overlap.push({ entity: pe.entity_text, type: pe.entity_type,\n    podcast_mentions: pe.total_mentions, news_mentions: match.total_mentions });\n}\n\nconst podcastList = podcastEntities.slice(0, 15).map(e => `${e.entity_text} (${e.entity_type}, ${e.total_mentions}x across ${e.episode_count} episodes)`).join('; ');\nconst newsList = newsEntities.slice(0, 15).map(e => `${e.entity_text} (${e.entity_type}, ${e.total_mentions}x across ${e.article_count} articles)`).join('; ');\nconst overlapList = overlap.length\n  ? overlap.map(o => `${o.entity} (podcasts: ${o.podcast_mentions}x, news: ${o.news_mentions}x)`).join('; ')\n  : 'none this week';\n\nconst prompt = `You are a cross-medium trends analyst for a personal podcast+news system. `\n  + `Here is this week's top entities/topics from podcast transcripts: ${podcastList}. `\n  + `Here is this week's top entities/topics from the news corpus: ${newsList}. `\n  + `Entities appearing in BOTH: ${overlapList}. `\n  + `Write a short (100-150 word) narrative: what's resonating across both the user's podcast `\n  + `listening and the broader news this week, calling out the overlap specifically as the most `\n  + `interesting signal (something showing up in both independently-curated streams). Be specific, `\n  + `not generic. Respond with ONLY the narrative, no preamble.`;\n\nreturn [{ json: { prompt, overlap_count: overlap.length, podcast_count: podcastEntities.length, news_count: newsEntities.length } }];\n"
+      },
+      "position": [
+        940,
+        380
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "trends-format-matrix-001",
+      "name": "Format Matrix Message",
+      "parameters": {
+        "jsCode": "const overlapCount = $('Compute Overlap + Build Prompt').first().json.overlap_count;\nconst narrative = ($json.response || 'No trends narrative available this week.').trim();\nconst dateLabel = $now.toFormat('yyyy-MM-dd');\nconst text = `\\ud83d\\udcca Cross-Medium Trends \\u2014 ${dateLabel}\\n\\n${narrative}\\n\\n`\n  + `_${overlapCount} entities showed up in both podcasts and news this week \\u2014 posted by podcast-bot_`;\nconst matrixPayload = JSON.stringify({ msgtype: 'm.text', body: text });\nreturn [{ json: { txn_id: 'trends-' + Date.now(), matrixPayload } }];\n"
+      },
+      "position": [
+        1420,
+        380
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "trends-get-news-001",
+      "name": "Get News Trends",
+      "parameters": {
+        "method": "GET",
+        "options": {},
+        "url": "http://podcast-api:8001/api/news/trends/entities?days=7&limit=20&entity_types=PERSON,ORG,GPE,EVENT,NORP,FAC,LAW,PRODUCT,WORK_OF_ART"
+      },
+      "position": [
+        700,
+        380
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "trends-get-podcast-001",
+      "name": "Get Podcast Trends",
+      "parameters": {
+        "method": "GET",
+        "options": {},
+        "url": "http://podcast-api:8001/api/trends/entities?days=7&limit=20&entity_types=PERSON,ORG,GPE,EVENT,NORP,FAC,LAW,PRODUCT,WORK_OF_ART"
+      },
+      "position": [
+        460,
+        380
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "trends-manual-trigger-001",
+      "name": "Manual Test",
+      "parameters": {},
+      "position": [
+        200,
+        460
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BpsyZb4paEB1RlPt",
+          "name": "Podcast Bot Matrix Token"
+        }
+      },
+      "id": "trends-post-matrix-001",
+      "name": "Post to Matrix",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/%21qrgtZolXtCoveISZCQ%3Ahome.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        1660,
+        380
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "trends-ollama-001",
+      "name": "Synthesize with Ollama",
+      "parameters": {
+        "jsonBody": "={{ JSON.stringify({ model: 'qwen2.5:7b-instruct-q4_K_M', prompt: $json.prompt, stream: false }) }}",
+        "method": "POST",
+        "options": {
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/api/generate"
+      },
+      "position": [
+        1180,
+        380
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "trends-weekly-trigger-001",
+      "name": "Weekly Trigger",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                0
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "position": [
+        200,
+        300
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  },
+  "tags": []
+}

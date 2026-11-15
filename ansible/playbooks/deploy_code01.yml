@@ -1,0 +1,50 @@
+---
+# =============================================================================
+# Playbook: deploy_code01.yml
+# code-01 (VM 252 on pve-01, 10.0.30.32) -- DOMO's code partner.
+# Design: IaC/docs/CODE_PARTNER.md
+#
+# Prerequisites (CODE_PARTNER.md, "Deploy"):
+#   1. terraform apply in Terraform/envs/code-01/
+#   2. scripts/forgejo_domo_coder.py --apply  (bot user, master protection, Vault key)
+#   3. Vault secret/code-partner/router -> router_key (also given to domo-router)
+#
+# Run (source /opt/vault/.env with `set -a` first):
+#   ansible-playbook -i inventory/services.yml playbooks/deploy_code01.yml
+#   ... --tags code_partner        # app + unit only
+#   ... --tags traefik_register    # code.home.example.org route on web-01
+# =============================================================================
+
+- name: "Deploy code-01 (DOMO code partner)"
+  hosts: code-01
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Confirm this is code-01
+      ansible.builtin.fail:
+        msg: "This playbook targets code-01 only."
+      when: inventory_hostname != 'code-01'
+
+  roles:
+    - role: code_partner
+      tags: ["code_partner"]
+      when: code_partner_enabled | default(false) | bool
+
+  tasks:
+    # two_factor: the page can commit and push. Authelia's Remote-User names the
+    # person; code_partner.py trusts it only from web-01 (TRUSTED_PROXIES_JSON).
+    # DNS: Pi-hole host "10.0.30.20 code.home.example.org" via the v6 REST API (one-time).
+    - name: "Register Traefik route: code.home.example.org -> code-01 code-partner"
+      ansible.builtin.include_role:
+        name: traefik_register
+        apply:
+          tags: ["traefik_register", "code_partner"]
+      vars:
+        traefik_service_name: "code-partner"
+        traefik_backend_url: "http://10.0.30.32:{{ code_partner_port | default(8210) }}"
+        traefik_domain: "code.home.example.org"
+        traefik_auth: "two_factor"
+        traefik_healthcheck_path: "/health"
+      when: code_partner_enabled | default(false) | bool
+      tags: ["traefik_register", "code_partner"]

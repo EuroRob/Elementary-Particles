@@ -1,0 +1,30 @@
+---
+# =============================================================================
+# Role: syncthing — a receive-only Syncthing peer on a NAS (first: nas-02).
+# the owner's Live projects: Mac (send only) -> nas-02 (receive only) -> DATAGRID.
+# Guide: IaC/docs/SYNCTHING_LIVE_PROJECTS.md
+#
+# LAN only: no global discovery, no relays, no NAT traversal, no usage or crash
+# reporting; the Mac reaches nas-02 at its static address. The web GUI listens
+# on 127.0.0.1 only (ssh -L 8384:127.0.0.1:8384 ansible@nas-02.internal).
+# =============================================================================
+syncthing_user: syncthing
+syncthing_group: users                    # files readable by admin (SMB) and the NFS consumers
+syncthing_home: /var/lib/syncthing
+syncthing_apt_channel: stable-v2          # apt.syncthing.net components: stable-v1 | stable-v2 | candidate
+syncthing_listen: ["tcp://0.0.0.0:22000", "quic://0.0.0.0:22000"]
+syncthing_memory_max: 512M                # nas-02 has 3 GB RAM in all
+
+# Devices allowed to connect. A device ID is a public-key fingerprint, not a secret.
+# Add the Mac's ID here (Syncthing on the Mac: Actions -> Show ID) and re-run.
+syncthing_devices: []
+#  - {name: "owner MacBook Pro", id: "XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX-XXXXXXX"}
+
+syncthing_folders: []
+#  - id: live-projects                    # must match the folder ID on the Mac
+#    label: "Live Projects"
+#    path: /DATAGRID/Multimedia/Music/My Recordings/Ableton Live/Projects
+#    type: receiveonly
+#    ignore_delete: true                  # a project deleted on the Mac stays on DATAGRID
+#    versioning_days: 90                  # staggered: older versions of changed files kept this long
+#    devices: ["owner MacBook Pro"]

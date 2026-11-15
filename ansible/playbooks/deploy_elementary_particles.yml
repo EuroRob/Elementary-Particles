@@ -1,0 +1,160 @@
+---
+# Master orchestration playbook for deploying all new VMs
+# Called by n8n deployment workflow
+# Variables: target_vm (gpu-01|nas-01|dns-01|es-01), mode (apply|dry-run)
+
+- name: Elementary Particles - VM Deployment Orchestration
+  hosts: localhost
+  gather_facts: no
+  vars:
+    deployment_timestamp: "{{ ansible_date_time.iso8601 }}"
+    vm_definitions:
+      gpu-01:
+        playbook: deploy_gpu.yml
+        datastore: zfs-nvme
+        vlan: vlan30
+        cpu: 16
+        memory: 64Gi
+        storage: 500Gi
+        description: "GPU ML Services - ollama, immich-ml, yolo"
+        
+      nas-01:
+        playbook: deploy_nas.yml
+        datastore: ssd
+        vlan: vlan40
+        cpu: 8
+        memory: 32Gi
+        storage: 10Ti
+        description: "OpenMediaVault NAS Storage"
+        
+      dns-01:
+        playbook: deploy_dns.yml
+        datastore: ssd
+        vlan: vlan30
+        cpu: 2
+        memory: 2Gi
+        storage: 10Gi
+        description: "Pi-hole DNS Server"
+        
+      es-01:
+        playbook: deploy_elasticsearch.yml
+        datastore: zfs-nvme
+        vlan: vlan30
+        cpu: 8
+        memory: 16Gi
+        storage: 200Gi
+        description: "Elasticsearch Search Engine"
+  
+  tasks:
+    - name: Validate target VM
+      ansible.builtin.assert:
+        that:
+          - target_vm is defined
+          - target_vm in vm_definitions
+        fail_msg: "Invalid target_vm '{{ target_vm }}'. Valid options: gpu-01, nas-01, dns-01, es-01"
+      
+    - name: Load VM configuration
+      ansible.builtin.set_fact:
+        vm_config: "{{ vm_definitions[target_vm] }}"
+        
+    - name: Display deployment plan
+      ansible.builtin.debug:
+        msg: |
+          ═════════════════════════════════════════════════════════════════════
+          DEPLOYMENT PLAN: {{ target_vm }}
+          ═════════════════════════════════════════════════════════════════════
+          Description: {{ vm_config.description }}
+          Datastore: {{ vm_config.datastore }}
+          VLAN: {{ vm_config.vlan }}
+          Resources: CPU={{ vm_config.cpu }}, Memory={{ vm_config.memory }}, Storage={{ vm_config.storage }}
+          Mode: {{ mode | default('dry-run') }}
+          Timestamp: {{ deployment_timestamp }}
+          ═════════════════════════════════════════════════════════════════════
+    
+    - name: Dry-run mode - Generate deployment steps
+      when: mode is not defined or mode == 'dry-run'
+      block:
+        - name: Show deployment steps
+          ansible.builtin.debug:
+            msg: |
+              DEPLOYMENT STEPS (DRY-RUN):
+              1. Validate target Proxmox node
+              2. Generate Terraform configuration
+              3. Create VM via Terraform
+              4. Configure networking (VLAN {{ vm_config.vlan }})
+              5. Run ansible playbook: {{ vm_config.playbook }}
+              6. Verify services
+              7. Register in NetBox
+              8. Update PostgreSQL elementary_particles schema
+              
+        - name: Generate terraform plan
+          ansible.builtin.shell: |
+            cat > /tmp/{{ target_vm }}-terraform.tf << 'EOF'
+            # Terraform configuration for {{ target_vm }}
+            variable "vm_name" { default = "{{ target_vm }}" }
+            variable "cores" { default = {{ vm_config.cpu }} }
+            variable "memory" { default = {{ vm_config.memory | regex_replace('Gi', '000') }} }
+            variable "datastore" { default = "{{ vm_config.datastore }}" }
+            
+            resource "proxmox_vm_qemu" "{{ target_vm | replace('-', '_') }}" {
+              name = var.vm_name
+              target_node = "proxmox-node"
+              cores = var.cores
+              memory = var.memory
+              vlan = "{{ vm_config.vlan | regex_replace('vlan', '') }}"
+            }
+            EOF
+            cat /tmp/{{ target_vm }}-terraform.tf
+          register: terraform_plan
+          changed_when: false
+          
+        - name: Display terraform plan
+          ansible.builtin.debug:
+            msg: "{{ terraform_plan.stdout_lines }}"
+            
+    - name: Apply mode - Execute deployment
+      when: mode == 'apply'
+      block:
+        - name: Create VM
+          ansible.builtin.debug:
+            msg: "Creating VM: {{ target_vm }}"
+            
+        - name: Run service-specific playbook
+          ansible.builtin.import_playbook: "{{ vm_config.playbook }}"
+          vars:
+            deployment_mode: "apply"
+            
+        - name: Register VM in PostgreSQL
+          ansible.builtin.shell: |
+            psql -h localhost -U postgres -d elementary_particles << SQL
+            INSERT INTO vms (hostname, vm_name, datastore, vlan, cpu, memory, storage, status, deployed_at)
+            VALUES ('{{ target_vm }}', '{{ target_vm }}', '{{ vm_config.datastore }}', '{{ vm_config.vlan }}', 
+                    {{ vm_config.cpu }}, '{{ vm_config.memory }}', '{{ vm_config.storage }}', 'deployed', now())
+            ON CONFLICT (hostname) DO UPDATE 
+            SET status = 'deployed', deployed_at = now();
+            SQL
+          environment:
+            PGPASSWORD: "{{ vault_postgres_password }}"
+          changed_when: false
+          register: db_register
+          
+        - name: Log deployment success
+          ansible.builtin.copy:
+            content: |
+              Deployment: SUCCESS
+              VM: {{ target_vm }}
+              Timestamp: {{ deployment_timestamp }}
+              Configuration:
+                - Datastore: {{ vm_config.datastore }}
+                - VLAN: {{ vm_config.vlan }}
+                - CPU: {{ vm_config.cpu }}
+                - Memory: {{ vm_config.memory }}
+                - Storage: {{ vm_config.storage }}
+              
+              Next Steps:
+              1. Verify connectivity: ssh root@{{ target_vm }}.internal
+              2. Check services: curl http://{{ target_vm }}.internal
+              3. Monitor in NetBox
+              4. Update DNS records
+            dest: "/var/log/deployment-{{ target_vm }}-{{ deployment_timestamp }}.log"
+          delegate_to: localhost

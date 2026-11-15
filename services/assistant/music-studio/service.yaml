@@ -1,0 +1,213 @@
+---
+# Elementary Particles: music-studio
+# Music composition, session management & cataloging assistant
+#
+# Architecture overview:
+#   Catalog API (music_catalog_api.py)
+#     — Session/song/track/clip management (Ableton-inspired data model)
+#     — Plugin & instrument catalog
+#     — Field recording inbox (iPhone, Zoom H6, etc.)
+#     — Cover/arrangement reference catalog
+#
+#   Audio Intelligence (wraps audio-analysis service + Basic Pitch)
+#     — BPM / key / mood detection (via existing audio-analysis service)
+#     — Audio → MIDI transcription (Spotify Basic Pitch)
+#     — Source separation (Demucs / Spleeter — isolate stems for covers)
+#
+#   Library Manager (Beets)
+#     — Import, tag, fingerprint finished tracks
+#     — MusicBrainz / Discogs metadata lookup
+#     — Acoustic fingerprinting via chromaprint
+#
+#   Voice Assistant (music_assistant.py)
+#     — "What did I record last week?"
+#     — "Show me all guitar tracks in E minor"
+#     — "Which covers are still in progress?"
+#     — "Convert this file to MIDI"
+#     — "What plugins did I use on the last finished song?"
+#
+# FOSS foundation:
+#   Beets         https://github.com/beetbox/beets           (MIT, 15k ★)
+#   Basic Pitch   https://github.com/spotify/basic-pitch     (Apache-2, 5k ★)
+#   Demucs        https://github.com/facebookresearch/demucs (MIT, 9k ★)
+#   Essentia      https://github.com/MTG/essentia            (AGPLv3, 2.8k ★)
+#   Librosa       built-in to audio-analysis service
+
+name: music-studio
+version: "1.0.0"
+tier: "assistant"
+description: >
+  Ableton-inspired music session catalog, composition assistant, and audio
+  intelligence pipeline. Manages sessions, tracks, clips, plugins, instruments
+  and field recordings. Provides voice/chat queries, audio-to-MIDI transcription
+  via Basic Pitch, stem separation via Demucs, and library management via Beets.
+owner: "infra"
+runbook: "https://docs.internal/music-studio"
+
+tags:
+  expose: "true"
+  ingress: "https"
+  auth: "oidc"
+  auth_provider: "authelia"
+  network: "vlan30"
+  dns: "true"
+  tier: "assistant"
+  category: "Music"
+  icon: "music"
+  color: "#8E44AD"
+  sla: "low"
+  backup: "daily"             # session metadata + catalog
+  owner: "infra"
+  environment: "production"
+  data_classification: "personal"
+
+deployment:
+  platform: "docker"
+  deployment_target: "studio-01"  # gpu-01 2026-08-20 → 2026-11-01; heavy audio work calls stem-api/Whisper on gpu-02
+  namespace: "music-studio"
+  compose_file: "IaC/services/assistant/music-studio/docker-compose.yml"
+  compose_dir: "/opt/docker/music-studio"
+  replicas: 1
+  resources:
+    cpu: "4"                      # Demucs / Basic Pitch are CPU-intensive
+    memory: "6Gi"
+    storage: "500Gi"              # audio library, stems, MIDI output
+
+sources:
+  - path: "integration/music_catalog_api.py"
+    role: "FastAPI REST catalog — sessions, songs, tracks, clips, plugins, references"
+  - path: "integration/music_assistant.py"
+    role: "Voice/chat assistant — natural language queries over the music catalog"
+  - path: "integration/music_schema.sql"
+    role: "PostgreSQL schema for music.* tables"
+  - path: "integration/music_beets_config.yaml"
+    role: "Beets library manager configuration"
+
+interfaces:
+  - name: "catalog-api"
+    protocol: "http"
+    port: 8200
+    internal_port: 8200
+    path: "/api/v1/"
+    healthcheck: "http://localhost:8200/health"
+  - name: "beets-web"
+    protocol: "http"
+    port: 8337
+    internal_port: 8337
+    description: "Beets built-in web UI for library browsing"
+  - name: "assistant"
+    protocol: "http"
+    port: 8201
+    internal_port: 8201
+    path: "/music/"
+    description: "Voice assistant endpoint (called by alexa-features or HA)"
+
+dependencies:
+  - name: "postgres"
+    role: "primary-datastore"
+    required: true
+    interface: "tcp/5432"
+    target_vm: "pg-01"
+    database: "music_studio"
+    tags:
+      tier: "storage"
+
+  - name: "audio-analysis"
+    role: "spectral-analysis-provider"
+    required: false              # falls back to direct librosa if unavailable
+    interface: "http/8100"
+    description: "Delegates BPM / key / mood / spectral analysis"
+    tags:
+      tier: "assistant"
+
+  - name: "traefik"
+    role: "reverse-proxy"
+    required: false
+    interface: "https/443"
+    tags:
+      tier: "network"
+
+provides:
+  - name: "music-catalog-api"
+    description: "Session/song/track REST API"
+    interface: "http/8200"
+    consumers: ["voice-assistant", "home-assistant", "n8n"]
+  - name: "music-assistant-endpoint"
+    description: "Voice query endpoint for music catalog"
+    interface: "http/8201"
+    consumers: ["alexa-features", "home-assistant"]
+
+vault_secrets:
+  - path: music-studio/db
+    key: password
+    env_var: MUSIC_DB_PASSWORD
+    description: "PostgreSQL password for music_studio database user"
+    required: true
+
+  - path: music-studio/api
+    key: secret_key
+    env_var: MUSIC_API_SECRET_KEY
+    description: "Secret key for catalog API JWT tokens"
+    required: true
+
+  - path: music-studio/musicbrainz
+    key: user_agent
+    env_var: MUSICBRAINZ_USER_AGENT
+    description: "User-Agent string for MusicBrainz API (format: AppName/Version email)"
+    required: false
+
+secrets: []
+
+# Non-secret configuration
+config:
+  MUSIC_DB_HOST: "pg-01.internal"
+  MUSIC_DB_PORT: "5432"
+  MUSIC_DB_NAME: "music_studio"
+  MUSIC_DB_USER: "music_studio"
+  AUDIO_ANALYSIS_URL: "http://audio-analysis:8100"
+  BEETS_LIBRARY_DIR: "/music/library"
+  SESSION_FILES_DIR: "/music/sessions"
+  FIELD_RECORDINGS_DIR: "/music/field"
+  MIDI_OUTPUT_DIR: "/music/midi"
+  STEMS_OUTPUT_DIR: "/music/stems"
+  DEMUCS_MODEL: "htdemucs"          # 4-stem: drums, bass, vocals, other
+  BASIC_PITCH_ONSET_THRESHOLD: "0.5"
+  BASIC_PITCH_FRAME_THRESHOLD: "0.3"
+  BASIC_PITCH_MIN_NOTE_LEN: "127.5"
+  LOG_LEVEL: "INFO"
+
+monitoring:
+  health_check: "http://localhost:8200/health"
+  health_check_interval: "60s"
+
+backup:
+  enabled: true
+  schedule: "daily"
+  retention: "30d"
+  targets:
+    - type: "postgres"
+      database: "music_studio"
+    - type: "volume"
+      path: "/music/sessions"
+    - type: "volume"
+      path: "/music/midi"
+
+networking:
+  vlan: "vlan30"
+  dns_enabled: true
+  dns_names:
+    - "music.internal"
+    - "studio.internal"
+  traefik_labels:
+    router: "music-studio"
+    rule: "Host(`music.internal`)"
+    tls: "true"
+
+metadata:
+  data_classification: "personal"
+  upstream_tools:
+    - { name: "beets",       url: "https://github.com/beetbox/beets",           license: "MIT",      purpose: "Library management, tagging, MusicBrainz" }
+    - { name: "basic-pitch", url: "https://github.com/spotify/basic-pitch",      license: "Apache-2", purpose: "Audio to MIDI transcription" }
+    - { name: "demucs",      url: "https://github.com/facebookresearch/demucs",  license: "MIT",      purpose: "Stem separation (drums/bass/vocals/other)" }
+    - { name: "essentia",    url: "https://github.com/MTG/essentia",             license: "AGPLv3",   purpose: "Audio feature extraction" }
+    - { name: "librosa",     url: "https://github.com/librosa/librosa",          license: "ISC",      purpose: "Audio analysis" }

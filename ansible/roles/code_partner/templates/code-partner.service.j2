@@ -1,0 +1,38 @@
+# {{ ansible_managed }}
+# DOMO code partner (IaC/docs/CODE_PARTNER.md). The unit itself is a guardrail:
+# no privileges, read-only system, its own code read-only, and it can exchange
+# packets only with {{ code_partner_allowed_ips | join(', ') }} (+ localhost).
+[Unit]
+Description=DOMO code partner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ code_partner_user }}
+Group={{ code_partner_user }}
+WorkingDirectory={{ code_partner_app_dir }}
+EnvironmentFile={{ code_partner_conf_dir }}/env
+ExecStart={{ code_partner_app_dir }}/venv/bin/uvicorn code_partner:app --host 0.0.0.0 --port {{ code_partner_port }} --no-access-log
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths={{ code_partner_home }} {{ code_partner_state_dir }} {{ code_partner_log_dir }}
+ReadOnlyPaths={{ code_partner_conf_dir }}
+IPAddressDeny=any
+IPAddressAllow=localhost {{ code_partner_allowed_ips | join(' ') }}
+MemoryMax={{ code_partner_memory_max }}
+
+[Install]
+WantedBy=multi-user.target

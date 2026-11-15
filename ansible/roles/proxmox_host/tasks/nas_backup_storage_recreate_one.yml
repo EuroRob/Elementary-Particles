@@ -1,0 +1,38 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/nas_backup_storage_recreate_one.yml
+#
+# Delete+recreate for a single storage entry (item). Split out from
+# nas_backup_storage.yml because `loop` cannot be applied to a `block:` —
+# this file gets included (with loop) instead.
+# =============================================================================
+
+- name: "PVE-API: Delete stale/incorrect definition (no-op if absent)"
+  ansible.builtin.uri:
+    url: "{{ pve_api_url }}/storage/{{ item.id }}"
+    headers: "{{ pve_api_headers }}"
+    validate_certs: false
+    method: DELETE
+    status_code: [200]
+  delegate_to: localhost
+  become: false
+  when: item.id in pve_storage_existing_map
+
+- name: "PVE-API: Create with correct NFSv4 pseudo-root export path"
+  ansible.builtin.uri:
+    url: "{{ pve_api_url }}/storage"
+    headers: "{{ pve_api_headers }}"
+    validate_certs: false
+    method: POST
+    body_format: form-urlencoded
+    body:
+      storage: "{{ item.id }}"
+      type: nfs
+      server: "{{ pve_nas_server }}"
+      export: "{{ item.export }}"
+      content: "{{ item.content }}"
+      nodes: "{{ pve_api_node }}"
+      options: "vers=4.2"
+    status_code: [200]
+  delegate_to: localhost
+  become: false

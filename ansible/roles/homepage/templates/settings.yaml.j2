@@ -1,0 +1,64 @@
+# Homepage settings — managed by Ansible homepage role
+# Ref: https://gethomepage.dev/latest/configs/settings/
+
+title: "{{ homepage_title }}"
+description: "{{ homepage_description }}"
+{% if homepage_logo %}
+logo: "{{ homepage_logo }}"
+{% endif %}
+
+background:
+  blur: {{ homepage_background_blur }}
+  saturate: {{ homepage_background_saturate }}
+
+theme: {{ homepage_theme }}
+color: {{ homepage_color }}
+
+headerStyle: boxed
+cardBlur: sm
+
+# Open links in new tab
+target: _blank
+
+# Show status dots on service cards
+showStats: true
+
+# Kubernetes / Docker integration (Docker socket mounted)
+providers:
+  docker:
+    sock: /var/run/docker.sock
+
+# Layout — column order for service groups
+layout:
+  Infrastructure:
+    icon: mdi-server
+    style: row
+    columns: 4
+  Network:
+    icon: mdi-network
+    style: row
+    columns: 3
+  Platform:
+    icon: mdi-layers
+    style: row
+    columns: 4
+  Automation:
+    icon: mdi-cog-transfer
+    style: row
+    columns: 2
+  VCS & Dev:
+    icon: mdi-git
+    style: row
+    columns: 2
+  Applications:
+    icon: mdi-apps
+    style: row
+    columns: 4
+  AI & GPU:
+    icon: mdi-brain
+    style: row
+    columns: 3
+  Media:
+    icon: mdi-play-circle
+    style: row
+    columns: 2

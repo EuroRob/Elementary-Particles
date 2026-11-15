@@ -1,0 +1,49 @@
+---
+- name: Install prerequisite packages
+  ansible.builtin.apt:
+    name:
+      - gnupg
+      - curl
+      - ca-certificates
+      - python3-psycopg2   # required by community.postgresql modules
+      - acl                # required for Ansible become_user on Debian
+      - locales            # required to generate en_US.UTF-8 for PostgreSQL databases
+      - cron               # required for pg_dumpall backup cron job
+    state: present
+    update_cache: true
+
+- name: Generate en_US.UTF-8 locale
+  community.general.locale_gen:
+    name: en_US.UTF-8
+    state: present
+
+- name: Add PostgreSQL apt signing key
+  ansible.builtin.apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+
+- name: Add PostgreSQL apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: pgdg
+
+- name: Install PostgreSQL {{ postgres_version }}
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ postgres_version }}"
+      - "postgresql-client-{{ postgres_version }}"
+    state: present
+    update_cache: true
+
+- name: Install PostgreSQL extension packages
+  ansible.builtin.apt:
+    name: "{{ postgres_extra_packages }}"
+    state: present
+  when: postgres_extra_packages | length > 0
+
+- name: Ensure PostgreSQL service is enabled and started
+  ansible.builtin.service:
+    name: postgresql
+    state: started
+    enabled: true

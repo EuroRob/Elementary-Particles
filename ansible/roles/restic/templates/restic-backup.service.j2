@@ -1,0 +1,14 @@
+[Unit]
+Description=Restic backup — {{ item.name }} on {{ inventory_hostname }}
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+ExecStart={{ restic_scripts_dir }}/backup-{{ item.name }}.sh
+StandardOutput=journal
+StandardError=journal
+# Keep journal logs for 30 days
+LogRateLimitIntervalSec=0
+# Report failure to alert handler
+OnFailure=restic-alert@{{ item.name }}.service

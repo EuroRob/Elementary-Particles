@@ -1,0 +1,27 @@
+# Managed by Ansible (Roles/backrest). Browse/restore UI for restic repos.
+[Unit]
+Description=Backrest (restic web UI)
+After=network-online.target rest-server.service
+Wants=network-online.target
+
+[Service]
+User={{ backrest_user }}
+Group={{ backrest_user }}
+ExecStart={{ backrest_bin }}
+Environment=BACKREST_PORT={{ backrest_listen }}
+Environment=BACKREST_CONFIG={{ backrest_config_dir }}/config.json
+Environment=BACKREST_DATA={{ backrest_data_dir }}
+Environment=BACKREST_RESTIC_COMMAND={{ backrest_restic_bin }}
+Environment=XDG_CACHE_HOME={{ backrest_cache_dir }}
+Restart=on-failure
+RestartSec=10
+Nice=10
+MemoryMax={{ backrest_memory_max }}
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ backrest_config_dir }} {{ backrest_data_dir }} {{ backrest_cache_dir }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+---
+# =============================================================================
+# Role: proxmox_host — handlers/main.yml
+# =============================================================================
+
+- name: update_grub
+  ansible.builtin.command: update-grub
+  listen: update_grub
+
+- name: update_initramfs
+  ansible.builtin.command: update-initramfs -u -k all
+  listen: update_initramfs
+
+- name: reload_proxmox_networking
+  ansible.builtin.command: ifreload -a
+  listen: reload_proxmox_networking
+  ignore_errors: true   # ifreload -a may return non-zero on first run if vmbr doesn't exist yet
+
+- name: reload_systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  listen: reload_systemd

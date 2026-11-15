@@ -1,0 +1,29 @@
+---
+# =============================================================================
+# Playbook: deploy_forgejo_runner.yml
+# A Forgejo Actions runner for this repository's checks, on code-01 (the repo
+# lane VM, docs/AGENT_ACCESS_LANES.md). Workflow: .forgejo/workflows/ci.yml,
+# checks: scripts/ci/check.sh.
+#
+# Run (source /opt/vault/.env with `set -a` first):
+#   ansible-playbook -i inventory/services.yml playbooks/deploy_forgejo_runner.yml
+#
+# First run mints a one-time registration token through the Forgejo API (admin
+# credential read from Vault, never written anywhere); later runs only update the
+# binary, toolchain, config and unit.
+# =============================================================================
+
+- name: "Deploy Forgejo Actions runner"
+  hosts: code-01
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Only hosts that opted in
+      ansible.builtin.fail:
+        msg: "Set forgejo_runner_enabled: true on {{ inventory_hostname }} in the inventory first."
+      when: not (forgejo_runner_enabled | default(false) | bool)
+
+  roles:
+    - role: forgejo_runner
+      tags: ["forgejo_runner"]

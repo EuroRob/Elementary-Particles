@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# forget.sh — apply retention policy and prune unreferenced data
+set -euo pipefail
+LOGFILE="{{ restic_log_dir }}/forget.log"
+log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [forget] $*" | tee -a "${LOGFILE}"; }
+set -a; source {{ restic_config_dir }}/primary.env; set +a
+
+log "=== Forget/prune started ==="
+restic forget \
+  --keep-daily   {{ restic_keep_daily }} \
+  --keep-weekly  {{ restic_keep_weekly }} \
+  --keep-monthly {{ restic_keep_monthly }} \
+  --keep-yearly  {{ restic_keep_yearly }} \
+  {{ '--prune' if restic_prune else '' }} \
+  --verbose=1 \
+  2>&1 | tee -a "${LOGFILE}"
+log "=== Forget/prune done ==="

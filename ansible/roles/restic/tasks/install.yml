@@ -1,0 +1,108 @@
+---
+# =============================================================================
+# restic — install.yml
+# Download, verify, and install the restic binary from GitHub releases.
+# =============================================================================
+
+- name: "[restic] Create directory structure"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ restic_config_dir }}"
+    - "{{ restic_scripts_dir }}"
+    - "{{ restic_log_dir }}"
+    - "{{ restic_cache_dir }}"
+
+- name: "[restic] Check installed version"
+  ansible.builtin.command: "{{ restic_install_dir }}/restic version"
+  register: restic_installed
+  changed_when: false
+  failed_when: false
+
+- name: "[restic] Set installed version fact"
+  ansible.builtin.set_fact:
+    restic_current_version: >-
+      {{ restic_installed.stdout | regex_search('restic (\S+)', '\1') | first | default('none') }}
+  when: restic_installed.rc == 0
+
+- name: "[restic] Download and install restic {{ restic_version }}"
+  when: >
+    restic_installed.rc != 0 or
+    (restic_current_version is defined and restic_current_version != restic_version)
+  block:
+    - name: "[restic] Download restic bz2"
+      ansible.builtin.get_url:
+        url: "{{ restic_download_url }}"
+        dest: "/tmp/restic_{{ restic_version }}.bz2"
+        mode: "0644"
+        timeout: 60
+
+    - name: "[restic] Decompress restic"
+      ansible.builtin.shell: >
+        bunzip2 -f /tmp/restic_{{ restic_version }}.bz2 &&
+        mv /tmp/restic_{{ restic_version }} {{ restic_install_dir }}/restic
+      args:
+        creates: "{{ restic_install_dir }}/restic"
+
+    - name: "[restic] Set executable bit"
+      ansible.builtin.file:
+        path: "{{ restic_install_dir }}/restic"
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: "[restic] Verify installation"
+      ansible.builtin.command: "{{ restic_install_dir }}/restic version"
+      changed_when: false
+      register: restic_ver_check
+
+    - name: "[restic] Installed version"
+      ansible.builtin.debug:
+        msg: "{{ restic_ver_check.stdout }}"
+
+# ---- Pull credentials from Vault and write env files -----------------------
+- name: "[restic] Fetch primary backend credentials from Vault"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ vault_restic_primary_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: vault_restic_primary
+  no_log: true
+
+- name: "[restic] Fetch offsite backend credentials from Vault"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ vault_restic_offsite_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: vault_restic_offsite
+  no_log: true
+  when: restic_offsite_enabled | bool
+
+- name: "[restic] Write primary env file"
+  ansible.builtin.template:
+    src: restic-primary.env.j2
+    dest: "{{ restic_config_dir }}/primary.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: "[restic] Write offsite env file"
+  ansible.builtin.template:
+    src: restic-offsite.env.j2
+    dest: "{{ restic_config_dir }}/offsite.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when: restic_offsite_enabled | bool

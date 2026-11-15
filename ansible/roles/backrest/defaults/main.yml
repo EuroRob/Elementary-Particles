@@ -1,0 +1,48 @@
+---
+# =============================================================================
+# backrest — web UI for restic (garethgeorge/backrest), BROWSE/RESTORE ONLY.
+#
+# Deployed on nas-02 (docs/BACKREST_DEPLOYMENT.md). Every repo is reached
+# through rest-server (--append-only) over the private VLAN 399 address, never
+# via the local repo path — so nothing done in the UI can delete or prune
+# snapshots, even though Backrest has buttons for it. Backups themselves are
+# NOT scheduled in Backrest: they stay as Ansible-managed systemd units (the
+# cold-drive routine), so there is one scheduler, not two.
+# =============================================================================
+
+backrest_version: "1.14.1"
+backrest_release_base: "https://github.com/garethgeorge/backrest/releases/download/v{{ backrest_version }}"
+backrest_tarball: "backrest_Linux_x86_64.tar.gz"
+
+backrest_user: backrest
+backrest_bin: /usr/local/bin/backrest
+backrest_config_dir: /etc/backrest
+backrest_data_dir: /var/lib/backrest
+backrest_cache_dir: /var/cache/backrest          # restic cache (index/tree packs) — can reach a few GB
+backrest_restic_bin: /usr/local/bin/restic       # Backrest 1.14.1 requires restic 0.19.1 exactly-or-newer
+backrest_restic_min_version: "0.19.1"
+
+# Listen on the storage-VLAN address so Traefik on web-01 can reach it
+# (firewall: web-01 → nas-02:9898 only). Never 0.0.0.0.
+backrest_listen: "127.0.0.1:9898"
+backrest_instance_id: "{{ inventory_hostname }}"
+backrest_memory_max: 1G
+
+# Admin login for Backrest's own auth (second layer behind Authelia 2FA).
+backrest_admin_user: admin
+backrest_vault_admin_path: "backrest/{{ inventory_hostname }}"   # key: admin_password
+
+# Config is SEEDED ONCE: Backrest rewrites config.json itself (modno) when the UI
+# changes anything. Re-render only with -e backrest_config_force=true.
+backrest_config_force: false
+
+# Config schema version for Backrest 1.14.1 = 6 migrations. Seeded at 5 so that
+# only migration006 (generates the instance's ed25519 identity) runs on first
+# start. A non-empty config with version 0 is rejected ("config version 0 is invalid").
+backrest_config_seed_version: 5
+
+# Repos to show. Each needs a Vault path with repo_password, rest_user, rest_password.
+#   - id: timemachine
+#     uri: "rest:http://172.31.98.2:8000/timemachine/"
+#     vault_path: restic/timemachine
+backrest_repos: []

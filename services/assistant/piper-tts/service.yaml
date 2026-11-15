@@ -1,0 +1,86 @@
+---
+name: piper-tts
+version: "1.0.0"
+tier: "assistant"
+description: "On-premise Piper TTS + Whisper STT — fully local speech-to-text and text-to-speech pipeline for Home Assistant voice pipelines. Replaces Google Cloud TTS. 50-300ms latency, no internet required, voice profile support."
+owner: "infra"
+
+tags:
+  expose: "false"
+  network: "vlan30"
+  dns: "true"
+  tier: "assistant"
+  category: "Voice Assistant"
+  icon: "text-to-speech"
+  color: "#27AE60"
+  sla: "high"               # core dependency for all voice responses
+  backup: "none"
+  owner: "infra"
+  environment: "production"
+  data_classification: "none"
+
+deployment:
+  platform: "ha-supervisor-addon"    # confirmed 2026-07-23 — NOT a standalone Docker deployment
+  deployment_target: "home-assistant-host"   # 10.0.30.14, the HA host itself — not web-01
+  addons:
+    - slug: "core_piper"
+      version: "1.6.3"     # 1.6.4 available as of 2026-07-23
+      state: "started"
+    - slug: "core_whisper"
+      version: "2.6.0"
+      state: "started"
+      note: "default model is tiny-int8 (smallest/fastest) — consider base/small for better accuracy if stt-no-text-recognized misses become frequent"
+
+# NOTE: the sources/voice-profile-routing files below describe an aspirational
+# custom integration layer that does not exist in this repo or on the actual
+# host (confirmed 2026-07-23 — no such files, no separate Docker container on
+# web-01). The real setup is just the two stock HA add-ons above, exposing
+# tts.piper and stt.faster_whisper entities directly to HA Core. Kept here as
+# a design reference in case that layer gets built later, not as current state.
+sources:
+  - path: "integration/piper_tts_handler.py"
+    role: "(planned, not built) Python client — send text, receive WAV audio (port 8300)"
+  - path: "integration/piper_tts_integration.py"
+    role: "(planned, not built) High-level HA integration wrapper"
+  - path: "integration/whisper_stt_handler.py"
+    role: "(planned, not built) Whisper STT handler — audio input → text transcript"
+  - path: "integration/speaker_aware_tts.py"
+    role: "(planned, not built) Voice profile routing — pick voice by identified speaker"
+  - path: "integration/voice_profile_manager.py"
+    role: "(planned, not built) CRUD for named voice profiles (person → Piper voice model)"
+  - path: "integration/voice_profile_detector.py"
+    role: "(planned, not built) Speaker identity detection to select correct TTS voice"
+
+interfaces:
+  - name: "tts"
+    protocol: "http"
+    port: 8300
+    internal_port: 8300
+  - name: "stt"
+    protocol: "http"
+    port: 8301
+    internal_port: 8301     # Wyoming Whisper (optional co-deployment)
+
+dependencies:
+  - name: "home-assistant"
+    role: "pipeline-orchestrator"
+    required: true
+    interface: "http/8123"
+    tags:
+      tier: "assistant"
+
+provides:
+  - interface: "http:8300"
+    for_services: ["home-assistant", "dual-llm-router", "follow-up-actions", "doorbell", "face-recognition"]
+    contract: "POST /synthesize {text, voice} → WAV audio stream"
+    documentation: "integration/PIPER_INTEGRATION_GUIDE.md"
+
+secrets:
+  - name: "PIPER_VOICE_MODEL"
+    vault_path: "secrets/piper/default_voice"
+
+monitoring:
+  health_check: "http://localhost:8300/health"
+  health_check_interval: "30s"
+  health_check_timeout: "5s"
+  unhealthy_threshold: 3

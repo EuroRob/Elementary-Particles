@@ -1,0 +1,383 @@
+{
+  "active": true,
+  "connections": {
+    "Dedup by Similarity": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Store Short-Term Memory",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Index to Elasticsearch (es-01)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Embed Articles (gpu-02 Ollama)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Dedup by Similarity",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Enrich (gpu-01 Ollama)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Parse & Validate Enrichment",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Extract Articles": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Enrich (gpu-01 Ollama)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Group By Category": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Post Category Briefing to Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Query OSemSearch (Solr)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Parse & Validate Enrichment": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Embed Articles (gpu-02 Ollama)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Query OSemSearch (Solr)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Extract Articles",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Store Short-Term Memory": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Group By Category",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Query OSemSearch (Solr)",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "fOAvZ0NMS0oQbeYz",
+  "name": "News Intelligence - Ingest & Enrich",
+  "nodes": [
+    {
+      "id": "dedup-by-similarity-001",
+      "name": "Dedup by Similarity",
+      "parameters": {
+        "jsCode": "const THRESHOLD = 0.83; // cosine similarity ≥ this = treat as duplicate (tuned 2026-08-24: real reworded-story pair measured 0.85, unrelated stories measured ~0.35-0.38)\n\nfunction cosineSim(a, b) {\n  let dot = 0, na = 0, nb = 0;\n  for (let i = 0; i < a.length; i++) {\n    dot += a[i] * b[i];\n    na += a[i] * a[i];\n    nb += b[i] * b[i];\n  }\n  return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-9);\n}\n\nconst embedded = $input.all();\nconst kept = [];\nconst keptVectors = [];\nlet droppedCount = 0;\nconst droppedTitles = [];\n\nfor (let i = 0; i < embedded.length; i++) {\n  const vec = embedded[i].json.embedding;\n  const original = $(\"Parse & Validate Enrichment\").itemMatching(i).json;\n\n  if (!Array.isArray(vec) || vec.length === 0) {\n    // no embedding (e.g. Ollama call failed for this item) -- keep it rather than silently drop\n    keptVectors.push(null);\n    kept.push({ json: original });\n    continue;\n  }\n\n  let isDup = false;\n  for (const kv of keptVectors) {\n    if (kv && cosineSim(vec, kv) >= THRESHOLD) { isDup = true; break; }\n  }\n\n  if (isDup) {\n    droppedCount++;\n    droppedTitles.push(original.title);\n    continue;\n  }\n\n  keptVectors.push(vec);\n  kept.push({ json: original });\n}\n\nif (droppedCount > 0) {\n  console.log(`Dedup: dropped ${droppedCount} near-duplicate article(s): ${droppedTitles.join(\" | \")}`);\n}\n\nreturn kept;\n"
+      },
+      "position": [
+        1456,
+        400
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "embed-articles-nomic-001",
+      "name": "Embed Articles (gpu-02 Ollama)",
+      "parameters": {
+        "jsonBody": "={{ { \"model\": \"nomic-embed-text\", \"prompt\": ($json.title + \". \" + $json.summary) } }}",
+        "method": "POST",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 15000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/api/embeddings"
+      },
+      "position": [
+        1168,
+        624
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "5",
+      "name": "Enrich (gpu-01 Ollama)",
+      "parameters": {
+        "jsonBody": "={{ { \"model\": \"gpu01-primary\", \"prompt\": ('Analyze this news article and respond with ONLY valid JSON, no other text, no markdown fences:\\n' + '{\"summary\": \"1-2 sentence concise summary\", \"category\": \"one of: technology, market, health, science, business, trending, general\", ' + '\"sentiment\": \"positive, negative, neutral, or mixed\", \"importance_score\": a number between 0 and 1}\\n\\n' + 'Title: ' + $json.title + '\\nContent: ' + $json.content), \"stream\": false } }}",
+        "method": "POST",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://10.0.30.50:11434/api/generate"
+      },
+      "position": [
+        928,
+        400
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "3",
+      "name": "Extract Articles",
+      "parameters": {
+        "jsCode": "// Round-robin across sites: Solr returns the newest ~200 articles, but the crawler\n// ingests feed-by-feed, so \"newest 25\" was often 25 items from whichever single\n// site was crawled last. Take each site's newest first, then second-newest, etc.\nconst MAX_ITEMS = 25;\nconst docs = $input.first().json.response.docs;\nconst hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\\./, ''); } catch (e) { return 'unknown'; } };\nconst groups = new Map();\nfor (const doc of docs) {\n  const h = hostOf(doc.id);\n  if (!groups.has(h)) groups.set(h, []);\n  groups.get(h).push(doc);\n}\nconst picked = [];\nfor (let i = 0; picked.length < MAX_ITEMS; i++) {\n  let any = false;\n  for (const list of groups.values()) {\n    if (i < list.length && picked.length < MAX_ITEMS) { picked.push(list[i]); any = true; }\n  }\n  if (!any) break;\n}\nconst items = [];\nfor (const doc of picked) {\n  const title = Array.isArray(doc.title_txt) ? doc.title_txt[0] : (doc.title_txt || doc.id);\n  const content = (doc.content_txt && doc.content_txt[0]) ? doc.content_txt[0].replace(/\\s+/g, ' ').trim().slice(0, 6000) : '';\n  let source = (doc.og_site_name_ss && doc.og_site_name_ss[0]) || (doc.dc_publisher_ss && doc.dc_publisher_ss[0]) || hostOf(doc.id);\n  items.push({ json: { url: doc.id, title: title, content: content, source: source, published_at: doc.file_modified_dt } });\n}\nreturn items;"
+      },
+      "position": [
+        688,
+        400
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "8",
+      "name": "Group By Category",
+      "parameters": {
+        "jsCode": "\nconst VALID_CATEGORIES = ['technology','market','health','science','business','trending','general'];\nconst items = $('Parse & Validate Enrichment').all();\nconst byCategory = {};\nfor (const it of items) {\n  const cat = it.json.category;\n  if (!byCategory[cat]) byCategory[cat] = [];\n  byCategory[cat].push(it.json);\n}\nconst out = [];\nfor (const cat of VALID_CATEGORIES) {\n  const arts = byCategory[cat];\n  if (!arts || arts.length === 0) continue;\n  const lines = arts\n    .sort((a,b) => b.importance_score - a.importance_score)\n    .slice(0, 8)\n    .map(a => `• ${a.title} (${a.source})\\n  ${a.summary}\\n  ${a.url}`);\n  const body = `📰 ${cat.toUpperCase()} — ${arts.length} article${arts.length>1?'s':''}\\n\\n` + lines.join('\\n\\n');\n  out.push({ json: { category: cat, count: arts.length, body: body } });\n}\nreturn out;\n"
+      },
+      "position": [
+        1856,
+        336
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hHmzeWPp3qhZwOf6",
+          "name": "Elasticsearch es-01 (header auth)"
+        }
+      },
+      "id": "es-index",
+      "name": "Index to Elasticsearch (es-01)",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ { \"url\": $json.url, \"title\": $json.title, \"summary\": $json.summary, \"category\": $json.category, \"sentiment\": $json.sentiment, \"importance_score\": $json.importance_score, \"source\": $json.source, \"published_at\": $json.published_at, \"ingested_at\": $now.toISO() } }}",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "http://10.0.30.52:9200/news_articles/_doc"
+      },
+      "position": [
+        1616,
+        496
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "1",
+      "name": "Manual Trigger",
+      "parameters": {},
+      "position": [
+        208,
+        400
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "id": "6",
+      "name": "Parse & Validate Enrichment",
+      "parameters": {
+        "jsCode": "\nconst VALID_CATEGORIES = ['technology','market','health','science','business','trending','general'];\nconst enrichItems = $input.all();\nconst sourceItems = $('Extract Articles').all();\nconst out = [];\nfor (let i = 0; i < enrichItems.length; i++) {\n  const raw = enrichItems[i].json.response || '';\n  const src = sourceItems[i].json;\n  let parsed = {};\n  try {\n    const match = raw.match(/\\{[\\s\\S]*\\}/);\n    parsed = JSON.parse(match ? match[0] : raw);\n  } catch (e) { parsed = {}; }\n  const category = VALID_CATEGORIES.includes(String(parsed.category || '').toLowerCase())\n    ? String(parsed.category).toLowerCase() : 'general';\n  const importance = Number(parsed.importance_score);\n  out.push({ json: {\n    url: src.url, title: src.title, source: src.source, published_at: src.published_at,\n    summary: parsed.summary || src.title, category: category,\n    sentiment: ['positive','negative','neutral','mixed'].includes(String(parsed.sentiment||'').toLowerCase())\n      ? String(parsed.sentiment).toLowerCase() : 'neutral',\n    importance_score: isNaN(importance) ? 0.5 : Math.max(0, Math.min(1, importance))\n  }});\n}\nreturn out;\n"
+      },
+      "position": [
+        1168,
+        400
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ikF6zjgA4yiQhGmj",
+          "name": "News Bot Matrix Token"
+        }
+      },
+      "id": "9",
+      "name": "Post Category Briefing to Matrix",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ { \"msgtype\": \"m.text\", \"body\": $json.body } }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/%21PeQimUgIMsVJniLtzD%3Ahome.example.org/send/m.room.message/{{ $now.toMillis() }}-{{ $json.category }}"
+      },
+      "position": [
+        2096,
+        336
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "2",
+      "name": "Query OSemSearch (Solr)",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ {\"q\": \"content_type_ss:text\\\\/html* AND language_s:en\", \"fq\": \"file_modified_dt:[NOW-8HOURS TO NOW]\", \"sort\": \"file_modified_dt desc\", \"rows\": 200, \"fl\": \"id,title_txt,content_txt,file_modified_dt,og_site_name_ss,dc_publisher_ss\"} }}",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "https://iac.internal:8000/api/osemsearch/query"
+      },
+      "position": [
+        448,
+        400
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "id": "7",
+      "name": "Store Short-Term Memory",
+      "parameters": {
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "category": "={{ $json.category }}",
+            "importance_score": "={{ $json.importance_score }}",
+            "ingested_at": "={{ $now.toISO() }}",
+            "published_at": "={{ $json.published_at }}",
+            "sentiment": "={{ $json.sentiment }}",
+            "source": "={{ $json.source }}",
+            "summary": "={{ $json.summary }}",
+            "title": "={{ $json.title }}",
+            "url": "={{ $json.url }}",
+            "window_id": "={{ $now.toFormat('yyyy-MM-dd_HH') }}"
+          }
+        },
+        "dataTableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "DxJWTxf8omV3oo2i"
+        },
+        "options": {}
+      },
+      "position": [
+        1616,
+        336
+      ],
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1
+    },
+    {
+      "id": "10",
+      "name": "When Executed by Another Workflow",
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "position": [
+        208,
+        208
+      ],
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1
+    }
+  ],
+  "settings": {
+    "binaryMode": "separate",
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

@@ -1,0 +1,204 @@
+---
+# forgejo_runner -- see defaults/main.yml for the design notes.
+
+- name: "[forgejo_runner] Packages"
+  ansible.builtin.apt:
+    name: [git, python3-venv, python3-pip, unzip, curl, ca-certificates, acl]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: "[forgejo_runner] Service user"
+  ansible.builtin.user:
+    name: "{{ forgejo_runner_user }}"
+    system: true
+    shell: /bin/bash
+    home: "{{ forgejo_runner_state_dir }}"
+    create_home: false
+
+- name: "[forgejo_runner] Directories"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ forgejo_runner_bin_dir }}", owner: root, mode: "0755"}
+    - {path: "{{ forgejo_runner_conf_dir }}", owner: root, mode: "0755"}
+    - {path: "{{ forgejo_runner_state_dir }}", owner: "{{ forgejo_runner_user }}", mode: "0750"}
+    - {path: "{{ ci_tools_dir }}", owner: root, mode: "0755"}
+    - {path: "{{ ci_tools_dir }}/bin", owner: root, mode: "0755"}
+
+- name: "[forgejo_runner] Runner binary (pinned, checksum-verified)"
+  ansible.builtin.get_url:
+    url: "{{ forgejo_runner_url }}"
+    dest: "{{ forgejo_runner_bin_dir }}/forgejo-runner"
+    checksum: "sha256:{{ forgejo_runner_sha256 }}"
+    mode: "0755"
+    owner: root
+    group: root
+  notify: restart forgejo-runner
+
+# --- toolchain -----------------------------------------------------------------
+
+- name: "[forgejo_runner] Python venv with the check dependencies"
+  ansible.builtin.pip:
+    name: "{{ ci_python_packages }}"
+    virtualenv: "{{ ci_tools_dir }}/venv"
+    virtualenv_command: "python3 -m venv"
+
+- name: "[forgejo_runner] Ansible collections list"
+  ansible.builtin.copy:
+    src: "{{ ci_ansible_requirements }}"
+    dest: "{{ ci_tools_dir }}/requirements.yml"
+    mode: "0644"
+  register: _ci_reqs
+
+- name: "[forgejo_runner] Installed tool state"
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ ci_tools_dir }}/collections/ansible_collections"
+    - "{{ ci_tools_dir }}/bin/terraform"
+    - "{{ ci_tools_dir }}/bin/gitleaks"
+  register: _tool_stat
+
+- name: "[forgejo_runner] Ansible collections (for --syntax-check of FQCN modules)"
+  ansible.builtin.command:
+    cmd: "{{ ci_tools_dir }}/venv/bin/ansible-galaxy collection install --force -r {{ ci_tools_dir }}/requirements.yml -p {{ ci_tools_dir }}/collections"
+  when: _ci_reqs.changed or not _tool_stat.results[0].stat.exists
+  changed_when: true
+
+- name: "[forgejo_runner] Terraform (pinned, checksum-verified)"
+  ansible.builtin.get_url:
+    url: "{{ ci_terraform_url }}"
+    dest: "{{ ci_tools_dir }}/terraform_{{ ci_terraform_version }}.zip"
+    checksum: "sha256:{{ ci_terraform_sha256 }}"
+    mode: "0644"
+  register: _tf_zip
+
+- name: "[forgejo_runner] Unpack Terraform"
+  ansible.builtin.unarchive:
+    src: "{{ ci_tools_dir }}/terraform_{{ ci_terraform_version }}.zip"
+    dest: "{{ ci_tools_dir }}/bin"
+    remote_src: true
+    include: [terraform]
+    mode: "0755"
+  when: _tf_zip.changed or not _tool_stat.results[1].stat.exists
+
+- name: "[forgejo_runner] gitleaks (pinned, checksum-verified)"
+  ansible.builtin.get_url:
+    url: "{{ ci_gitleaks_url }}"
+    dest: "{{ ci_tools_dir }}/gitleaks_{{ ci_gitleaks_version }}.tar.gz"
+    checksum: "sha256:{{ ci_gitleaks_sha256 }}"
+    mode: "0644"
+  register: _gl_tgz
+
+- name: "[forgejo_runner] Unpack gitleaks"
+  ansible.builtin.unarchive:
+    src: "{{ ci_tools_dir }}/gitleaks_{{ ci_gitleaks_version }}.tar.gz"
+    dest: "{{ ci_tools_dir }}/bin"
+    remote_src: true
+    include: [gitleaks]
+    mode: "0755"
+  when: _gl_tgz.changed or not _tool_stat.results[2].stat.exists
+
+# The venv's bin directory goes on PATH directly (unit + config). Links from
+# bin/ to the venv looked right but a symlinked python3 runs outside the venv.
+- name: "[forgejo_runner] No stale tool links in bin/"
+  ansible.builtin.file:
+    path: "{{ ci_tools_dir }}/bin/{{ item }}"
+    state: absent
+  loop: [python3, pytest, ansible-playbook, ansible-galaxy, ansible]
+
+# --- configuration + registration ------------------------------------------------
+
+- name: "[forgejo_runner] config.yaml"
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ forgejo_runner_conf_dir }}/config.yaml"
+    mode: "0644"
+  notify: restart forgejo-runner
+
+- name: "[forgejo_runner] Already registered?"
+  ansible.builtin.stat:
+    path: "{{ forgejo_runner_state_dir }}/.runner"
+  register: _runner_file
+
+- name: "[forgejo_runner] Pull Vault -- Forgejo admin (only to mint a one-time registration token)"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ vault_forgejo_admin_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: "secret"
+  register: _fj_admin
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when: not _runner_file.stat.exists
+
+- name: "[forgejo_runner] Registration token scoped to {{ forgejo_runner_repo }}"
+  ansible.builtin.uri:
+    url: "{{ forgejo_api_url }}/repos/{{ forgejo_runner_repo }}/actions/runners/registration-token"
+    method: GET
+    url_username: "{{ _fj_admin.secret.username }}"
+    url_password: "{{ _fj_admin.secret.password }}"
+    force_basic_auth: true
+    return_content: true
+  register: _reg_token
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when: not _runner_file.stat.exists
+
+- name: "[forgejo_runner] Register with Forgejo"
+  ansible.builtin.command:
+    cmd: >-
+      {{ forgejo_runner_bin_dir }}/forgejo-runner register --no-interactive
+      --config {{ forgejo_runner_conf_dir }}/config.yaml
+      --instance {{ forgejo_instance_url }}
+      --token {{ _reg_token.json.token }}
+      --name {{ forgejo_runner_name }}
+      --labels {{ forgejo_runner_labels | join(',') }}
+    chdir: "{{ forgejo_runner_state_dir }}"
+    creates: "{{ forgejo_runner_state_dir }}/.runner"
+  become: true
+  become_user: "{{ forgejo_runner_user }}"
+  no_log: true
+  when: not _runner_file.stat.exists
+  notify: restart forgejo-runner
+
+- name: "[forgejo_runner] systemd unit"
+  ansible.builtin.template:
+    src: forgejo-runner.service.j2
+    dest: /etc/systemd/system/forgejo-runner.service
+    mode: "0644"
+  notify: restart forgejo-runner
+
+- name: "[forgejo_runner] Enabled and running"
+  ansible.builtin.systemd:
+    name: forgejo-runner
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: "[forgejo_runner] Flush handlers"
+  ansible.builtin.meta: flush_handlers
+
+- name: "[forgejo_runner] Health: unit active, registration file present"
+  ansible.builtin.command:
+    cmd: systemctl is-active forgejo-runner
+  changed_when: false
+
+- name: "[forgejo_runner] Recent log (errors only)"
+  ansible.builtin.command:
+    cmd: journalctl -u forgejo-runner -n 30 --no-pager -o cat
+  changed_when: false
+  register: _rj
+
+- name: "[forgejo_runner] Show declared/connected lines"
+  ansible.builtin.debug:
+    msg: "{{ _rj.stdout_lines | select('search', '(?i)declare|connect|error|fail|level=warn') | list }}"

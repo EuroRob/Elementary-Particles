@@ -1,0 +1,196 @@
+{
+  "active": true,
+  "connections": {
+    "Format Warning Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send Warning to Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Send Warning to Matrix": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "trigger_patch requested?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Split Affected Hosts": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Trigger rolling_update.yml (skip_netbox)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Zero-Day Warning Webhook": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Warning Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "trigger_patch requested?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Split Affected Hosts",
+            "type": "main"
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "id": "Zk2btbhfIi9dkiyz",
+  "name": "EP: Zero-Day Patch Warning -> System Alerts (Matrix)",
+  "nodes": [
+    {
+      "id": "fe6d93ca-1254-470f-ab3a-f9608fbe2eb1",
+      "name": "Format Warning Message",
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst cve = body.cve || 'no CVE ID given';\nconst severity = (body.severity || 'unknown').toUpperCase();\nconst desc = body.description || '(no description provided)';\nconst hosts = Array.isArray(body.affected_hosts) ? body.affected_hosts : [];\nconst triggerPatch = body.trigger_patch === true;\n\nconst text = `⚠️ ZERO-DAY PATCH WARNING [${severity}]\\n${cve}\\n${desc}\\n\\nAffected: ${hosts.length ? hosts.join(', ') : '(none listed)'}\\n${triggerPatch ? 'Immediate patch runs are being triggered now for the listed hosts (snapshot-backed, auto-rollback on failure).' : 'No automatic patch triggered — review and patch manually via rolling_update.yml.'}`;\nconst txn_id = 'zeroday-' + Date.now();\n\nreturn [{\n  json: {\n    txn_id,\n    matrixPayload: { msgtype: 'm.text', body: text },\n    hosts,\n    triggerPatch\n  }\n}];",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        470,
+        300
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "fdeaaea5-5033-416a-b457-530b52004174",
+      "name": "Send Warning to Matrix",
+      "notes": "Always fires first, regardless of trigger_patch — the warning itself must not be\ngated on anything downstream succeeding.",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        690,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "bff53fbb-3438-4300-b210-3a0cbc6269f7",
+      "name": "Split Affected Hosts",
+      "parameters": {
+        "jsCode": "const hosts = $input.first().json.hosts || [];\nreturn hosts.map(h => ({ json: { patch_host: h } }));",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1130,
+        200
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "77be6e52-940a-4b45-9ab7-66b2962a9510",
+      "name": "Trigger rolling_update.yml (skip_netbox)",
+      "notes": "Runs once per affected host (n8n executes this node once per incoming item from\nSplit Affected Hosts). Uses skip_netbox=true + --limit-equivalent patch_host — goes\nstraight to Ansible inventory, bypassing the NetBox pending-flag/webhook indirection\nentirely for speed, since this is an emergency path. Still goes through\nrolling_update.yml's full snapshot -> apply -> health-check -> rollback-or-cleanup\nsequence — this is NOT a shortcut around safety, only around NetBox's extra hop.\nNOTE: skip_netbox mode does not update NetBox patch_status — that's an accepted\ntradeoff for the emergency path, not an oversight.",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ JSON.stringify({ playbook: 'rolling_update', inventory: 'production', extra_vars: { patch_host: $json.patch_host, skip_netbox: 'true' } }) }}",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "https://iac.internal:8000/api/tasks/ansible/rolling_update"
+      },
+      "position": [
+        1350,
+        200
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "cf6a0768-7f6c-4f54-a77d-3c402f608861",
+      "name": "Zero-Day Warning Webhook",
+      "notes": "Manually triggered (curl/API), NOT scheduled — detecting an actual zero-day isn't\nautomatable, this is the notification + fast-path mechanism once a human (or an\nexternal feed, if one gets wired up later) has identified one.\n\nExpected POST body:\n{\n  \"cve\": \"CVE-2026-XXXXX\",              // optional but recommended\n  \"severity\": \"critical\",                // free text, shown as-is\n  \"description\": \"short human summary\",\n  \"affected_hosts\": [\"web-01\", \"git-01\"], // must be real inventory hostnames\n  \"trigger_patch\": true                   // if true, immediately runs rolling_update.yml\n}                                          // for each affected host, bypassing NetBox/the\n                                           // monthly cycle entirely — snapshot+rollback\n                                           // safety from rolling_update.yml still applies.\n\nCurl example:\ncurl -X POST https://n8n.home.example.org/webhook/zero-day-warning \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"cve\":\"CVE-2026-XXXXX\",\"severity\":\"critical\",\"description\":\"...\",\"affected_hosts\":[\"web-01\"],\"trigger_patch\":true}'",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "zero-day-warning",
+        "responseData": "{ \"received\": true }",
+        "responseMode": "onReceived"
+      },
+      "position": [
+        250,
+        300
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "zero-day-warning"
+    },
+    {
+      "id": "62f0aad3-2c68-47c5-b2bc-58c890345080",
+      "name": "trigger_patch requested?",
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.triggerPatch }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "position": [
+        910,
+        300
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1
+    }
+  ],
+  "settings": {
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "tags": []
+}

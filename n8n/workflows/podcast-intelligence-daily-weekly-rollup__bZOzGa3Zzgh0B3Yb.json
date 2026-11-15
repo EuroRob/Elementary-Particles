@@ -1,0 +1,294 @@
+{
+  "active": true,
+  "connections": {
+    "Check If Sunday": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "If Sunday (Weekly Rollup)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Daily 7am": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get Podcast Briefing",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Check If Sunday",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send to Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Weekly Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Post Weekly to Matrix",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Get Podcast Briefing": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Get Podcast Weekly Briefing": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Weekly Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "If Sunday (Weekly Rollup)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get Podcast Weekly Briefing",
+            "type": "main"
+          }
+        ],
+        []
+      ]
+    },
+    "Manual Test": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Get Podcast Briefing",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "bZOzGa3Zzgh0B3Yb",
+  "name": "Podcast Intelligence - Daily & Weekly Rollup",
+  "nodes": [
+    {
+      "id": "check-if-sunday-001",
+      "name": "Check If Sunday",
+      "parameters": {
+        "jsCode": "const today = new Date();\nconst isSunday = today.getDay() === 0;\nreturn [{ json: { is_sunday: isSunday, day: today.toDateString() } }];\n",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        460,
+        480
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "01171832-56e9-4b11-b8a5-9c0e81c570c2",
+      "name": "Daily 7am",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 7,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "position": [
+        240,
+        200
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "fe8a521b-af06-4575-9d7e-59550ae3b38a",
+      "name": "Format Message",
+      "parameters": {
+        "jsCode": "const b = $input.first().json;\nconst date = b.date || new Date().toDateString();\nconst count = b.episode_count || 0;\nconst eps = (b.episodes || []).map(e => '• ' + e.title + ' (' + e.podcast + ')').join('\\n');\nconst overview = b.briefing || 'No briefing available';\nconst text = '🎤 Morning Briefing — ' + date + '\\n\\n' + overview + '\\n\\n📻 Episodes featured (' + count + '):\\n' + eps;\nconst matrixPayload = JSON.stringify({ msgtype: 'm.text', body: text });\nreturn [{ json: { text, txn_id: Date.now().toString(), matrixPayload } }];"
+      },
+      "position": [
+        680,
+        300
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "format-weekly-001",
+      "name": "Format Weekly Message",
+      "parameters": {
+        "jsCode": "const b = $input.first().json;\nconst week = b.week_label || 'this week';\nconst count = b.episode_count || 0;\nconst podcastCount = b.podcast_count || 0;\nconst shows = (b.podcasts || []).map(p => '\\u2022 ' + p.podcast + ' (' + p.episode_count + ' episodes)').join('\\n');\nconst overview = b.briefing || 'No weekly briefing available';\nconst text = '\\ud83c\\udf99\\ufe0f Weekly Podcast Rollup \\u2014 ' + week + '\\n\\n' + overview + '\\n\\n\\ud83d\\udcca ' + count + ' episodes across ' + podcastCount + ' shows:\\n' + shows;\nconst matrixPayload = JSON.stringify({ msgtype: 'm.text', body: text });\nreturn [{ json: { text, txn_id: 'weekly-' + Date.now(), matrixPayload } }];\n"
+      },
+      "position": [
+        1120,
+        420
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "942c7aca-ced5-4916-8aa5-f7e1a24a0740",
+      "name": "Get Podcast Briefing",
+      "parameters": {
+        "method": "GET",
+        "options": {},
+        "url": "http://podcast-api:8001/api/briefing/daily"
+      },
+      "position": [
+        460,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "get-podcast-weekly-001",
+      "name": "Get Podcast Weekly Briefing",
+      "parameters": {
+        "method": "GET",
+        "options": {},
+        "url": "http://podcast-api:8001/api/briefing/weekly"
+      },
+      "position": [
+        900,
+        420
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "if-sunday-001",
+      "name": "If Sunday (Weekly Rollup)",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "sunday-cond-1",
+              "leftValue": "={{ $json.is_sunday }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        680,
+        480
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "id": "3cd65359-bf14-4d03-952a-8421dfb9ce2c",
+      "name": "Manual Test",
+      "parameters": {},
+      "position": [
+        240,
+        400
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BpsyZb4paEB1RlPt",
+          "name": "Podcast Bot Matrix Token"
+        }
+      },
+      "id": "post-weekly-001",
+      "name": "Post Weekly to Matrix",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/%21wkkaZYwAynlZCLdqfI%3Ahome.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        1340,
+        420
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BpsyZb4paEB1RlPt",
+          "name": "Podcast Bot Matrix Token"
+        }
+      },
+      "id": "06b2eac5-6285-4d78-85e0-a7338c283b5e",
+      "name": "Send to Matrix",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/%21wkkaZYwAynlZCLdqfI%3Ahome.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        900,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

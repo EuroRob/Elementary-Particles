@@ -1,0 +1,134 @@
+{# Analysis panel (Musician Platform phase 2) — included by track.html and song.html.
+   Expects: ana_items = [{audio_id, label, play_url}], and optionally ana_media = id of an
+   existing <audio> element to drive (track page); otherwise the panel brings its own. #}
+<div class="card" id="analysis-card">
+  <div class="row-actions" style="justify-content:space-between; margin-bottom:0.4rem">
+    <h3 style="margin:0">Analysis</h3>
+    {% if ana_items | length > 1 %}
+    <select id="ana-pick">
+      {% for it in ana_items %}<option value="{{ loop.index0 }}">{{ it.label }}</option>{% endfor %}
+    </select>
+    {% endif %}
+  </div>
+  <div id="ana-summary" class="meta">loading…</div>
+  {% if not ana_media %}<audio id="ana-player" controls preload="none" style="width:100%; margin-bottom:0.4rem"></audio>{% endif %}
+  <div id="ana-now" style="font-size:2rem; font-weight:700; color:var(--gold); min-height:2.6rem; text-align:center">&nbsp;</div>
+  <div id="ana-wave" style="margin-bottom:0.3rem"></div>
+  <div id="ana-chords" style="position:relative; height:1.6rem; overflow:hidden; border-top:1px solid var(--border-soft); font-size:0.75rem"></div>
+  <div id="ana-keys" style="position:relative; height:1.3rem; overflow:hidden; font-size:0.7rem; color:var(--text-dim)"></div>
+  <div class="row-actions muted" style="margin-top:0.6rem">
+    <span>Sonic Visualiser:</span>
+    <a id="sv-chords" href="#">chords.csv</a> · <a id="sv-sections" href="#">sections.csv</a> ·
+    <a id="sv-keys" href="#">keys.csv</a> · <a id="sv-beats" href="#">beats.csv</a> ·
+    <a id="sv-audio" href="#">audio</a>
+  </div>
+  <details style="margin-top:0.4rem">
+    <summary class="muted" style="cursor:pointer">Import a corrected layer from Sonic Visualiser</summary>
+    <p class="muted">Open the audio in Sonic Visualiser, File → Import Annotation Layer for the CSVs above (times in
+      seconds; sections: time, duration, label), fix them, then File → Export Annotation Layer as CSV and upload it here.
+      Your version replaces the automatic one for that layer.</p>
+    <div class="row-actions">
+      <select id="sv-kind"><option value="chords">chords</option><option value="sections">sections</option><option value="keys">keys</option></select>
+      <input type="file" id="sv-file" accept=".csv,text/csv,text/plain">
+      <button type="button" id="sv-upload">Upload</button>
+      <span id="sv-result" class="muted"></span>
+    </div>
+  </details>
+</div>
+<script src="/static/wavesurfer-8.0.2.min.js"></script>
+<script src="/static/wavesurfer-regions-8.0.2.min.js"></script>
+<script>
+(function () {
+  const items = {{ ana_items | tojson }};
+  const media = document.getElementById({{ (ana_media or 'ana-player') | tojson }});
+  const $ = id => document.getElementById(id);
+  const PALETTE = ['rgba(91,157,255,0.22)', 'rgba(240,184,110,0.22)', 'rgba(82,199,133,0.22)',
+                   'rgba(167,139,250,0.22)', 'rgba(240,119,106,0.22)', 'rgba(147,164,196,0.18)'];
+  let ws = null, data = null, cur = 0;
+
+  const fmt = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
+  function lane(el, rows, dur, cls) {
+    el.innerHTML = '';
+    if (!dur) return;
+    rows.forEach(([t, end, label]) => {
+      if (label === 'N') return;
+      const s = document.createElement('span');
+      s.textContent = label; s.title = label + ' @ ' + fmt(t);
+      s.style.cssText = `position:absolute; left:${t / dur * 100}%; width:${Math.max(0, ((end ?? dur) - t) / dur * 100)}%;
+        white-space:nowrap; overflow:hidden; padding-left:2px; border-left:1px solid var(--border); cursor:pointer`;
+      s.onclick = () => { media.currentTime = t; };
+      el.appendChild(s);
+    });
+  }
+  function at(rows, t) {
+    let lo = 0, hi = rows.length - 1, best = null;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (rows[m][0] <= t) { best = rows[m]; lo = m + 1; } else hi = m - 1; }
+    return best;
+  }
+
+  async function load(i) {
+    cur = i; const it = items[i];
+    ['chords', 'sections', 'keys', 'beats'].forEach(k => $('sv-' + k).href = `/api/analysis/${it.audio_id}/${k}.csv`);
+    $('sv-audio').href = it.play_url || '#';
+    if (!{{ (ana_media is not none) | tojson }} && it.play_url) media.src = it.play_url;
+    const r = await fetch('/api/analysis/' + it.audio_id);
+    data = await r.json();
+    const s = data.summary;
+    if (!s) {
+      $('ana-summary').textContent = data.status === 'failed' ? 'analysis failed: ' + (data.error || '')
+        : 'not analysed yet (' + data.status + ') — the batch works through the archive, songs first.';
+      if (ws) { ws.destroy(); ws = null; }
+      $('ana-chords').innerHTML = ''; $('ana-keys').innerHTML = '';
+      return;
+    }
+    const src = k => data.sources[k] === 'human' ? ' ✎' : '';
+    $('ana-summary').innerHTML = [
+      s.key ? `key <b>${s.key}</b>${src('key')} <span class="muted">(${Math.round((s.key_share || 0) * 100)}% of the time)</span>` : null,
+      s.tempo_bpm ? `<b>${Math.round(s.tempo_bpm)}</b> bpm` : null,
+      s.meter ? `<b>${s.meter}</b> <span class="muted">(detected)</span>` : null,
+      s.tuning_hz ? `A = ${s.tuning_hz.toFixed(1)} Hz` : null,
+      s.chords.length ? `chords${src('chord')}: ${s.chords.slice(0, 8).join(' · ')}` : null,
+      s.n_sections != null ? `${s.n_sections} sections${src('section')}` : 'sections skipped (long recording)',
+    ].filter(Boolean).join(' · ');
+    if (ws) ws.destroy();
+    const regions = WaveSurfer.Regions.create();
+    ws = WaveSurfer.create({
+      container: '#ana-wave', media, height: 70, peaks: [s.peaks || []], duration: data.duration_sec,
+      waveColor: '#3b5c94', progressColor: '#5b9dff', cursorColor: '#f0b86e', normalize: true,
+      plugins: [regions],
+    });
+    // Peaks + duration are supplied, so nothing is decoded in the browser
+    // (a 2 GB WAV would never load); add sections on whichever event comes first.
+    const colours = {}; let added = false;
+    const addSections = () => {
+      if (added) return; added = true;
+      data.events.section.forEach(([t, end, label]) => {
+        colours[label] = colours[label] || PALETTE[Object.keys(colours).length % PALETTE.length];
+        regions.addRegion({start: t, end: end ?? t, color: colours[label], content: label, drag: false, resize: false});
+      });
+    };
+    ws.on('ready', addSections); ws.on('decode', addSections); setTimeout(addSections, 800);
+    regions.on('region-clicked', (reg, e) => { e.stopPropagation(); media.currentTime = reg.start; });
+    lane($('ana-chords'), data.events.chord, data.duration_sec);
+    lane($('ana-keys'), data.events.key, data.duration_sec);
+  }
+  media.addEventListener('timeupdate', () => {
+    if (!data || !data.events) return;
+    const c = at(data.events.chord, media.currentTime);
+    $('ana-now').textContent = c && c[2] !== 'N' ? c[2] : ' ';
+  });
+  if ($('ana-pick')) $('ana-pick').onchange = e => load(+e.target.value);
+
+  $('sv-upload').onclick = async () => {
+    const f = $('sv-file').files[0], out = $('sv-result');
+    if (!f) { out.textContent = 'choose a CSV first'; return; }
+    out.className = 'muted'; out.textContent = 'uploading…';
+    const r = await fetch(`/api/analysis/${items[cur].audio_id}/${$('sv-kind').value}`, {method: 'POST', body: await f.text()});
+    const d = await r.json().catch(() => ({}));
+    out.className = r.ok ? 'ok' : 'err';
+    out.textContent = r.ok ? `imported ${d.events} ${d.kind}` : (d.detail || 'error ' + r.status);
+    if (r.ok) load(cur);
+  };
+  if (items.length) load(0); else $('ana-summary').textContent = 'No recordings to analyse.';
+})();
+</script>

@@ -1,0 +1,128 @@
+---
+# =============================================================================
+# Playbook: deploy_proxmox_host.yml
+# Full post-install configuration of a Proxmox VE host.
+#
+# Host groups:
+#   proxmox_primary   — pve-01 (always-on; runs fw-01, vpn-01, core infra)
+#   proxmox_burst     — pve-02, pve-03 (WoL burst; GPU + media workloads)
+#   proxmox_hosts     — all three (alias group)
+#
+# Usage — full setup for a single host:
+#   ansible-playbook -i inventory/hosts.ini playbooks/deploy_proxmox_host.yml \
+#     --limit pve-01
+#
+# Usage — specific phase only:
+#   ansible-playbook -i inventory/hosts.ini playbooks/deploy_proxmox_host.yml \
+#     --tags zfs --limit pve-01
+#   ansible-playbook -i inventory/hosts.ini playbooks/deploy_proxmox_host.yml \
+#     --tags terraform --limit pve-02
+#
+# Usage — create cloud-init templates on pve-01 then sync to burst hosts:
+#   ansible-playbook -i inventory/hosts.ini playbooks/deploy_proxmox_host.yml \
+#     --tags templates --limit pve-01
+#   ansible-playbook -i inventory/hosts.ini playbooks/deploy_proxmox_host.yml \
+#     --tags templates,sync --limit proxmox_burst
+#
+# Required environment variables:
+#   VAULT_ADDR        HashiCorp Vault address
+#   VAULT_ROLE_ID     Vault AppRole role_id
+#   VAULT_SECRET_ID   Vault AppRole secret_id
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# All PVE hosts — core configuration
+# ---------------------------------------------------------------------------
+- name: "Configure Proxmox host — core (all hosts)"
+  hosts: proxmox_hosts
+  become: true
+  gather_facts: true
+
+  vars:
+    vault_addr:      "{{ lookup('env', 'VAULT_ADDR')      | default('http://vault:8200') }}"
+    vault_role_id:   "{{ lookup('env', 'VAULT_ROLE_ID')   | default('') }}"
+    # /opt/vault/.env's VAULT_SECRET_ID key is present but empty — the real
+    # populated value lives under VAULT_ROLE_SECRET_ID (confirmed 2026-08-10,
+    # by length: VAULT_SECRET_ID=0 chars, VAULT_ROLE_SECRET_ID=36 chars).
+    # This play-level var was shadowing the same fix in group_vars/all.yml
+    # (play vars > group_vars precedence) — fixed here at the actual source.
+    vault_secret_id: "{{ lookup('env', 'VAULT_ROLE_SECRET_ID') | default('') }}"
+
+  pre_tasks:
+    - name: Verify Vault credentials present
+      ansible.builtin.fail:
+        msg: "VAULT_ROLE_ID and VAULT_SECRET_ID must be set in environment."
+      when:
+        - vault_role_id == ""
+        - vault_secret_id == ""
+
+    - name: Display host being configured
+      ansible.builtin.debug:
+        msg: "Configuring {{ inventory_hostname }} ({{ pve_hostname | default(inventory_hostname) }})"
+
+  roles:
+    - role: proxmox_host
+      tags: [proxmox_host]
+
+  post_tasks:
+    - name: Report configuration complete
+      ansible.builtin.debug:
+        msg: >-
+          ✅ {{ pve_hostname }} configured.
+          Storage: {{ pve_zfs_pools | selectattr('enabled', 'equalto', true) | map(attribute='name') | list | join(', ') }}
+          GPU passthrough: {{ 'enabled' if pve_gpu_passthrough else 'disabled' }}
+          WoL: {{ 'enabled' if pve_wol_enabled else 'disabled' }}
+
+# ---------------------------------------------------------------------------
+# Primary host only — build cloud-init templates (pve-01)
+# Only runs if pve_create_templates: true in host_vars
+# ---------------------------------------------------------------------------
+- name: "Build cloud-init templates (pve-01 only)"
+  hosts: proxmox_primary
+  become: true
+  gather_facts: false
+  tags: [templates, build]
+
+  vars:
+    vault_addr:      "{{ lookup('env', 'VAULT_ADDR')      | default('http://vault:8200') }}"
+    vault_role_id:   "{{ lookup('env', 'VAULT_ROLE_ID')   | default('') }}"
+    # /opt/vault/.env's VAULT_SECRET_ID key is present but empty — the real
+    # populated value lives under VAULT_ROLE_SECRET_ID (confirmed 2026-08-10,
+    # by length: VAULT_SECRET_ID=0 chars, VAULT_ROLE_SECRET_ID=36 chars).
+    # This play-level var was shadowing the same fix in group_vars/all.yml
+    # (play vars > group_vars precedence) — fixed here at the actual source.
+    vault_secret_id: "{{ lookup('env', 'VAULT_ROLE_SECRET_ID') | default('') }}"
+
+  tasks:
+    - name: Build templates (if designated builder)
+      ansible.builtin.import_role:
+        name: proxmox_host
+        tasks_from: build_templates.yml
+      when: pve_create_templates | bool
+
+# ---------------------------------------------------------------------------
+# Burst hosts — sync templates from NAS after primary has built them
+# ---------------------------------------------------------------------------
+- name: "Sync templates to burst hosts (pve-02, pve-03)"
+  hosts: proxmox_burst
+  become: true
+  gather_facts: false
+  tags: [templates, sync]
+  serial: 1    # one at a time to not saturate NAS link
+
+  vars:
+    vault_addr:      "{{ lookup('env', 'VAULT_ADDR')      | default('http://vault:8200') }}"
+    vault_role_id:   "{{ lookup('env', 'VAULT_ROLE_ID')   | default('') }}"
+    # /opt/vault/.env's VAULT_SECRET_ID key is present but empty — the real
+    # populated value lives under VAULT_ROLE_SECRET_ID (confirmed 2026-08-10,
+    # by length: VAULT_SECRET_ID=0 chars, VAULT_ROLE_SECRET_ID=36 chars).
+    # This play-level var was shadowing the same fix in group_vars/all.yml
+    # (play vars > group_vars precedence) — fixed here at the actual source.
+    vault_secret_id: "{{ lookup('env', 'VAULT_ROLE_SECRET_ID') | default('') }}"
+
+  tasks:
+    - name: Sync templates if enabled for this host
+      ansible.builtin.import_role:
+        name: proxmox_host
+        tasks_from: template_sync.yml
+      when: pve_template_sync_enabled | bool

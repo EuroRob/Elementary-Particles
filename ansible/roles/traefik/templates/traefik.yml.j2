@@ -1,0 +1,113 @@
+{# =============================================================================
+   Traefik v3 Static Configuration — templated by Ansible
+   Src : IaC/Ansible/Roles/traefik/templates/traefik.yml.j2
+   Dest: /etc/traefik/traefik.yml on web-01
+   =============================================================================
+   TLS strategy is controlled by traefik_acme_enabled (role default: false).
+     false  → internal CA only  (*.internal wildcard from Vault)
+     true   → internal CA PLUS Let's Encrypt wildcard via IONOS DNS-01 challenge
+              (IONOS_API_KEY injected at runtime from /opt/traefik/.env)
+   ============================================================================= #}
+# =============================================================================
+# Traefik v3 — Static Configuration
+# Generated: {{ ansible_date_time.iso8601 | default(now(utc=True, fmt='%Y-%m-%dT%H:%M:%SZ')) }}
+# Host     : {{ inventory_hostname }} ({{ ansible_host }})
+# =============================================================================
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: true    # port 8080 is bound to 127.0.0.1 only in compose, so loopback-only
+
+metrics:
+  prometheus:
+    addEntryPointsLabels: true
+    addServicesLabels: true
+    addRoutersLabels: true
+    entryPoint: traefik
+
+log:
+  level: INFO
+  filePath: /var/log/traefik/traefik.log
+
+accessLog:
+  filePath: /var/log/traefik/access.log
+  bufferingSize: 100
+  fields:
+    headers:
+      defaultMode: drop
+      names:
+        User-Agent: keep
+        Authorization: redact
+
+# --- Entry points ------------------------------------------------------------
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+    http:
+      tls: {}
+    # Traefik v3 defaults readTimeout to 60s, which cuts off any request body
+    # still arriving after a minute — long iPhone videos backing up to Immich
+    # over a slow link. 600s matches Immich's reverse-proxy guidance.
+    transport:
+      respondingTimeouts:
+        readTimeout: 600s
+
+  # traefik entrypoint on :8080 is auto-created by api.insecure: true
+
+# --- Providers ---------------------------------------------------------------
+# Docker provider removed — all routes managed via file provider.
+# Re-enable if label-based routing is needed in future.
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+# --- TLS — internal CA (*.internal domains) ----------------------------------
+# Always present regardless of ACME strategy.
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/certs/wildcard.internal.crt
+        keyFile:  /etc/traefik/certs/wildcard.internal.key
+
+{% if traefik_acme_enabled | default(false) | bool %}
+# --- ACME — Let's Encrypt wildcard via IONOS DNS-01 --------------------------
+# Requires IONOS_API_KEY env var injected at container start from .env file.
+# Key format: {public_prefix}.{secret}  (IONOS developer portal)
+# Vault path: {{ vault_traefik_acme_path }}  →  secret key: ionos_api_key
+#
+# cert storage: {{ traefik_acme_dir }}/acme.json  (mode 0600, owned by root)
+# Renewal: automatic — Traefik renews 30 days before expiry, no cron needed.
+# Staging: set traefik_acme_staging=true to avoid rate limits during testing.
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "{{ traefik_acme_email }}"
+      storage: {{ traefik_acme_dir }}/acme.json
+{% if traefik_acme_staging | default(false) | bool %}
+      caServer: "https://acme-staging-v02.api.letsencrypt.org/directory"
+{% endif %}
+      dnsChallenge:
+        provider: ionos
+        # Wait this many seconds after TXT record is set before querying IONOS
+        # for propagation. IONOS propagates within ~10s on most zones.
+        delayBeforeCheck: {{ traefik_acme_dns_delay | default(10) }}
+        # Force these resolvers instead of system default (avoids stale caches)
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
+{% endif %}

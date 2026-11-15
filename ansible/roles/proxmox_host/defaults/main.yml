@@ -1,0 +1,290 @@
+---
+# =============================================================================
+# Role: proxmox_host — defaults/main.yml
+#
+# All variables that control the PVE host post-install configuration.
+# Override per host in inventory/host_vars/<hostname>.yml
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Host identity
+# ---------------------------------------------------------------------------
+pve_hostname:      "pve-01"          # short hostname
+pve_fqdn:          "pve-01.internal"
+pve_cluster_name:  "homelab"
+
+# ---------------------------------------------------------------------------
+# Physical NIC names (update to match: ip link show)
+# ---------------------------------------------------------------------------
+pve_mgmt_nic:   "enp2s0"    # management NIC (carries vmbr0 / VLAN10)
+pve_trunk_nic:  "enp3s0f0"  # 10 Gbps NIC → vmbr1 (internal VLAN trunk)
+pve_wan_nic:    ""           # 1 Gbps NIC → vmbr2 (WAN/DMZ). Empty = skip vmbr2
+
+# VLAN ID of the Proxmox management interface on vmbr0
+pve_mgmt_vlan:   10
+pve_mgmt_ip:     "10.0.10.11/24"
+pve_mgmt_gw:     "10.0.10.1"
+pve_mgmt_dns:    "10.0.30.10"
+
+# ---------------------------------------------------------------------------
+# ZFS storage pools — list the pools that ALREADY EXIST on this host.
+# The role creates datasets inside these pools; it does NOT create the pools
+# themselves (that requires knowing the physical disk layout per host).
+# Run 'zpool create' manually or from a separate provisioning step.
+# ---------------------------------------------------------------------------
+pve_zfs_pools:
+  - name: "zfs-nvme"
+    enabled: true
+    datasets:
+      - path: "vms"
+        recordsize: "16K"      # small blocks → random VM I/O
+        compression: "lz4"
+        atime: "off"
+        primarycache: "all"
+        comment: "VM disks — optimised for random 4K/16K I/O"
+      - path: "general"
+        recordsize: "128K"
+        compression: "lz4"
+        atime: "off"
+        comment: "General-purpose large files"
+      - path: "docker"
+        recordsize: "16K"
+        compression: "lz4"
+        atime: "off"
+        comment: "Docker overlay2 storage"
+      - path: "templates"
+        recordsize: "128K"
+        compression: "lz4"
+        atime: "off"
+        comment: "Local VM template cache (synced from NAS)"
+
+  - name: "zfs-ssd"
+    enabled: true
+    datasets:
+      - path: "vms"
+        recordsize: "16K"
+        compression: "lz4"
+        atime: "off"
+      - path: "general"
+        recordsize: "128K"
+        compression: "lz4"
+        atime: "off"
+      - path: "templates"
+        recordsize: "128K"
+        compression: "lz4"
+        atime: "off"
+      - path: "backups"
+        recordsize: "1M"
+        compression: "gzip-6"   # better ratio for cold backup data
+        atime: "off"
+        comment: "Proxmox vzdump backups"
+
+  - name: "zfs-sata"
+    enabled: false             # pve-01 only if it has SATA HDDs; override per host
+    datasets:
+      - path: "general"
+        recordsize: "128K"
+        compression: "lz4"
+        atime: "off"
+      - path: "nas"
+        recordsize: "1M"       # bulk sequential NAS workloads
+        compression: "lz4"
+        atime: "off"
+      - path: "backups"
+        recordsize: "1M"
+        compression: "gzip-6"
+        atime: "off"
+      - path: "pve-templates"
+        recordsize: "128K"
+        compression: "lz4"
+        atime: "off"
+        nfs_export: true       # exported to all PVE hosts
+
+# ---------------------------------------------------------------------------
+# Proxmox storage definitions (pvesm)
+# These map ZFS datasets to PVE storage IDs.
+# ---------------------------------------------------------------------------
+pve_storage_definitions:
+  - id: "zfs-nvme-vms"
+    type: "zfspool"
+    pool: "zfs-nvme/vms"
+    content: "images,rootdir"
+    nodes: ""                  # empty = all nodes
+    enabled: true
+
+  - id: "zfs-ssd-vms"
+    type: "zfspool"
+    pool: "zfs-ssd/vms"
+    content: "images,rootdir"
+    enabled: true
+
+  - id: "zfs-ssd-backups"
+    type: "zfspool"
+    pool: "zfs-ssd/backups"
+    content: "backup"
+    enabled: true
+
+  - id: "nas-templates"
+    type: "nfs"
+    server: "10.0.40.20"       # NAS-01 IP — override per environment
+    export: "/srv/nas/pve-templates"
+    content: "images,vztmpl,iso"
+    options: "vers=4,soft"
+    enabled: "{{ nas_templates_enabled | default(true) }}"
+
+# ---------------------------------------------------------------------------
+# GPU passthrough configuration
+# ---------------------------------------------------------------------------
+pve_gpu_passthrough: false   # set true for pve-01 (RTX 2070) and pve-02 (RTX 4060 Ti)
+pve_iommu_type: "intel"      # "intel" | "amd"
+pve_gpu_pci_ids: []          # list of PCI IDs to bind to vfio-pci, e.g. ["10de:1e04","10de:10f7"]
+pve_gpu_blacklist_drivers:
+  - nouveau
+  - nvidia             # blacklisted on HOST; nvidia only runs inside the VM via passthrough
+
+# ---------------------------------------------------------------------------
+# Terraform service account
+# ---------------------------------------------------------------------------
+pve_terraform_user: "terraform-pve"   # PVE realm user (without @pve suffix)
+pve_terraform_token_name: "terraform" # API token name
+pve_terraform_role: "TerraformProv"   # PVE role with required privileges
+
+# Terraform PVE role privileges — minimal set required by bpg/proxmox provider
+pve_terraform_privs: >-
+  Datastore.AllocateSpace
+  Datastore.AllocateTemplate
+  Datastore.Audit
+  Pool.Allocate
+  Sys.Audit
+  Sys.Console
+  Sys.Modify
+  VM.Allocate
+  VM.Audit
+  VM.Clone
+  VM.Config.CDROM
+  VM.Config.Cloudinit
+  VM.Config.CPU
+  VM.Config.Disk
+  VM.Config.HWType
+  VM.Config.Memory
+  VM.Config.Network
+  VM.Config.Options
+  VM.Migrate
+  VM.Monitor
+  VM.PowerMgmt
+  SDN.Use
+
+# ---------------------------------------------------------------------------
+# NAS NFS mounts
+# ---------------------------------------------------------------------------
+pve_nas_server: "10.0.40.20"          # NAS-01 VLAN40 IP
+pve_nas_mounts:
+  - name: "pve-templates"
+    export: "/srv/nas/pve-templates"
+    local_path: "/mnt/nas/pve-templates"
+    options: "vers=4,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,_netdev"
+    state: mounted
+
+  - name: "pve-isos"
+    export: "/srv/nas/iso"
+    local_path: "/mnt/nas/iso"
+    options: "vers=4,ro,_netdev"
+    state: mounted
+
+# ---------------------------------------------------------------------------
+# NAS-backed Proxmox NFS storages (registered via API — see
+# nas_backup_storage.yml). `export` paths are relative to nas-01's NFSv4
+# pseudo-root (fsid=0 on /export) — e.g. "/backups", NOT "/export/backups".
+# Empty by default; set real values per-host in host_vars (see pve-01.yml).
+# ---------------------------------------------------------------------------
+pve_nas_backup_storage: []
+
+# ---------------------------------------------------------------------------
+# Scheduled vzdump backup jobs (registered via API — see backup_jobs.yml).
+# Empty by default; set real values per-host in host_vars.
+# ---------------------------------------------------------------------------
+pve_backup_jobs: []
+
+# ---------------------------------------------------------------------------
+# Template sync (for WoL burst hosts — pve-02, pve-03)
+# Rsyncs golden templates from NAS to local ZFS cache on startup.
+# ---------------------------------------------------------------------------
+pve_template_sync_enabled: false     # true for pve-02, pve-03
+pve_template_sync_source: "/mnt/nas/pve-templates/"
+pve_template_sync_dest: ""           # e.g. /mnt/pve/zfs-nvme-templates/ — set per host
+pve_template_sync_on_startup: true   # run rsync every WoL boot
+pve_template_ids_required:           # only sync these template VM IDs (empty = all)
+  - 9000   # Debian 12
+  - 9001   # Ubuntu 24.04
+  - 9002   # Ubuntu 22.04
+
+# ---------------------------------------------------------------------------
+# Kernel tweaks
+# ---------------------------------------------------------------------------
+pve_kernel_tweaks:
+  # VM memory overcommit (PVE default)
+  - key: "vm.overcommit_memory"
+    value: "1"
+  # ARC max — leave headroom for host OS (override per host based on RAM)
+  - key: "vm.swappiness"
+    value: "10"
+  # Network: raise socket buffers for high-throughput storage traffic
+  - key: "net.core.rmem_max"
+    value: "16777216"
+  - key: "net.core.wmem_max"
+    value: "16777216"
+  # inotify limits for containers + Docker
+  - key: "fs.inotify.max_user_watches"
+    value: "524288"
+  - key: "fs.inotify.max_user_instances"
+    value: "512"
+
+# ZFS ARC max size in bytes (leave ~4 GB for host OS and KVM)
+# Default: auto-calculated as half RAM. Override here for tight hosts.
+pve_zfs_arc_max_gb: 0   # 0 = use ZFS default (do not set)
+
+# Memory headroom (written to its own file, /etc/sysctl.d/90-memory-headroom.conf, so it can be
+# applied without touching the rest of pve_kernel_tweaks). Empty = file not managed.
+# Example: [{ key: "vm.watermark_scale_factor", value: "125" }, { key: "vm.min_free_kbytes", value: "1048576" }]
+pve_memory_headroom_sysctls: []
+# Transparent hugepage defrag mode (/sys/kernel/mm/transparent_hugepage/defrag), via tmpfiles.d.
+# "" = not managed. "defer+madvise" avoids direct-compaction stalls on page fault.
+pve_thp_defrag: ""
+
+# ---------------------------------------------------------------------------
+# Wake-on-LAN (for pve-02 and pve-03)
+# ---------------------------------------------------------------------------
+pve_wol_enabled: false            # true for pve-02, pve-03
+pve_wol_nic: "{{ pve_mgmt_nic }}" # NIC to enable WoL on
+pve_wol_modes: "g"                # g=magic packet (standard); use 'umb' for broader compat
+pve_wol_systemd_persist: true     # create systemd unit to re-apply WoL on every boot
+
+# MAC address used by the controller to send the WoL packet (auto-detected if empty)
+pve_wol_mac: ""
+
+# ---------------------------------------------------------------------------
+# Debian cloud image templates (created on NAS, then synced locally)
+# ---------------------------------------------------------------------------
+pve_create_templates: false       # only run on the designated template builder host
+pve_template_builder_storage: "zfs-ssd"  # storage to build templates on
+pve_templates:
+  - id: 9000
+    name: "debian-12-template"
+    url: "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2"
+    memory: 2048
+    disk_size: "20G"
+    username: "debian"
+
+  - id: 9001
+    name: "ubuntu-2404-template"
+    url: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+    memory: 2048
+    disk_size: "20G"
+    username: "ubuntu"
+
+  - id: 9002
+    name: "ubuntu-2204-template"
+    url: "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+    memory: 2048
+    disk_size: "20G"
+    username: "ubuntu"

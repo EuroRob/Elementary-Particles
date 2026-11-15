@@ -1,0 +1,40 @@
+# {{ ansible_managed }}
+# Forgejo Actions runner for {{ forgejo_runner_repo }} (host mode). The unit is a
+# guardrail: no privileges, read-only system, and it can exchange packets only with
+# git-01 ({{ forgejo_runner_git_host_ip }}) and localhost. Job steps inherit all of it.
+[Unit]
+Description=Forgejo Actions runner ({{ forgejo_runner_name }})
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User={{ forgejo_runner_user }}
+Group={{ forgejo_runner_user }}
+WorkingDirectory={{ forgejo_runner_state_dir }}
+Environment=HOME={{ forgejo_runner_state_dir }}
+# venv/bin first: a symlink to the venv's python does not activate the venv
+Environment=PATH={{ ci_tools_dir }}/venv/bin:{{ ci_tools_dir }}/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart={{ forgejo_runner_bin_dir }}/forgejo-runner daemon --config {{ forgejo_runner_conf_dir }}/config.yaml
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths={{ forgejo_runner_state_dir }}
+ReadOnlyPaths={{ forgejo_runner_conf_dir }} {{ ci_tools_dir }}
+IPAddressDeny=any
+IPAddressAllow=localhost {{ forgejo_runner_git_host_ip }}
+MemoryMax={{ forgejo_runner_memory_max }}
+
+[Install]
+WantedBy=multi-user.target

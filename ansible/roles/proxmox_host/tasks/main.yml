@@ -1,0 +1,148 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/main.yml
+# Orchestrates all PVE host configuration phases in dependency order.
+#
+# Run full setup:
+#   ansible-playbook playbooks/deploy_proxmox_host.yml
+#
+# Run a single phase:
+#   ansible-playbook playbooks/deploy_proxmox_host.yml --tags zfs
+#   ansible-playbook playbooks/deploy_proxmox_host.yml --tags gpu
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Phase 0: Validate host and pull credentials from Vault
+# ---------------------------------------------------------------------------
+- name: "PREFLIGHT: Retrieve host credentials from Vault"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "homelab/proxmox/{{ pve_hostname }}"
+  register: pve_vault
+  no_log: true
+  tags: [always]
+  ignore_errors: true   # non-fatal if host entry doesn't exist yet (first run)
+
+- name: "PREFLIGHT: Verify Proxmox is running"
+  ansible.builtin.command: pveversion
+  register: pve_version_check
+  changed_when: false
+  tags: [always]
+
+- name: "PREFLIGHT: Display PVE version"
+  ansible.builtin.debug:
+    msg: "Configuring {{ pve_hostname }} — {{ pve_version_check.stdout }}"
+  tags: [always]
+
+# ---------------------------------------------------------------------------
+# Phase 0.5: APT repos — must run before anything that installs packages.
+# Disables the paid enterprise repos (401 without a subscription, which
+# fails `apt update` hard and blocks every apt task downstream) and adds
+# the free no-subscription repo. Found live 2026-09-08 on pve-02; not yet
+# confirmed whether pve-01/pve-03 need the same fix or were already correct.
+# ---------------------------------------------------------------------------
+- name: "APT: Disable enterprise repos, enable no-subscription repo"
+  ansible.builtin.import_tasks: apt_repos.yml
+  tags: [apt, apt_repos, always]
+
+# ---------------------------------------------------------------------------
+# Phase 1: Kernel parameters and sysctl tweaks
+# (applied first — some ZFS settings need kernel module to be reloaded)
+# ---------------------------------------------------------------------------
+- name: "KERNEL: Apply sysctl tweaks and ZFS ARC limits"
+  ansible.builtin.import_tasks: kernel_tweaks.yml
+  tags: [kernel, sysctl, tuning]
+
+# ---------------------------------------------------------------------------
+# Phase 2: Network bridges
+# (required before ZFS storage pools reference correct networks)
+# ---------------------------------------------------------------------------
+- name: "NETWORK: Configure VLAN-aware bridges"
+  ansible.builtin.import_tasks: network_bridges.yml
+  tags: [network, bridges, vlan]
+
+# ---------------------------------------------------------------------------
+# Phase 3: ZFS dataset creation
+# ---------------------------------------------------------------------------
+- name: "ZFS: Create datasets in existing pools"
+  ansible.builtin.import_tasks: zfs_storage.yml
+  tags: [zfs, storage]
+
+# ---------------------------------------------------------------------------
+# Phase 4: Register Proxmox storage definitions (pvesm)
+# NOTE: proxmox_storage.yml assumes SSH access to the PVE host, which this
+# environment does not have (see IaC/CLAUDE.md "Proxmox Access — API only,
+# no CLI") — it has never actually been exercised against real hardware.
+# Its pve_storage_definitions values in host_vars are unverified/stale.
+# ---------------------------------------------------------------------------
+- name: "STORAGE: Register pvesm storage pools"
+  ansible.builtin.import_tasks: proxmox_storage.yml
+  tags: [storage, pvesm]
+
+# ---------------------------------------------------------------------------
+# Phase 4b: NAS-backed NFS storage for backups/iso/templates (API-based —
+# the working access path, see nas_backup_storage.yml header for the full
+# NFSv4 pseudo-root + firewall story).
+# ---------------------------------------------------------------------------
+- name: "STORAGE: Register NAS-backed NFS storages via Proxmox API"
+  ansible.builtin.import_tasks: nas_backup_storage.yml
+  when: pve_nas_backup_storage | default([]) | length > 0
+  tags: [storage, nas, pve-api]
+
+# ---------------------------------------------------------------------------
+# Phase 4c: Scheduled vzdump backup jobs (API-based, depends on 4b having
+# set pve_api_url/pve_api_node/pve_api_headers facts this run).
+# ---------------------------------------------------------------------------
+- name: "BACKUP: Register scheduled vzdump jobs via Proxmox API"
+  ansible.builtin.import_tasks: backup_jobs.yml
+  when: pve_backup_jobs | default([]) | length > 0
+  tags: [backup, pve-api]
+
+# ---------------------------------------------------------------------------
+# Phase 5: NAS NFS mounts
+# ---------------------------------------------------------------------------
+- name: "NAS: Mount NFS shares from NAS-01"
+  ansible.builtin.import_tasks: nas_mounts.yml
+  tags: [nas, nfs, mounts]
+
+# ---------------------------------------------------------------------------
+# Phase 6: Template sync (WoL burst hosts only)
+# ---------------------------------------------------------------------------
+- name: "TEMPLATES: Sync golden templates from NAS to local cache"
+  ansible.builtin.import_tasks: template_sync.yml
+  tags: [templates, sync]
+  when: pve_template_sync_enabled | bool
+
+# ---------------------------------------------------------------------------
+# Phase 7: Cloud image template creation (designated builder only)
+# ---------------------------------------------------------------------------
+- name: "TEMPLATES: Build Debian/Ubuntu cloud-init templates"
+  ansible.builtin.import_tasks: build_templates.yml
+  tags: [templates, build]
+  when: pve_create_templates | bool
+
+# ---------------------------------------------------------------------------
+# Phase 8: GPU PCIe passthrough
+# ---------------------------------------------------------------------------
+- name: "GPU: Configure IOMMU and VFIO for PCIe passthrough"
+  ansible.builtin.import_tasks: gpu_passthrough.yml
+  tags: [gpu, iommu, passthrough]
+  when: pve_gpu_passthrough | bool
+
+# ---------------------------------------------------------------------------
+# Phase 9: Terraform service account
+# ---------------------------------------------------------------------------
+- name: "TERRAFORM: Create PVE user and API token for Terraform"
+  ansible.builtin.import_tasks: terraform_user.yml
+  tags: [terraform, users, security]
+
+# ---------------------------------------------------------------------------
+# Phase 10: Wake-on-LAN (burst hosts only)
+# ---------------------------------------------------------------------------
+- name: "WOL: Enable Wake-on-LAN on management NIC"
+  ansible.builtin.import_tasks: wol_setup.yml
+  tags: [wol, power]
+  when: pve_wol_enabled | bool

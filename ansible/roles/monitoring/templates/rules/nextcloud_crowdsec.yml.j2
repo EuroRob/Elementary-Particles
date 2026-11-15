@@ -1,0 +1,36 @@
+{# CrowdSec on dmz-nc-01 (added 2026-10-23, docs/NEXTCLOUD_CROWDSEC.md). Metrics
+   come from crowdsec_textfile.sh via node_exporter's textfile collector on
+   172.16.0.30:9100. raw: Prometheus {{ $labels }} templating, not Jinja. #}
+{% raw %}
+groups:
+  - name: nextcloud_crowdsec
+    rules:
+      # Caddy's AppSec handler is fail-OPEN: when CrowdSec is down Nextcloud
+      # keeps serving -- unprotected. This is the only way anyone finds out.
+      - alert: NextcloudCrowdsecDown
+        expr: nc_crowdsec_container_running == 0 or nc_crowdsec_lapi_ok == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CrowdSec on dmz-nc-01 is down -- Nextcloud is serving UNPROTECTED"
+          description: "nc-crowdsec container running={{ with query \"nc_crowdsec_container_running\" }}{{ . | first | value }}{{ end }}. Caddy fails open, so Nextcloud still works but AppSec + bans are off. On dmz-nc-01: `sudo docker logs --tail 50 nc-crowdsec`, then `cd /opt/nextcloud && sudo docker compose up -d --no-deps crowdsec`."
+
+      - alert: NextcloudCrowdsecBouncerStale
+        expr: nc_crowdsec_bouncer_last_pull_age_seconds > 300 or nc_crowdsec_bouncer_last_pull_age_seconds == -1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Caddy's CrowdSec bouncer hasn't pulled decisions for {{ $value }}s"
+          description: "The bouncer normally pulls every 15s. Bans (incl. the community blocklist) are not being enforced. Check `sudo docker logs nc-caddy | grep -i crowdsec` on dmz-nc-01."
+
+      - alert: NextcloudCrowdsecMetricsStale
+        expr: (time() - nc_crowdsec_textfile_timestamp_seconds) > 600 or absent(nc_crowdsec_textfile_timestamp_seconds)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CrowdSec health metrics on dmz-nc-01 are stale"
+          description: "crowdsec-textfile.timer stopped writing (or node_exporter on dmz-nc-01 is down), so NextcloudCrowdsecDown can't fire. `systemctl status crowdsec-textfile.timer prometheus-node-exporter` on dmz-nc-01."
+{% endraw %}

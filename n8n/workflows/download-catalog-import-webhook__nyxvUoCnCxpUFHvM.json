@@ -1,0 +1,100 @@
+{
+  "active": true,
+  "connections": {
+    "Normalize *arr payload": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "POST to catalog-api",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Normalize *arr payload",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "nyxvUoCnCxpUFHvM",
+  "name": "Download Catalog - Import Webhook",
+  "nodes": [
+    {
+      "id": "normalize-payload",
+      "name": "Normalize *arr payload",
+      "parameters": {
+        "jsCode": "const app = ($json.query && $json.query.app) || 'manual';\nconst body = $json.body || {};\nlet name = 'Unknown', filePaths = [], sizeBytes = null;\nconst eventType = body.eventType || 'Unknown';\n\nif (app === 'sonarr') {\n  name = (body.series && body.series.title) || name;\n  if (body.episodeFile) {\n    filePaths = [body.episodeFile.relativePath];\n    sizeBytes = body.episodeFile.size || null;\n  } else if (Array.isArray(body.episodeFiles)) {\n    filePaths = body.episodeFiles.map(f => f.relativePath);\n    sizeBytes = body.episodeFiles.reduce((a, f) => a + (f.size || 0), 0);\n  }\n} else if (app === 'radarr') {\n  name = (body.movie && body.movie.title) || name;\n  if (body.movieFile) {\n    filePaths = [body.movieFile.relativePath];\n    sizeBytes = body.movieFile.size || null;\n  }\n} else if (app === 'lidarr') {\n  name = (body.artist && body.artist.name) || name;\n  if (Array.isArray(body.trackFiles)) {\n    filePaths = body.trackFiles.map(f => f.relativePath);\n    sizeBytes = body.trackFiles.reduce((a, f) => a + (f.size || 0), 0);\n  }\n} else if (app === 'readarr') {\n  name = (body.author && body.author.authorName) || (body.book && body.book.title) || name;\n  if (body.bookFile) {\n    filePaths = [body.bookFile.relativePath];\n    sizeBytes = body.bookFile.size || null;\n  }\n}\n\nreturn [{ json: { source_app: app, event_type: eventType, name, file_paths: filePaths, size_bytes: sizeBytes } }];"
+      },
+      "position": [
+        40,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YYa0tbgQSUr1hIJB",
+          "name": "catalog-api X-API-Key"
+        }
+      },
+      "id": "post-to-catalog",
+      "name": "POST to catalog-api",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "sendHeaders": true,
+        "specifyBody": "json",
+        "url": "http://10.0.60.5:5091/api/imports"
+      },
+      "position": [
+        280,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "webhook-import-catalog",
+      "name": "Webhook",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "import-catalog",
+        "responseMode": "onReceived"
+      },
+      "position": [
+        -200,
+        0
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "import-catalog"
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

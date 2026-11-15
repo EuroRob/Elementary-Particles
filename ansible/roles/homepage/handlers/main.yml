@@ -1,0 +1,11 @@
+---
+# handler: restart homepage
+- name: restart homepage
+  community.docker.docker_compose_v2:
+    project_src: /opt/homepage
+    state: present
+    recreate: always
+
+- name: homepage started
+  ansible.builtin.debug:
+    msg: "Homepage container started on port {{ homepage_port }}"

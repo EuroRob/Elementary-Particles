@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ s.title }} — Field{% endblock %}
+{% block content %}
+<p><a href="/ui/field?user={{ current_user }}">&larr; Field</a></p>
+<h2 style="margin-bottom:0.2rem">{{ s.title }}</h2>
+<p class="meta">{{ 'Live session (multitrack)' if s.kind == 'multitrack' else 'Handheld session' }} · {{ takes | length }} file{{ '' if takes | length == 1 else 's' }}
+  {% if parent %} · part of <a href="/ui/field/session?key={{ parent.key | urlencode }}&user={{ current_user }}">{{ parent.title }}</a>{% endif %}</p>
+
+{% if lives and not parent %}
+<div class="card">
+  <h3>Part of an R16 live session?</h3>
+  <form id="attach" style="display:flex; gap:0.5rem; flex-wrap:wrap">
+    <select name="to" style="flex:1; min-width:16rem">{% for l in lives %}<option value="{{ l.key }}">{{ l.title }}</option>{% endfor %}</select>
+    <button type="submit">Attach</button> <span id="attach-result" class="muted"></span>
+  </form>
+  <p class="muted" style="margin:0.4rem 0 0">An H2n/Tascam session can join an R16 live session, never the other way round.</p>
+</div>
+{% endif %}
+
+<table class="files">
+  <tr><th>Take</th><th>When</th><th>Length</th><th>Key · tempo</th><th>Spoken note</th><th></th></tr>
+  {% for t in takes %}
+  <tr>
+    <td style="font-size:0.85rem">{% if t.title and t.title != t.spoken_note %}<b>{{ t.title }}</b><br>{% endif %}{{ t.file.split('/')[-1] }}{% if t.track %} <span class="badge">{{ t.track }}</span>{% endif %}<br>
+      <span class="muted" style="font-size:0.75rem">{{ t.recorder or '' }}{% if t.channels %} {{ t.channels }}ch {{ t.sample_rate }} Hz {{ t.bits }}-bit{% endif %}</span></td>
+    <td class="muted">{{ t.recorded_at[:16].replace('T', ' ') if t.recorded_at else '' }}{% if t.recorded_at and not t.clock_ok %} ≈{% endif %}
+      {% if not t.recorded_at %}clock not set{% endif %}</td>
+    <td>{{ '%d:%02d' % (t.duration_sec // 60, t.duration_sec % 60) if t.duration_sec else '' }}</td>
+    <td>{{ t.musical_key or '' }}{% if t.tempo_bpm %} · {{ '%.0f' % t.tempo_bpm }} BPM{% endif %}</td>
+    <td style="font-size:0.85rem">{{ t.spoken_note or '' }}</td>
+    <td>{% if t.beets_item_id %}<audio controls preload="none" src="{{ beets_public }}/item/{{ t.beets_item_id }}/file" style="height:2rem; width:11rem"></audio>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="muted">“≈” = the recorder's clock wasn't set; the time is the card's file time, roughly when the take ended.</p>
+
+<script>
+const f = document.getElementById('attach');
+if (f) f.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const out = document.getElementById('attach-result');
+  const r = await fetch('/api/field/attach', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({key: {{ s.key | tojson }}, to: f.to.value})});
+  const d = await r.json().catch(() => ({}));
+  out.textContent = r.ok ? 'attached' : (d.detail || 'failed');
+  if (r.ok) setTimeout(() => location.reload(), 600);
+});
+</script>
+{% endblock %}

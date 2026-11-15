@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ project.title }} — Studio{% endblock %}
+{% block content %}
+<p><a href="/ui/studio?user={{ current_user }}">&larr; Studio</a></p>
+<h2 style="margin-bottom:0.2rem">{{ project.title }}</h2>
+<p class="meta">{{ project.nas_path }} · <span class="badge">{{ project.status }}</span></p>
+
+{% if latest %}
+<div class="card">
+  <h3>As last saved <span class="muted" style="font-weight:normal">{{ latest.saved_at[:16].replace('T', ' ') }} · {{ latest.live }}</span></h3>
+  <ul style="margin:0.3rem 0 0 1.1rem; padding:0">
+    {% for l in latest.lines %}<li>{{ l }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>Note, idea or to-do</h3>
+  <form id="note" style="display:flex; gap:0.5rem; flex-wrap:wrap">
+    <select name="kind"><option value="idea">idea</option><option value="note">note</option><option value="todo">to-do</option></select>
+    <input type="text" name="text" placeholder="e.g. half-time feel in the bridge" style="flex:1; min-width:14rem">
+    <button type="submit">Save</button>
+    <span id="note-result" class="muted"></span>
+  </form>
+  <p class="muted" style="margin:0.4rem 0 0">Typed here or said to DOMO (“idea: …”), filed under the set you saved last.</p>
+</div>
+
+<div class="card">
+  <h3>Chords{% if theory %} in {{ theory.key }}{% endif %}</h3>
+  <form method="get" style="display:flex; gap:0.5rem; margin-bottom:0.6rem">
+    <input type="hidden" name="user" value="{{ current_user }}">
+    <input type="text" name="key" value="{{ key }}" placeholder="Key, e.g. D minor" style="width:10rem">
+    <button type="submit">Show</button>
+  </form>
+  {% if theory %}
+  <table class="files">
+    <tr>{% for c in theory.diatonic %}<th>{{ c.numeral }}</th>{% endfor %}</tr>
+    <tr>{% for c in theory.diatonic %}<td><b>{{ c.chord }}</b><br><span class="muted">{{ c.notes | join(' ') }}</span></td>{% endfor %}</tr>
+  </table>
+  <p style="margin:0.5rem 0 0"><b>Borrowed:</b> {% for c in theory.borrowed %}{{ c.chord }} ({{ c.numeral }}, {{ c.why }}){{ '; ' if not loop.last }}{% endfor %}</p>
+  <p style="margin:0.3rem 0 0"><b>Secondary dominants:</b> {% for c in theory.secondary_dominants %}{{ c.chord }} → {{ c.resolves_to }}{{ ', ' if not loop.last }}{% endfor %}</p>
+  <p style="margin:0.3rem 0 0"><b>Related keys:</b> relative {{ theory.related.relative }}, parallel {{ theory.related.parallel }}, dominant {{ theory.related.dominant }}</p>
+  {% if theory.own %}<p style="margin:0.3rem 0 0"><b>Your most-played loops here:</b> {% for p in theory.own %}{{ p.chords }} <span class="muted">({{ p.pattern }}, {{ p.recordings }} recordings)</span>{{ '; ' if not loop.last }}{% endfor %}</p>{% endif %}
+  {% if theory.arrangement %}<p style="margin:0.3rem 0 0"><b>At {{ '%g' % theory.arrangement.tempo }} BPM</b> a bar is {{ theory.arrangement.bar_seconds }} s; a {{ theory.arrangement.length }} song:
+    {% for s in theory.arrangement.sections %}{{ s.section }} {{ s.bars }}{{ ', ' if not loop.last }}{% endfor %} bars.</p>{% endif %}
+  {% else %}
+  <p class="muted" style="margin:0">No key known for this set: set the scale in Live 12, or type one above.</p>
+  {% endif %}
+</div>
+
+<h3>Chronicle</h3>
+{% for e in events %}
+<div class="card" style="padding:0.6rem 0.9rem">
+  <div class="meta" style="margin:0">{{ e.at[:16].replace('T', ' ') }} · <span class="badge {{ 'session' if e.kind in ('save',) else 'song' if e.kind == 'talk' else 'reference' }}">{{ e.kind }}</span></div>
+  {% if e.kind == 'save' and e.detail %}
+  <ul style="margin:0.2rem 0 0 1.1rem; padding:0">{% for l in e.detail %}<li>{{ l }}</li>{% endfor %}</ul>
+  {% else %}
+  <div style="white-space:pre-wrap">{{ e.text }}</div>
+  {% endif %}
+</div>
+{% else %}
+<p class="muted">Nothing yet.</p>
+{% endfor %}
+
+<h3>Files</h3>
+{% if files %}
+<table class="files">
+  <tr><th>File on DATAGRID</th><th>Role</th><th></th></tr>
+  {% for f in files %}
+  <tr>
+    <td style="font-size:0.85rem">{{ f.nas_path }}</td>
+    <td class="muted">{{ f.role }}{{ '' if f.present else ' · missing' }}</td>
+    <td>{% if f.beets_item_id %}<a href="/ui/track/{{ f.beets_item_id }}?user={{ current_user }}">in catalogue</a>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No audio of its own found next to this set (library samples aren't listed).</p>
+{% endif %}
+
+<script>
+document.getElementById('note').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const f = ev.target, out = document.getElementById('note-result');
+  if (!f.text.value.trim()) return;
+  out.textContent = 'saving…';
+  const r = await fetch('/api/studio/note', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({kind: f.kind.value, text: f.text.value, user: {{ current_user | tojson }}})});
+  const d = await r.json().catch(() => ({}));
+  out.textContent = r.ok ? (d.answer || 'saved') : 'failed';
+  if (r.ok) { f.text.value = ''; setTimeout(() => location.reload(), 800); }
+});
+</script>
+{% endblock %}

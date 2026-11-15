@@ -1,0 +1,113 @@
+---
+# =============================================================================
+# Role: homepage — tasks/main.yml
+# =============================================================================
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+- name: "[homepage] Create config and data directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ homepage_config_dir }}"
+    - /opt/homepage
+
+# ── Widget secrets from Vault ─────────────────────────────────────────────────
+- name: "[homepage] Fetch widget secrets from Vault"
+  when: homepage_widgets_vault_enabled | bool
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    auth_method: token
+    token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    path: "{{ vault_homepage_widgets_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: _homepage_vault
+  delegate_to: localhost
+  become: false
+  failed_when: false   # widgets are optional — missing = no live stats
+
+- name: "[homepage] Set widget secret facts"
+  when:
+    - homepage_widgets_vault_enabled | bool
+    - _homepage_vault is not failed
+    - _homepage_vault.secret is defined
+  ansible.builtin.set_fact:
+    _hw: "{{ _homepage_vault.secret }}"
+
+# ── Static configs ────────────────────────────────────────────────────────────
+- name: "[homepage] Write settings.yaml"
+  ansible.builtin.template:
+    src: settings.yaml.j2
+    dest: "{{ homepage_config_dir }}/settings.yaml"
+    mode: "0644"
+
+- name: "[homepage] Write widgets.yaml"
+  ansible.builtin.template:
+    src: widgets.yaml.j2
+    dest: "{{ homepage_config_dir }}/widgets.yaml"
+    mode: "0644"
+
+# ── Initial services.yaml (sync script will keep this current) ────────────────
+- name: "[homepage] Check if services.yaml already exists"
+  ansible.builtin.stat:
+    path: "{{ homepage_config_dir }}/services.yaml"
+  register: _svc_yaml
+
+- name: "[homepage] Write bootstrap services.yaml (overwritten by sync_homepage.py)"
+  when: not _svc_yaml.stat.exists
+  ansible.builtin.template:
+    src: services.yaml.j2
+    dest: "{{ homepage_config_dir }}/services.yaml"
+    mode: "0644"
+
+# ── Docker compose ────────────────────────────────────────────────────────────
+- name: "[homepage] Write docker-compose.yml"
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/homepage/docker-compose.yml
+    mode: "0644"
+  notify: restart homepage
+
+- name: "[homepage] Pull homepage image"
+  community.docker.docker_image:
+    name: "{{ homepage_image }}"
+    source: pull
+
+- name: "[homepage] Start homepage container"
+  community.docker.docker_compose_v2:
+    project_src: /opt/homepage
+    state: present
+    pull: policy
+  notify: homepage started
+
+# ── Traefik registration ──────────────────────────────────────────────────────
+- name: "[homepage] Register homepage in Traefik"
+  when: homepage_traefik_enabled | bool
+  ansible.builtin.include_role:
+    name: traefik_register
+  vars:
+    traefik_service_name: homepage
+    traefik_backend_url:  "http://homepage:{{ homepage_port }}"
+    traefik_domain:       "{{ homepage_fqdn }}"
+    traefik_auth:         one_factor
+
+# ── Run sync script to generate full services.yaml ───────────────────────────
+- name: "[homepage] Run sync_homepage.py to populate services.yaml"
+  when: homepage_sync_on_deploy | bool
+  ansible.builtin.command:
+    cmd: >-
+      python3 {{ homepage_sync_script }}
+      --services-dir {{ homepage_iac_services_dir }}
+      --vms-dir {{ homepage_iac_vms_dir }}
+      --output {{ homepage_config_dir }}/services.yaml
+      --domain {{ base_domain | default('homelab.local') }}
+  changed_when: true
+  failed_when: false   # best-effort; container works with bootstrap config if sync fails
+  notify: restart homepage
+
+- name: "[homepage] Show dashboard URL"
+  ansible.builtin.debug:
+    msg: "Homepage dashboard: http://{{ ansible_host }}:{{ homepage_port }}  |  https://{{ homepage_fqdn }}"

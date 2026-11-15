@@ -1,0 +1,168 @@
+# =============================================================================
+#  music_beets_config.yaml — Beets configuration for Music Studio
+#  Elementary Particles: IaC/services/assistant/music-studio/
+#
+#  Mount this file to /etc/beets/config.yaml inside the music-beets container.
+#  On first use, run: beet import /music/sessions
+# =============================================================================
+
+# ─── Library paths ────────────────────────────────────────────────────────────
+# `directory` only matters when copy/move is on — with both off (below),
+# nas-01 (nasty.internal) stays the canonical source of truth, same
+# philosophy as Immich's "external library": scan and catalog in place,
+# never duplicate storage. Left set for the field-recordings/sessions
+# pipeline, which still writes its own new files here (Basic Pitch MIDI,
+# Demucs stems, etc.) — this only affects `beet import`'s own behavior.
+directory: /music/library
+library:    /etc/beets/beets.db
+
+# ─── Ignore list ──────────────────────────────────────────────────────────────
+# Setting `ignore` REPLACES beets' own default list, not merges with it — the
+# first four entries below are that default, kept so we don't lose them.
+# Everything after is specific to nasty.internal's "My Recordings" archive,
+# added 2026-09-04 doing the first full-archive scan: "Ableton Live" turned
+# out to be Ableton's own install/library folder (Factory Packs = bundled
+# commercial drum kits, Acapellas4U = downloaded remix-resource a cappellas,
+# Presets/Waveforms/Clips/Lessons/Template Project/User Library = Ableton's
+# own data, none of it the user's own recordings) — confirmed live when a
+# blind scan picked up "Die Fantastischen Vier" and "The Streets" tracks
+# before this was caught and those 2 items removed. Only
+# "Ableton Live/Recordings" (Ableton's own live-take capture folder) is
+# real personal content. Samples/Native Instruments/Image-Line/Steinberg/
+# Roland at the top level are third-party VST/sample-library folders, not
+# recordings, for the same reason.
+ignore:
+  - ".*"
+  - "*~"
+  - "System Volume Information"
+  - "lost+found"
+  - "Factory Packs"
+  - "Acapellas4U"
+  - "Waveforms"
+  - "Template Project"
+  - "User Library"
+  - "Clips"
+  - "Lessons"
+  - "Presets"
+  - "Samples"
+  - "Native Instruments"
+  - "Image-Line"
+  - "Steinberg"
+  - "Roland"
+
+# ─── Import behaviour ─────────────────────────────────────────────────────────
+# Switched to scan-in-place 2026-08-21 per user request: nasty.internal
+# (the NASTY NAS, mounted read-only at /import/nasty) stays canonical.
+import:
+  copy:      no           # never copy into /music/library — catalog files where they already are
+  move:      no           # never move originals either
+  write:     no           # never write tags back to files — the NASTY mount is read-only anyway
+  log:       /etc/beets/import.log
+  timid:     no           # don't ask about every file (use autotagging)
+  languages: [en]
+  autotag:   yes
+  quiet:     no
+
+# ─── Path format  ─────────────────────────────────────────────────────────────
+# Result: /music/library/Artist/2024 - Album/01 - Title.flac
+paths:
+  default:   "$albumartist/$year - $album/$track - $title"
+  singleton: "$artist/Singles/$year - $title"
+  comp:      "Compilations/$year - $album/$track - $title"
+
+# ─── Plugins ──────────────────────────────────────────────────────────────────
+plugins:
+  - chroma          # AcoustID fingerprinting (requires chromaprint + fpcalc)
+  # fetchart/lyrics/lastgenre dropped 2026-09-04: all three do a network
+  # lookup per file (Cover Art Archive/Last.fm, Genius/AZLyrics, Last.fm
+  # tags) that essentially never matches for original personal recordings —
+  # confirmed on the MP3'd pilot (lyrics hit "too many 429 error responses"
+  # on every single track). At ~4,400 files for the full-archive scan,
+  # that's thousands of network round-trips buying nothing. Not worth
+  # re-enabling unless importing actual commercial releases later.
+  - replaygain      # Loudness normalisation (requires ffmpeg or bs1770gain)
+  - bpm             # BPM tagging via librosa (if installed)
+  - web             # Web UI at http://0.0.0.0:8337
+  - mbsync          # Sync metadata from MusicBrainz
+  - duplicates      # Find duplicate tracks
+  - info            # Print file metadata
+
+# ─── AcoustID fingerprinting ──────────────────────────────────────────────────
+# Get a free API key from https://acoustid.org/my-applications
+chroma:
+  auto: yes
+
+# ─── Cover art ────────────────────────────────────────────────────────────────
+fetchart:
+  auto:           yes
+  sources:        [coverart, itunes, amazon, albumart]
+  store_source:   yes
+  minwidth:       300
+  maxwidth:       1200
+  high_resolution: yes
+
+# ─── Lyrics ───────────────────────────────────────────────────────────────────
+lyrics:
+  auto:     yes
+  sources:  [genius, azlyrics, musixmatch]
+  fallback: ""
+
+# ─── Genre ────────────────────────────────────────────────────────────────────
+lastgenre:
+  auto:      yes
+  source:    track
+  count:     5
+  separator: ", "
+  prefer_specific: yes
+
+# ─── ReplayGain ───────────────────────────────────────────────────────────────
+replaygain:
+  auto:    yes
+  backend: ffmpeg
+
+# ─── BPM ──────────────────────────────────────────────────────────────────────
+bpm:
+  auto:       no        # run manually with: beet bpm
+  max_beats:  16
+
+# ─── Web UI ───────────────────────────────────────────────────────────────────
+web:
+  host:     0.0.0.0
+  port:     8337
+  # beets expects a string origin pattern here, not a YAML boolean — `yes`
+  # parsed to `True` and failed every startup with "web.cors: must be a
+  # string" (found live 2026-08-20, deploying this for the first time).
+  # "*" allows any origin; internal-only service, Traefik/Authelia gates
+  # real access in front of it.
+  cors:     "*"
+  # To enable HTTPS in front of this, use Traefik (see docker-compose.yml)
+
+# ─── MusicBrainz ──────────────────────────────────────────────────────────────
+# Set MUSICBRAINZ_USER_AGENT in environment (format: AppName/1.0 email@example.com)
+musicbrainz:
+  user_agent: "${MUSICBRAINZ_USER_AGENT:-MusicStudio-EP/1.0 user@example.com}"
+  rate_limit_interval: 1.0
+
+# ─── Duplicates ───────────────────────────────────────────────────────────────
+duplicates:
+  checksum: no
+  copy:     no
+  move:     no
+  delete:   no
+  keys:     [mb_trackid, artist, title]
+
+# ─── User-defined fields (Extra metadata for our schema) ──────────────────────
+# These are stored in beets.db but not standard tags — we read them in the library API
+fields:
+  session_id:   ""    # Reference back to music.sessions UUID
+  mood:         ""    # Comma-separated moods (e.g. "energetic, focused")
+  key_signature: ""   # e.g. "E minor"
+  tempo_bpm:    0.0   # Detected or manual BPM
+  ep_status:    "finished"  # draft | needs_more | finished
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+verbose: 0
+
+# ─── UI ───────────────────────────────────────────────────────────────────────
+ui:
+  color: yes

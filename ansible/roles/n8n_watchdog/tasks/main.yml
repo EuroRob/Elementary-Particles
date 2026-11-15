@@ -1,0 +1,114 @@
+---
+# =============================================================================
+# Role: n8n_watchdog
+# Systemd timer on web-01 (NOT a Prometheus -> Alertmanager -> iac-api chain: the
+# fewer hops between "n8n is broken" and "n8n gets restarted", the better). Posts
+# to the System Alerts room with the same dedicated bot as the pg-01 remediation,
+# never through n8n itself.
+# =============================================================================
+- name: "[n8n_watchdog] Pull Vault — n8n API key"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ vault_n8n_api_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: vault_n8n_api
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[n8n_watchdog] Pull Vault — alert bot (Matrix)"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: approle
+    role_id: "{{ vault_role_id }}"
+    secret_id: "{{ vault_secret_id }}"
+    path: "{{ vault_alert_bot_path | regex_replace('^secret/', '') }}"
+    engine_mount_point: secret
+  register: vault_alert_bot
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: "[n8n_watchdog] Create directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ n8n_watchdog_dir }}"
+    - /var/lib/n8n-watchdog
+
+- name: "[n8n_watchdog] Install watchdog script"
+  ansible.builtin.copy:
+    src: n8n_watchdog.py
+    dest: "{{ n8n_watchdog_dir }}/n8n_watchdog.py"
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: "[n8n_watchdog] Write env file (root-only)"
+  ansible.builtin.copy:
+    dest: "{{ n8n_watchdog_dir }}/watchdog.env"
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      N8N_API_KEY={{ vault_n8n_api.secret.api_key }}
+      MATRIX_HOMESERVER={{ vault_alert_bot.secret.homeserver }}
+      MATRIX_ROOM_ID={{ vault_alert_bot.secret.room_id }}
+      MATRIX_BOT_SECRET={{ vault_alert_bot.secret.access_token }}
+      FAIL_THRESHOLD={{ n8n_watchdog_fail_threshold }}
+      RESTART_COOLDOWN_S={{ n8n_watchdog_restart_cooldown_s }}
+      ALERT_REPEAT_S={{ n8n_watchdog_alert_repeat_s }}
+      DRY_RUN={{ '1' if n8n_watchdog_dry_run | bool else '0' }}
+  no_log: true
+
+- name: "[n8n_watchdog] Install systemd service + timer"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: n8n-watchdog.service
+      content: |
+        [Unit]
+        Description=n8n DB-aware health check + self-healing restart
+        After=docker.service
+        Requires=docker.service
+
+        [Service]
+        Type=oneshot
+        EnvironmentFile={{ n8n_watchdog_dir }}/watchdog.env
+        ExecStart=/usr/bin/python3 {{ n8n_watchdog_dir }}/n8n_watchdog.py
+        # non-zero exit = "unhealthy this run", not a unit failure worth alerting on
+        SuccessExitStatus=1
+        TimeoutStartSec=5min
+    - name: n8n-watchdog.timer
+      content: |
+        [Unit]
+        Description=Run the n8n watchdog every {{ n8n_watchdog_interval }}
+
+        [Timer]
+        OnBootSec=5min
+        OnUnitActiveSec={{ n8n_watchdog_interval }}
+        AccuracySec=15s
+
+        [Install]
+        WantedBy=timers.target
+  loop_control:
+    label: "{{ item.name }}"
+  register: n8n_watchdog_units
+
+- name: "[n8n_watchdog] Enable timer"
+  ansible.builtin.systemd:
+    name: n8n-watchdog.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ n8n_watchdog_units is changed }}"

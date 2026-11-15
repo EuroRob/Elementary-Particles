@@ -1,0 +1,363 @@
+{
+  "active": true,
+  "connections": {
+    "Format Failure Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Notify: sync failed (Matrix)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Success Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Notify: sync succeeded (Matrix)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Nightly (02:00)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Trigger netbox_sync_all.yml via IaC API",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Poll task status": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Still running?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Still running?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 10s before next poll",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Success or failure?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Success or failure?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Success Message",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Format Failure Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Trigger netbox_sync_all.yml via IaC API": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 15s for task to initialize",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 10s before next poll": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Poll task status",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 15s for task to initialize": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Poll task status",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "cCFYNUPv1l0xRcnH",
+  "name": "EP: Nightly NetBox Sync (02:00) -> System Alerts (Matrix)",
+  "nodes": [
+    {
+      "id": "format-failure",
+      "name": "Format Failure Message",
+      "parameters": {
+        "jsCode": "const t = $json;\nconst text = `🔴 Nightly NetBox sync FAILED (task ${t.task_id}). NetBox may be missing recent inventory changes — check IaC API logs (journalctl -u iac-api) before trusting patch_status or VM records today.`;\nreturn [{ json: { txn_id: 'netboxsync-fail-' + Date.now(), matrixPayload: { msgtype: 'm.text', body: text } } }];",
+        "mode": "runOnceForEachItem"
+      },
+      "position": [
+        1750,
+        400
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "format-success",
+      "name": "Format Success Message",
+      "parameters": {
+        "jsCode": "const out = ($json.output || '');\nconst created = (out.match(/Created/g) || []).length;\nconst updated = (out.match(/Updated/g) || []).length;\nconst text = `🔄 Nightly NetBox sync complete — ${created} created, ${updated} updated (VMs/IPs/Services). Task ${$json.task_id}.`;\nreturn [{ json: { txn_id: 'netboxsync-ok-' + Date.now(), matrixPayload: { msgtype: 'm.text', body: text } } }];",
+        "mode": "runOnceForEachItem"
+      },
+      "position": [
+        1750,
+        200
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "cron-trigger",
+      "name": "Nightly (02:00)",
+      "notes": "Added 2026-08-17, on request, right after sync_netbox.py was rewritten to read\nAnsible/inventory/services.yml directly instead of the stale/incomplete\nconfig/vms/*.yaml manifests. Runs before the monthly patch scheduler's 03:00\nslot and before most hosts' own nightly backup windows, so NetBox reflects\nreality (new VMs, IP changes, new services) before anything downstream reads\nit that day.\n\nRuns scripts/sync_netbox.py --all via playbooks/netbox_sync_all.yml (a thin\nAnsible wrapper — reuses the same IaC API /api/tasks/ansible/{playbook} path\nevery other workflow in this repo already uses, no new API surface). Fully\nidempotent: creates/updates VMs + IPs + Services in NetBox, never deletes\nanything (no --prune here — pruning stays a manual, deliberate action).",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "0 2 * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        250,
+        300
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "notify-failure",
+      "name": "Notify: sync failed (Matrix)",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        2000,
+        400
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "notify-success",
+      "name": "Notify: sync succeeded (Matrix)",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        2000,
+        200
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "poll-task",
+      "maxTries": 3,
+      "name": "Poll task status",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "url": "=https://iac.internal:8000/api/tasks/{{ $node['Trigger netbox_sync_all.yml via IaC API'].json.task_id }}"
+      },
+      "position": [
+        1000,
+        300
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "still-running",
+      "name": "Still running?",
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "operation": "equal",
+              "value1": "={{ $json.status }}",
+              "value2": "running"
+            }
+          ]
+        }
+      },
+      "position": [
+        1250,
+        300
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1
+    },
+    {
+      "id": "success-check",
+      "name": "Success or failure?",
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "operation": "equal",
+              "value1": "={{ $json.status }}",
+              "value2": "success"
+            }
+          ]
+        }
+      },
+      "position": [
+        1500,
+        300
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "trigger-sync",
+      "name": "Trigger netbox_sync_all.yml via IaC API",
+      "notes": "Same playbook-name convention as rolling_update/netbox_setup_patch_fields:\nbare name (no path, no .yml) in both the URL path segment and the JSON body.",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ JSON.stringify({ playbook: 'netbox_sync_all', inventory: 'services.yml' }) }}",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "https://iac.internal:8000/api/tasks/ansible/netbox_sync_all"
+      },
+      "position": [
+        500,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "wait-poll",
+      "name": "Wait 10s before next poll",
+      "parameters": {
+        "unit": "seconds",
+        "value": 10
+      },
+      "position": [
+        1250,
+        450
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "webhookId": "0cc5d97c-e2e7-49ab-ba8e-ab33bede3ae7"
+    },
+    {
+      "id": "wait-start",
+      "name": "Wait 15s for task to initialize",
+      "parameters": {
+        "unit": "seconds",
+        "value": 15
+      },
+      "position": [
+        750,
+        300
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "webhookId": "097e2e33-cf9e-409c-b4be-7d175c50a1da"
+    }
+  ],
+  "settings": {
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "Europe/Berlin"
+  },
+  "tags": []
+}

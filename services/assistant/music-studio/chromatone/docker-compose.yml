@@ -1,0 +1,23 @@
+# Chromatone (2026-10-31) — visual music theory at theory.home.example.org, on studio-01.
+# Static site in nginx; the image is built by deploy_studio01.yml from ./Dockerfile
+# (pinned upstream commit). Linked from studio.home.example.org/ui/practice.
+name: chromatone
+
+services:
+  chromatone:
+    image: chromatone:local
+    container_name: chromatone
+    restart: unless-stopped
+    mem_limit: 64m
+    cpu_shares: 256
+    ports:
+      - "8204:80"
+    healthcheck:
+      test:     ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 60s
+      timeout:  10s
+      retries:  3
+    labels:
+      ep.service: "chromatone"
+      ep.tier:    "assistant"
+      ep.managed: "true"

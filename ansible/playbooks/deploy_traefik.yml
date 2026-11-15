@@ -1,0 +1,278 @@
+---
+# =============================================================================
+# Playbook: deploy_traefik.yml
+# Deploy Traefik v3 reverse proxy on web-01.
+# After deployment, registers known cross-VM routes via the file provider.
+# =============================================================================
+
+- name: Deploy Traefik (platform reverse proxy)
+  hosts: web-01
+  become: true
+  gather_facts: true
+
+  vars:
+    vault_addr: "{{ lookup('env', 'VAULT_ADDR') | default('http://127.0.0.1:8200') }}"
+    vault_role_id: "{{ lookup('env', 'VAULT_ROLE_ID') }}"
+    vault_secret_id: "{{ lookup('env', 'VAULT_SECRET_ID') }}"
+
+  pre_tasks:
+    - name: Confirm this is web-01
+      ansible.builtin.fail:
+        msg: "This playbook targets web-01 only."
+      when: inventory_hostname != 'web-01'
+
+  roles:
+    - role: traefik
+      tags: ["traefik", "install"]
+
+  post_tasks:
+    # ---- Register cross-VM routes via file provider -------------------------
+    # Each block calls traefik_register to write a file in /etc/traefik/dynamic/
+    # Traefik hot-reloads; no restart needed.
+    # Only registered if the target VM is likely up (ignore_errors for offline VMs).
+
+    - name: "Register route: vpn.internal → wg-easy (vpn-01)"
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "wg-easy"
+        traefik_backend_url: "http://10.0.10.5:51821"
+        traefik_domain: "vpn.internal"
+        traefik_auth: "two_factor"
+        traefik_healthcheck_path: "/"
+      tags: ["traefik_register", "vpn"]
+
+    - name: "Register route: chat.internal → OpenWebUI (gpu-01)"
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "open-webui"
+        traefik_backend_url: "http://10.0.30.50:3000"
+        traefik_domain: "chat.internal"
+        traefik_auth: "one_factor"
+        traefik_healthcheck_path: "/"
+      tags: ["traefik_register", "gpu"]
+
+    - name: "Register route: ollama.internal → Ollama API (gpu-01)"
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "ollama"
+        traefik_backend_url: "http://10.0.30.50:11434"
+        traefik_domain: "ollama.internal"
+        traefik_auth: "one_factor"
+        traefik_rate_limit: true
+        traefik_healthcheck_path: "/api/tags"
+      tags: ["traefik_register", "gpu"]
+
+    - name: "Register route: yolo.internal → YOLO (gpu-01)"
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "yolo"
+        traefik_backend_url: "http://10.0.30.50:8000"
+        traefik_domain: "yolo.internal"
+        traefik_auth: "one_factor"
+        traefik_healthcheck_path: "/health"
+      tags: ["traefik_register", "gpu"]
+
+    - name: "Register route: pihole.internal → Pi-hole (dns-01)"
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "pihole"
+        traefik_backend_url: "http://10.0.30.10:80"
+        traefik_domain: "pihole.internal"
+        traefik_auth: "two_factor"
+        traefik_healthcheck_path: "/admin/"
+      tags: ["traefik_register", "dns"]
+
+    - name: "Register route: podcast.home.example.org → podcast-api (web-01 Docker)"
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "podcast-api"
+        traefik_backend_url: "http://podcast-api:8001"
+        traefik_domain: "podcast.home.example.org"
+        traefik_auth: "one_factor"
+        traefik_healthcheck_path: "/health"
+      tags: ["traefik_register", "podcast"]
+
+    - name: "Register route: jira.home.example.org → Jira (web-02)"
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "jira"
+        traefik_backend_url: "http://10.0.30.11:8080"
+        traefik_domain: "jira.home.example.org"
+        traefik_auth: "one_factor"
+        traefik_healthcheck_path: "/status"
+      tags: ["traefik_register", "atlassian"]
+
+    - name: "Register route: pve-01.home.example.org → Proxmox UI (pve-01, self-signed backend)"
+      # 2026-08-15: Proxmox's built-in web UI (10.0.0.11:8006) uses a
+      # self-signed cert — mobile browsers (Brave, Firefox) refuse to let
+      # the user click through the warning at all. Fronts it with the real
+      # *.home.example.org wildcard cert instead. Needs
+      # Roles/opnsense/tasks/firewall_rules.yml's new web-01 -> 10.0.0.11:8006
+      # PASS rule (Services/VLAN30 -> Client/flat LAN is blocked by default).
+      # two_factor (not oidc/one_factor) since this is hypervisor
+      # management — same protection level as wg-easy's admin UI.
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "pve-01"
+        traefik_backend_url: "https://10.0.0.11:8006"
+        traefik_backend_insecure_tls: true
+        traefik_domain: "pve-01.home.example.org"
+        traefik_auth: "two_factor"
+        traefik_healthcheck_path: "/"
+      tags: ["traefik_register", "proxmox"]
+
+    - name: "Register route: pve-02.home.example.org → Proxmox UI (pve-02, self-signed backend)"
+      # 2026-08-25: same fix as pve-01.home.example.org (2026-08-15) applied to pve-02 —
+      # mobile browsers over VPN refuse the self-signed cert at 10.0.0.12:8006.
+      # Needs Roles/opnsense/tasks/firewall_rules.yml's web-01 -> 10.0.0.12:8006
+      # PASS rule. two_factor since this is hypervisor management, same as pve-01.
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "pve-02"
+        traefik_backend_url: "https://10.0.0.12:8006"
+        traefik_backend_insecure_tls: true
+        traefik_domain: "pve-02.home.example.org"
+        traefik_auth: "two_factor"
+        traefik_healthcheck_path: "/"
+      tags: ["traefik_register", "proxmox"]
+
+    - name: "Register route: pve-03.home.example.org → Proxmox UI (pve-03, self-signed backend)"
+      # 2026-08-25: same fix as pve-01.home.example.org (2026-08-15) applied to pve-03 —
+      # mobile browsers over VPN refuse the self-signed cert at 10.0.0.13:8006.
+      # Needs Roles/opnsense/tasks/firewall_rules.yml's web-01 -> 10.0.0.13:8006
+      # PASS rule. two_factor since this is hypervisor management, same as pve-01.
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "pve-03"
+        traefik_backend_url: "https://10.0.0.13:8006"
+        traefik_backend_insecure_tls: true
+        traefik_domain: "pve-03.home.example.org"
+        traefik_auth: "two_factor"
+        traefik_healthcheck_path: "/"
+      tags: ["traefik_register", "proxmox"]
+
+    - name: "Register route: osem.home.example.org → OSemSearch (VM 106 on pve-02, VLAN60)"
+      # 2026-09-26: OSemSearch has no auth of its own, so it sits behind
+      # Authelia one_factor. Backend is its Apache (Solr itself only
+      # listens on 127.0.0.1). Pi-hole: osem.home.example.org -> 10.0.30.20
+      # (internal name ossem.internal -> 10.0.60.9).
+      ansible.builtin.include_role:
+        name: traefik_register
+        apply:
+          tags: ["traefik_register", "osemsearch"]   # so --tags osemsearch runs the role's tasks too
+      vars:
+        traefik_service_name: "osemsearch"
+        traefik_backend_url: "http://10.0.60.9"
+        traefik_domain: "osem.home.example.org"
+        traefik_auth: "one_factor"
+        traefik_healthcheck_path: "/search/"
+      tags: ["traefik_register", "osemsearch"]
+
+    - name: "Redirect osem.home.example.org/ → /search/ (root is Apache's default page)"
+      ansible.builtin.copy:
+        dest: /etc/traefik/dynamic/osemsearch-root-redirect.yml
+        mode: "0644"
+        content: |
+          http:
+            routers:
+              osemsearch-root-redirect:
+                rule: "Host(`osem.home.example.org`) && Path(`/`)"
+                entryPoints:
+                  - "websecure"
+                tls: {}
+                priority: 100
+                middlewares:
+                  - "osemsearch-root-redirect@file"
+                service: "osemsearch"
+            middlewares:
+              osemsearch-root-redirect:
+                redirectRegex:
+                  regex: "^https://osem\\.home\\.example\\.org/$"
+                  replacement: "https://osem.home.example.org/search/"
+                  permanent: false
+      tags: ["traefik_register", "osemsearch"]
+
+    - name: "Register route: wiki.home.example.org → Confluence (web-02)"
+      ansible.builtin.include_role:
+        name: traefik_register
+      vars:
+        traefik_service_name: "confluence"
+        traefik_backend_url: "http://10.0.30.11:8090"
+        traefik_domain: "wiki.home.example.org"
+        traefik_auth: "one_factor"
+        traefik_healthcheck_path: "/status"
+      tags: ["traefik_register", "atlassian"]
+
+    # DOMO web app (2026-10-09): page + WebRTC signalling over HTTPS. The
+    # voice itself goes straight to gpu-02 over WireGuard (UDP, no relay).
+    # Authelia in front, plus each phone's own token inside the app.
+    - name: "Register route: domo.home.example.org → DOMO gateway (gpu-02)"
+      ansible.builtin.include_role:
+        name: traefik_register
+        # Tags on an include_role reach the role's tasks only via apply:
+        # without it, --tags domo runs the include and writes nothing.
+        apply:
+          tags: ["traefik_register", "domo"]
+      vars:
+        traefik_service_name: "domo"
+        traefik_backend_url: "http://10.0.30.51:7860"
+        traefik_domain: "domo.home.example.org"
+        traefik_auth: "one_factor"
+        traefik_healthcheck_path: "/status"
+        # Safari only allows the microphone if Permissions-Policy permits it
+        # (the shared secure-headers default denies it; see voice.home.example.org).
+        traefik_permissions_policy_override: "microphone=(self)"
+      tags: ["traefik_register", "domo"]
+
+    # ---- Verify all registered routes are known to Traefik ------------------
+    - name: Verify Traefik routers after file provider reload
+      ansible.builtin.uri:
+        url: "http://localhost:8080/api/http/routers"
+        method: GET
+        status_code: 200
+      register: routers
+      retries: 3
+      delay: 8
+      until: routers.status == 200
+
+    - name: List registered router names
+      ansible.builtin.debug:
+        msg: "Registered routers: {{ routers.json | map(attribute='name') | list | sort }}"
+
+    - name: Write Traefik deployment log
+      ansible.builtin.copy:
+        dest: /var/log/traefik-deployment.log
+        content: |
+          Traefik Deployment
+          ==================
+          Date    : {{ ansible_date_time.iso8601 }}
+          Version : v3.1
+          Host    : {{ inventory_hostname }} (10.0.30.10)
+
+          Providers
+          ---------
+          Docker provider : containers on 'traefik' network
+          File provider   : /etc/traefik/dynamic/ (hot-reload)
+
+          Cross-VM routes registered
+          --------------------------
+          vpn.internal           → http://10.0.10.5:51821     (2FA)
+          chat.internal          → http://10.0.30.50:3000     (1FA)
+          ollama.internal        → http://10.0.30.50:11434    (1FA + rate-limit)
+          yolo.internal          → http://10.0.30.50:8000     (1FA)
+          pihole.internal        → http://10.0.30.10:80       (2FA)
+          jira.home.example.org        → http://10.0.30.11:8080     (1FA)
+          wiki.home.example.org        → http://10.0.30.11:8090     (1FA)
+
+          Routers seen: {{ routers.json | map(attribute='name') | list | sort | join(', ') }}
+        mode: "0644"

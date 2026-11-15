@@ -1,0 +1,16 @@
+---
+- name: "[restic] Install restic binary"
+  import_tasks: install.yml
+  tags: ["restic", "install"]
+
+- name: "[restic] Initialise repositories"
+  import_tasks: repo_init.yml
+  tags: ["restic", "init"]
+
+- name: "[restic] Deploy backup scripts"
+  import_tasks: scripts.yml
+  tags: ["restic", "scripts"]
+
+- name: "[restic] Configure systemd timers"
+  import_tasks: systemd.yml
+  tags: ["restic", "systemd"]

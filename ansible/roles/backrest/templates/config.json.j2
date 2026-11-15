@@ -1,0 +1,31 @@
+{
+  "modno": 1,
+  "version": {{ backrest_config_seed_version }},
+  "instance": "{{ backrest_instance_id }}",
+  "repos": [
+{% for r in backrest_vault_repos.results %}
+    {
+      "id": "{{ r.item.id }}",
+      "uri": "{{ r.item.uri }}",
+      "guid": "{{ backrest_repo_guids[r.item.id] }}",
+      "env": [
+        "RESTIC_PASSWORD_FILE={{ backrest_config_dir }}/secrets/{{ r.item.id }}.pass",
+        "RESTIC_REST_USERNAME={{ r.secret.rest_user }}",
+        "RESTIC_REST_PASSWORD={{ r.secret.rest_password }}"
+      ],
+      "flags": [],
+      "prunePolicy": { "schedule": { "disabled": true } },
+      "checkPolicy": { "schedule": { "disabled": true } },
+      "autoUnlock": false,
+      "autoInitialize": false
+    }{{ "," if not loop.last else "" }}
+{% endfor %}
+  ],
+  "plans": [],
+  "auth": {
+    "disabled": false,
+    "users": [
+      { "name": "{{ backrest_admin_user }}", "passwordBcrypt": "{{ backrest_admin_hash.stdout.split(':', 1)[1] | b64encode }}" }
+    ]
+  }
+}

@@ -1,0 +1,163 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/template_sync.yml
+#
+# Syncs VM templates from the NAS golden store to a local ZFS dataset.
+# Designed for pve-02 and pve-03 (WoL burst hosts) so they can clone VMs
+# immediately on startup WITHOUT requiring the NAS to be online.
+#
+# Flow:
+#   1. NAS-01 exports /srv/nas/pve-templates (master copies)
+#   2. On startup, this task rsyncs NAS → local ZFS template cache
+#   3. Proxmox uses the local cache for cloning (faster; NAS-independent)
+#
+# pve-01 (always-on) can rely on the NAS NFS mount directly and does not
+# need local caching (set pve_template_sync_enabled: false for pve-01).
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# 1. Ensure rsync is installed
+# ---------------------------------------------------------------------------
+- name: "TMPL-SYNC: Install rsync"
+  ansible.builtin.apt:
+    name: rsync
+    state: present
+  tags: [templates, sync]
+
+# ---------------------------------------------------------------------------
+# 2. Validate source and destination
+# ---------------------------------------------------------------------------
+- name: "TMPL-SYNC: Check NAS source is mounted"
+  ansible.builtin.stat:
+    path: "{{ pve_template_sync_source }}"
+  register: sync_src
+  tags: [templates, sync]
+
+- name: "TMPL-SYNC: Fail if NAS source not available"
+  ansible.builtin.fail:
+    msg: >-
+      Template sync source '{{ pve_template_sync_source }}' is not available.
+      Mount NAS first (nas_mounts.yml) or disable pve_template_sync_enabled.
+  when: not sync_src.stat.exists
+  tags: [templates, sync]
+
+- name: "TMPL-SYNC: Ensure local cache directory exists"
+  ansible.builtin.file:
+    path: "{{ pve_template_sync_dest }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: pve_template_sync_dest != ""
+  tags: [templates, sync]
+
+# ---------------------------------------------------------------------------
+# 3. Rsync templates
+# ---------------------------------------------------------------------------
+- name: "TMPL-SYNC: Sync ALL templates from NAS to local cache"
+  ansible.posix.synchronize:
+    src: "{{ pve_template_sync_source }}"
+    dest: "{{ pve_template_sync_dest }}"
+    delete: false        # don't delete local copies NAS no longer has (safety)
+    recursive: true
+    archive: true
+    checksum: true       # use checksums, not just mtime (VMs may be sparse)
+    rsync_opts:
+      - "--bwlimit=0"    # no bandwidth limit on local LAN
+      - "--progress"
+  delegate_to: "{{ inventory_hostname }}"
+  when:
+    - pve_template_sync_dest != ""
+    - pve_template_ids_required | length == 0   # sync all if no filter
+  register: rsync_all_result
+  tags: [templates, sync]
+
+- name: "TMPL-SYNC: Sync SPECIFIC template IDs from NAS to local cache"
+  ansible.posix.synchronize:
+    src: "{{ pve_template_sync_source }}"
+    dest: "{{ pve_template_sync_dest }}"
+    delete: false
+    recursive: true
+    archive: true
+    checksum: true
+    rsync_opts:
+      - "--include=*/"
+      - "{% for id in pve_template_ids_required %}--include=*{{ id }}*\n{% endfor %}"
+      - "--exclude=*"
+  delegate_to: "{{ inventory_hostname }}"
+  when:
+    - pve_template_sync_dest != ""
+    - pve_template_ids_required | length > 0
+  register: rsync_filtered_result
+  tags: [templates, sync]
+
+# ---------------------------------------------------------------------------
+# 4. Refresh Proxmox storage catalog so new templates appear in UI
+# ---------------------------------------------------------------------------
+- name: "TMPL-SYNC: Refresh Proxmox storage catalog"
+  ansible.builtin.command:
+    cmd: pvesm rescan --storage {{ item }}
+  loop: "{{ pve_storage_definitions | selectattr('content', 'search', 'images') | map(attribute='id') | list }}"
+  changed_when: true
+  ignore_errors: true
+  tags: [templates, sync, pvesm]
+
+# ---------------------------------------------------------------------------
+# 5. Install startup sync systemd timer (for WoL hosts)
+# Runs template sync at boot + daily to keep local cache fresh.
+# ---------------------------------------------------------------------------
+- name: "TMPL-SYNC: Deploy startup sync systemd service"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pve-template-sync.service
+    content: |
+      [Unit]
+      Description=Sync Proxmox VM templates from NAS
+      After=network-online.target nfs-client.target
+      Wants=network-online.target
+      RequiresMountsFor={{ pve_template_sync_source }}
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/rsync -av --checksum \
+        {{ pve_template_sync_source }} \
+        {{ pve_template_sync_dest }}
+      ExecStartPost=/usr/sbin/pvesm rescan
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root
+    group: root
+    mode: "0644"
+  when: pve_template_sync_on_startup | bool
+  tags: [templates, sync, systemd]
+
+- name: "TMPL-SYNC: Deploy startup sync systemd timer"
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/pve-template-sync.timer
+    content: |
+      [Unit]
+      Description=Run Proxmox template sync at boot and daily
+
+      [Timer]
+      OnBootSec=120s
+      OnCalendar=daily
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+    owner: root
+    group: root
+    mode: "0644"
+  when: pve_template_sync_on_startup | bool
+  tags: [templates, sync, systemd]
+
+- name: "TMPL-SYNC: Enable and start template sync timer"
+  ansible.builtin.systemd:
+    name: pve-template-sync.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: pve_template_sync_on_startup | bool
+  tags: [templates, sync, systemd]

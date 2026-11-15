@@ -1,0 +1,171 @@
+---
+# =============================================================================
+# Elementary Particle: backup
+# File: IaC/services/platform/backup/service.yaml
+#
+# Backup strategy for the elementary particles homelab.
+# Engine: Restic — deduplicating, encrypted, S3-compatible.
+#
+# Backup targets:
+#   web-01    → Docker compose volumes (/opt/*), Traefik certs, app configs
+#   pg-01     → pg_dump of all databases (piped directly into restic)
+#   gpu-01    → OpenWebUI data dir, Ollama configs (not model weights)
+#   nas-01    → OMV config export, critical NFS share data
+#
+# Storage backends:
+#   Primary   → MinIO on NAS (S3-compatible, vlan40) — fast, local, cheap
+#   Offsite   → IONOS S3 Object Storage — same provider as DNS, separate account
+#               Populated weekly by `restic copy` (no re-upload, server-side copy)
+#
+# Repository layout:
+#   s3://restic/{hostname}/          ← one repo per host, encrypted independently
+#
+# Retention policy (applied at forget/prune after every backup run):
+#   --keep-daily 7
+#   --keep-weekly 4
+#   --keep-monthly 12
+#   --keep-yearly 2
+#
+# Delivery:
+#   Systemd service + timer per job (journald logging, failure tracking)
+#   n8n webhook on failure (via OnFailure= systemd unit)
+#   Weekly restic check --read-data-subset=5% (spot integrity check)
+# =============================================================================
+
+apiVersion: particles/v1
+kind: Service
+metadata:
+  name: backup
+  version: "0.17"       # restic version
+  tier: platform
+  hosts_on: all          # applied to every node via Ansible
+  vlan: all
+
+tags:
+  expose: "false"
+  ingress: "none"
+  auth: "none"
+  network: "all"
+  dns: "false"
+  tier: "platform"
+  category: "Backup"
+  icon: "shield"
+  sla: "critical"
+  backup: "self"
+  environment: "production"
+
+deployment:
+  platform: native          # restic binary + systemd — no Docker needed
+  deploy_via: ansible_role  # role: restic
+  role: restic
+
+# ---------------------------------------------------------------------------
+# Job definitions per host
+# Rendered into per-host scripts + systemd timers by the restic Ansible role.
+# ---------------------------------------------------------------------------
+hosts:
+  web-01:
+    ip: 10.0.30.10
+    jobs:
+      - name: docker-volumes
+        type: docker          # pause compose stacks → backup → unpause
+        paths:
+          - /opt/outline
+          - /opt/traefik
+          - /opt/n8n
+          - /opt/voice-ai
+          - /opt/immich
+        compose_dirs:
+          - /opt/outline
+          - /opt/traefik
+          - /opt/voice-ai
+        excludes:
+          - "*.log"
+          - "*.tmp"
+          - "node_modules/"
+          - ".git/"
+        schedule: "02:00"     # 02:00 UTC daily
+      - name: configs
+        type: files
+        paths:
+          - /etc/traefik
+          - /opt/*/docker.env   # all compose env files (secrets encrypted by restic)
+        schedule: "01:30"
+
+  pg-01:
+    ip: 10.0.40.10
+    jobs:
+      - name: postgres-dumps
+        type: postgres
+        databases: all        # pg_dump each database individually
+        pg_user: postgres
+        schedule: "01:00"     # before docker-volumes on web-01
+      - name: configs
+        type: files
+        paths:
+          - /etc/postgresql
+          - /etc/pgbackrest
+        schedule: "01:15"
+
+  gpu-01:
+    ip: 10.0.30.50
+    jobs:
+      - name: gpu-data
+        type: files
+        paths:
+          - /opt/open-webui/data    # user uploads, conversations, settings
+          - /etc/systemd/system/ollama.service
+        excludes:
+          - "*.log"
+        schedule: "03:00"
+
+# ---------------------------------------------------------------------------
+# Backend configuration
+# ---------------------------------------------------------------------------
+backend:
+  primary:
+    type: s3
+    endpoint: "http://nas-01.internal:9000"
+    bucket: restic
+    region: us-east-1        # MinIO doesn't care — any non-empty string
+    vault_path: secret/restic/primary   # keys: access_key, secret_key, password
+  offsite:
+    type: s3
+    endpoint: "https://s3-eu-central-1.ionoscloud.com"
+    bucket: "backup-homelab-restic"
+    region: de              # IONOS datacenter region
+    vault_path: secret/restic/offsite  # keys: access_key, secret_key
+    # Uses same RESTIC_PASSWORD as primary — offsite repo is a copy
+    copy_schedule: "weekly"  # restic copy primary → offsite weekly
+
+# ---------------------------------------------------------------------------
+# Retention
+# ---------------------------------------------------------------------------
+retention:
+  keep_daily: 7
+  keep_weekly: 4
+  keep_monthly: 12
+  keep_yearly: 2
+  prune: true              # --prune in forget command (removes unreferenced data)
+
+# ---------------------------------------------------------------------------
+# Alerting
+# ---------------------------------------------------------------------------
+alerting:
+  on_failure:
+    webhook: "http://n8n.internal/webhook/backup-alert"
+    systemd_unit: restic-alert@.service
+  weekly_check:
+    read_data_subset: "5%"   # random 5% integrity check
+    schedule: "sunday 04:00"
+
+# ---------------------------------------------------------------------------
+# Secrets (Vault)
+# ---------------------------------------------------------------------------
+secrets:
+  - path: secret/restic/primary
+    keys: [access_key, secret_key, password]
+    notes: "MinIO S3 credentials + restic encryption password (openssl rand -hex 32)"
+  - path: secret/restic/offsite
+    keys: [access_key, secret_key]
+    notes: "IONOS S3 credentials (separate account from DNS API key)"

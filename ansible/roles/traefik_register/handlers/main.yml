@@ -1,0 +1,11 @@
+---
+- name: verify traefik reload
+  ansible.builtin.uri:
+    url: "http://localhost:8080/api/http/routers/{{ traefik_service_name }}@file"
+    method: GET
+    status_code: [200, 404]   # 404 is fine — means Traefik is up but route not yet loaded
+  delegate_to: "{{ traefik_host }}"
+  register: route_check
+  retries: 3
+  delay: 6
+  until: route_check.status in [200, 404]

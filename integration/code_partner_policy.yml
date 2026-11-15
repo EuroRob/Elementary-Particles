@@ -1,0 +1,134 @@
+# =============================================================================
+# code-partner guardrails (IaC/docs/CODE_PARTNER.md)
+#
+# Read by code_partner.py at start. Every rule here is enforced in code, not by
+# asking the model: the model only ever *proposes*; applying, committing,
+# pushing and opening a PR are separate steps a person confirms.
+#
+# code-partner may not edit this file or its own source (paths.deny_write), so
+# loosening a guardrail is always a change owner makes himself.
+# =============================================================================
+
+people: [owner]                       # who may start a coding session
+
+git:
+  remote: origin
+  base_branch: master               # every session branches from origin/master
+  branch_prefix: "domo/"            # the only branches code-partner creates, commits to or pushes
+  protected_branches: [master, main]
+  author_name: "DOMO code partner"
+  author_email: "admin@home.example.org"
+  # Forgejo enforces the same server-side: master is protected, only owner may
+  # push or merge (see CODE_PARTNER.md, "Forgejo"). There is no merge call in
+  # code_partner.py at all.
+
+paths:
+  # Never read, never written. fnmatch patterns on the repo-relative path; "*"
+  # also matches "/".
+  deny_read:
+    - ".git/*"
+    - "*.env"
+    - "*/.env"
+    - ".env"
+    - "*.env.*"
+    - "*terraform.tfvars"
+    - "*.tfstate"
+    - "*.tfstate.*"
+    - "*/.terraform/*"
+    - "*secrets/*"
+    - "*vault_seed*"
+    - "*.pem"
+    - "*.key"
+    - "*.p12"
+    - "*.kdbx"
+    - "*id_rsa*"
+    - "*id_ed25519*"
+    - "*id_ansible*"
+    - "*id_iac*"
+    - "*.sqlite"
+    - "*.db"
+  # Readable, but never written by code-partner.
+  deny_write:
+    - "*code_partner*"                # its own source, tests, UI and these guardrails
+    - "*Roles/code_partner/*"         # how it is deployed
+    - "*.gitignore"                   # un-ignoring tfvars/.env would leak them
+    - ".forgejo/*"                    # CI runs with credentials
+    - ".gitea/*"
+    - ".github/*"
+    - ".claude/*"
+    - "*CLAUDE.md"
+    - "*inventory/group_vars/vault*"
+  # Binary or huge files are never proposed.
+  allowed_suffixes_for_write: [".py", ".yml", ".yaml", ".j2", ".md", ".txt", ".json", ".sh", ".tf",
+                               ".cfg", ".ini", ".toml", ".html", ".css", ".js", ".sql", ".conf",
+                               ".service", ".timer"]
+
+limits:
+  max_read_lines: 250               # one read_file call
+  max_search_hits: 40
+  max_list_entries: 200
+  max_files_per_change: 4
+  max_changed_lines: 160            # added + removed, per change
+  max_tool_rounds: 10               # model <-> tools per spoken turn (6 ran out in the full repo, 2026-11-05)
+  max_turn_seconds: 120
+  history_messages: 24              # kept per session (older ones drop out)
+  pending_ttl_minutes: 60           # an unconfirmed change expires
+  session_idle_minutes: 45          # no turn this long -> the session ends itself
+
+# Shown to the model in every session, instead of guessing from folder sizes
+# (the vendored Docker/ trees dwarf the IaC; seen live 2026-11-05).
+repo_hints:
+  - "ansible/inventory/services.yml -- every host and its settings (the single source of truth)"
+  - "ansible/playbooks/deploy_<host>.yml -- one playbook per VM, e.g. deploy_studio01.yml"
+  - "ansible/roles/<role>/ -- tasks/main.yml, templates/, defaults/main.yml"
+  - "terraform/envs/<vm>/ -- main.tf, variables.tf per VM"
+  - "services/<tier>/<service>/service.yaml -- each particle's manifest; docker-compose.yml next to it"
+  - "integration/ -- the Python services (DOMO, studio partner, travel, ...) and their tests"
+  - "docs/ -- design docs, UPPER_CASE.md"
+  - "scripts/ -- operational scripts (patch window, sync, Vault)"
+
+models:
+  # Only models that are ALREADY resident, each with the num_ctx it is loaded
+  # with. Any other model or num_ctx makes Ollama reload, and DOMO stalls while
+  # it does (CONTINUE_LOCAL_AI.md). "switch model to <alias>" picks from here.
+  default: gpu01-primary
+  allowed:
+    gpu01-primary:
+      url: "http://10.0.30.50:11434"
+      model: "gpu01-primary"
+      num_ctx: 16384
+      temperature: 0.2
+      aliases: [primary, default, ministral, gpu-01]
+    # Not offered yet: gpu-02 holds DOMO's router model at num_ctx 2048, too
+    # small for code. Add a coder model here only once a GPU has room for it.
+
+voice:
+  # Whisper's prompt: words it should expect, so "Ansible" doesn't become "and simple".
+  whisper_prompt: >-
+    DOMO coding session. Ansible, Terraform, playbook, inventory, services.yml, YAML, Forgejo,
+    Traefik, Authelia, Vault, Pi-hole, OPNsense, Proxmox, pve-01, pve-03, pve-02, studio-01, gpu-01,
+    gpu-02, web-01, pg-01, nas-02, DATAGRID, Docker, compose, systemd, retries, branch, commit,
+    pull request, apply change, reject it, push it.
+
+# Checks run by code on every proposed file and again before each commit.
+# All parse or compile only; none of them executes repo code.
+checks:
+  yaml: true                        # yaml.safe_load_all, unknown tags (!vault, !unsafe) allowed
+  json: true
+  python: true                      # compile(), not import
+  shell: true                       # bash -n
+  terraform_fmt: true               # terraform fmt -check, when terraform is installed
+  ansible_syntax: false             # needs the inventory + roles; phase 2
+  pytest: false                     # executes code: only with a sandbox (phase 2)
+
+secret_patterns:                    # an added line matching any of these blocks the change
+  - "-----BEGIN [A-Z ]*PRIVATE KEY-----"
+  - "\\bhvs\\.[A-Za-z0-9_-]{20,}"   # Vault token
+  - "\\bs\\.[A-Za-z0-9]{24}\\b"     # Vault token (legacy)
+  - "\\bgh[pousr]_[A-Za-z0-9]{30,}"
+  - "\\bglpat-[A-Za-z0-9_-]{20,}"
+  - "\\bAKIA[0-9A-Z]{16}\\b"
+  - "\\bxox[abprs]-[A-Za-z0-9-]{10,}"
+  - "\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}"     # JWT
+  - "PVEAPIToken=[^\\s\"'$]*=[0-9a-f-]{20,}"
+  - "(?i)\\b(?:password|passwd|secret|api[_-]?key|token|client_secret)\\b\\s*[:=]\\s*[\"']?(?![\"']?\\s*(?:\\{\\{|\\$\\{|\\$\\(|<|lookup|vault|env|os\\.environ|None|null|true|false|\"\"|''))[^\\s\"'#]{12,}"

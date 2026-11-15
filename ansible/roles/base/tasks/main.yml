@@ -1,0 +1,269 @@
+---
+# Package upgrades are intentionally NOT done here — all patching (including
+# this initial-provisioning apt cache refresh's implied updates) flows through
+# playbooks/rolling_update.yml, which snapshots the VM first and rolls back
+# automatically on a failed health check. Doing an unguarded `apt upgrade`
+# here would bypass that safety net.
+- name: Update apt cache (metadata only — no package upgrades here)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install common utilities
+  # `ntp` deliberately NOT in this list (removed 2026-09-20) — on Debian 12
+  # it's a transitional package that pulls in ntpsec as a dependency,
+  # force-reinstalling it on EVERY run of this role regardless of what NTP
+  # client a host actually uses. Found live on nas-02 (chrony host): this
+  # task silently reinstalled ntpsec every time, which the detection logic
+  # further down then correctly saw as "installed" and tried to configure/
+  # restart — except ntpsec's postinst never actually registers a working
+  # systemd unit in this state, so the restart handler fatally crashed the
+  # whole play ("Unit ntpsec.service not found"). The NTP detection/config
+  # tasks below are explicitly designed to use whichever client is already
+  # present on a host — this task forcing one into existence defeated that
+  # entirely. Every host already has SOME NTP client from its base image;
+  # nothing here needs to force-install one.
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - vim
+      - git
+      - htop
+      - net-tools
+      - dnsutils
+      - unattended-upgrades
+      # acl (setfacl) -- without it, any later task using become_user on
+      # this host fails with a broken ACL-style chmod ("chmod A+user:...")
+      # instead of Ansible's normal unprivileged-become path. Found live
+      # 2026-09-08 deploying dmz-pg-01's `become_user: postgres` tasks.
+      - acl
+    state: present
+
+- name: Install python3-pip (Proxmox-managed VMs only)
+  ansible.builtin.apt:
+    name: python3-pip
+    state: present
+  when: proxmox_node is defined
+  # ^ Skipped on non-Proxmox hosts (e.g. ionos-vps-01) — on Ubuntu 24.04
+  # this recommends build-essential, dragging in the full gcc/g++ toolchain
+  # (~60 packages) that a lean public-facing host has no use for. Nothing
+  # in this repo's Ansible automation actually needs pip on the target —
+  # it uses the system python3 interpreter directly.
+
+- name: Install qemu-guest-agent (Proxmox-managed VMs only)
+  ansible.builtin.apt:
+    name: qemu-guest-agent
+    state: present
+  when: proxmox_node is defined
+
+- name: Enable and start qemu-guest-agent (Proxmox-managed VMs only)
+  ansible.builtin.systemd:
+    name: qemu-guest-agent
+    state: started
+    enabled: true
+  when: proxmox_node is defined
+  # ^ Skipped on non-Proxmox hosts (e.g. ionos-vps-01) — there's no QEMU host
+  # underneath a real cloud VPS for the virtio-serial channel to talk to;
+  # this would otherwise fail the whole play on any such host.
+
+# ---------------------------------------------------------------------------
+# unattended-upgrades is installed (some tooling expects the package present)
+# but its automatic timers are disabled. All patching — including kernel
+# updates — must go through playbooks/rolling_update.yml so it happens under
+# a Proxmox snapshot with a health-check/rollback gate. An unsupervised
+# unattended-upgrades install previously bumped a GPU host's kernel without
+# a matching DKMS rebuild or reboot, leaving it silently broken for days
+# until an unrelated restart exposed it.
+# ---------------------------------------------------------------------------
+- name: Disable unattended-upgrades automatic periodic behavior
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "0";
+      APT::Periodic::Unattended-Upgrade "0";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Stop and disable unattended-upgrades timers/service
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - apt-daily-upgrade.timer
+    - apt-daily-upgrade.service
+    - unattended-upgrades.service
+  failed_when: false
+
+- name: Set timezone to UTC
+  community.general.timezone:
+    name: UTC
+
+# ---------------------------------------------------------------------------
+# NTP — anchored on dns-01 (10.0.30.10), audited/rebuilt 2026-08-14. See
+# project_ntp_infrastructure_idea memory + IaC/docs/NTP_INFRASTRUCTURE.md for
+# the full story (triggered by NASTY's 45s clock drift silently breaking OTP
+# login). Two real bugs found in what this replaces:
+#
+# 1. The old "Ensure NTP is started" task (name: ntp/ntpsec) was silently
+#    inconsistent across the fleet: on web-01 that package isn't even
+#    installed (systemd-timesyncd was the only thing actually running,
+#    unnoticed by this task, which never errored). On gpu-01 both ntpsec
+#    AND systemd-timesyncd showed `active` simultaneously — two daemons
+#    both trying to own port 123 is a real conflict risk, not just untidy.
+#    Standardizing on ONE mechanism (timesyncd, client-only, no separate
+#    package needed) and explicitly disabling the other everywhere.
+# 2. Nothing anywhere pointed any client at an internal time source at all —
+#    every host was independently trusting whatever public pool server its
+#    package defaults picked, with no shared source of truth. OPNsense
+#    (fw-01) was tried as that anchor previously and doesn't work — it
+#    syncs upstream fine but doesn't respond to client NTP queries on any
+#    LAN interface (confirmed via direct protocol-level test, not just
+#    "service shows running" — a real gap in Services -> NTP's interface
+#    binding, left unfixed since dns-01 already works with zero extra
+#    config). dns-01 already runs ntpsec, bound to 0.0.0.0:123, with a
+#    sane default ACL (`noquery` blocks only mode-6/7 management queries,
+#    not regular time sync) — confirmed responding correctly to a real
+#    NTP client query before choosing it as the anchor.
+#
+# dns-01 itself is excluded below -- it keeps syncing from its own
+# (already healthy, stratum 2-3) public pool upstream via ntpsec, since
+# it's the thing everyone else should point at, not point at itself.
+# ---------------------------------------------------------------------------
+
+- name: "NTP: detect whether ntpsec is installed"
+  # Found live 2026-08-14: forcing everything onto timesyncd doesn't work
+  # cleanly fleet-wide — Debian's ntpsec package masks systemd-timesyncd in
+  # its own postinst (standard behavior, avoiding the exact dual-daemon
+  # conflict this was originally trying to prevent), and unmasking it just
+  # to immediately want it running fights the package manager for no
+  # benefit. Simpler, more robust: use whichever client is already present
+  # on each host and just point IT at dns-01, rather than standardizing the
+  # whole fleet on one technology. ntpsec is a fully capable client too.
+  #
+  # FIXED 2026-09-20: `dpkg -s ntpsec` returns rc=0 even for a package in
+  # "deinstall ok config-files" state (removed, config left behind) — found
+  # live on nas-02, which actually runs chrony. The old `rc == 0` check
+  # treated that as "ntpsec installed", tried to restart a service with no
+  # unit file at all, and fatally aborted the whole play before it ever
+  # reached omv_nas. Now greps stdout for the real "install ok installed"
+  # status line instead of trusting the exit code alone.
+  ansible.builtin.command: dpkg -s ntpsec
+  register: _ntpsec_check
+  check_mode: false   # read-only; without this --check skips it and every NTP task below silently skips too (2026-10-23)
+  changed_when: false
+  failed_when: false
+  when: inventory_hostname != 'dns-01'
+  tags: [ntp]
+
+- name: "NTP: detect whether chrony is installed"
+  # Added 2026-09-20 alongside the ntpsec fix above — OMV (nas-01/nas-02)
+  # ships chrony as its default NTP client, a third real option this role
+  # didn't account for. Same "use whichever client is already present"
+  # philosophy as the ntpsec/timesyncd split below.
+  ansible.builtin.command: dpkg -s chrony
+  register: _chrony_check
+  check_mode: false   # read-only; without this --check skips it and every NTP task below silently skips too (2026-10-23)
+  changed_when: false
+  failed_when: false
+  when: inventory_hostname != 'dns-01'
+  tags: [ntp]
+
+# FIXED 2026-10-23: this used `regexp: '^pool\s'`, so EVERY run replaced the
+# last remaining pool line with the dns-01 line -- 4 runs on a stock Debian
+# ntp.conf (4 pool lines) left dns-01 x4 and nothing else. With ntpsec's
+# default `tos minsane 3`, one source is never enough: dmz-nc-01/dmz-pg-01
+# had NEVER synced (21 s / 20 s off, found live). Now dns-01 is added
+# alongside whatever sources exist (regexp matches only the dns-01 line), and
+# minsane is 1 so the trusted anchor alone suffices on VLANs where the public
+# pools are unreachable (Storage, DMZ).
+- name: "NTP (ntpsec hosts): point at dns-01 (in addition to existing sources)"
+  ansible.builtin.lineinfile:
+    path: /etc/ntpsec/ntp.conf
+    regexp: '^server 10\.0\.30\.10\b'
+    line: "server 10.0.30.10 iburst"
+    insertafter: "^# Specify one or more NTP servers"
+    state: present
+  when:
+    - inventory_hostname != 'dns-01'
+    - "'install ok installed' in _ntpsec_check.stdout"
+  notify: restart ntpsec
+  tags: [ntp]
+
+- name: "NTP (ntpsec hosts): accept a single sane source (dns-01 is the trusted anchor)"
+  ansible.builtin.lineinfile:
+    path: /etc/ntpsec/ntp.conf
+    regexp: '^tos minclock'
+    line: "tos minclock 1 minsane 1"
+    state: present
+  when:
+    - inventory_hostname != 'dns-01'
+    - "'install ok installed' in _ntpsec_check.stdout"
+  notify: restart ntpsec
+  tags: [ntp]
+
+- name: "NTP (ntpsec hosts): ensure ntpsec is running"
+  ansible.builtin.systemd:
+    name: ntpsec
+    state: started
+    enabled: true
+  when:
+    - inventory_hostname != 'dns-01'
+    - "'install ok installed' in _ntpsec_check.stdout"
+  tags: [ntp]
+
+- name: "NTP (chrony hosts): point at dns-01"
+  ansible.builtin.lineinfile:
+    path: /etc/chrony/chrony.conf
+    regexp: '^server 10\.0\.30\.10\b'
+    line: "server 10.0.30.10 iburst"
+    insertafter: EOF
+    state: present
+  when:
+    - inventory_hostname != 'dns-01'
+    - "'install ok installed' not in _ntpsec_check.stdout"
+    - "'install ok installed' in _chrony_check.stdout"
+  notify: restart chrony
+  tags: [ntp]
+
+- name: "NTP (chrony hosts): ensure chrony is running"
+  ansible.builtin.systemd:
+    name: chrony
+    state: started
+    enabled: true
+  when:
+    - inventory_hostname != 'dns-01'
+    - "'install ok installed' not in _ntpsec_check.stdout"
+    - "'install ok installed' in _chrony_check.stdout"
+  tags: [ntp]
+
+- name: "NTP (timesyncd hosts): point at dns-01"
+  ansible.builtin.copy:
+    dest: /etc/systemd/timesyncd.conf
+    content: |
+      # Managed by Ansible (base role) — see Roles/base/tasks/main.yml
+      [Time]
+      NTP=dns-01.internal 10.0.30.10
+      FallbackNTP=0.debian.pool.ntp.org 1.debian.pool.ntp.org
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - inventory_hostname != 'dns-01'
+    - "'install ok installed' not in _ntpsec_check.stdout"
+    - "'install ok installed' not in _chrony_check.stdout"
+  notify: restart systemd-timesyncd
+  tags: [ntp]
+
+- name: "NTP (timesyncd hosts): ensure systemd-timesyncd is running"
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: started
+    enabled: true
+  when:
+    - inventory_hostname != 'dns-01'
+    - "'install ok installed' not in _ntpsec_check.stdout"
+    - "'install ok installed' not in _chrony_check.stdout"
+  tags: [ntp]

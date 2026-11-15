@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Music Studio{% endblock %}</title>
+<style>
+  /* Deliberately fixed navy palette, not the system Canvas/CanvasText
+     colors chronicle/echo/podcast use — Music Studio should read as its
+     own distinct tool at a glance, not just another light/dark-adaptive
+     page in the same family. */
+  :root {
+    color-scheme: dark;
+    --bg:          #0a1930;
+    --bg-elevated: #10213e;
+    --bg-hover:    #16294a;
+    --border:      #23385e;
+    --border-soft: #1a2c4d;
+    --text:        #e7edf9;
+    --text-dim:    #93a4c4;
+    --accent:      #5b9dff;
+    --accent-soft: rgba(91, 157, 255, 0.16);
+    --gold:        #f0b86e;
+    --green:       #52c785;
+    --coral:       #f0776a;
+  }
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 1.5rem;
+         background: var(--bg); color: var(--text); line-height: 1.5; }
+  a { color: var(--accent); }
+  nav { display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem; padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border); }
+  nav a { color: var(--text); text-decoration: none; font-weight: 600; opacity: 0.7; }
+  nav a:hover, nav a.active { opacity: 1; color: var(--accent); }
+  nav .spacer { flex: 1; }
+  select, input[type=text], input[type=search], textarea, button {
+    font: inherit; padding: 0.4rem 0.6rem; border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated); color: var(--text);
+  }
+  select:focus, input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { cursor: pointer; font-weight: 600; background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  button:hover { background: var(--accent); color: var(--bg); }
+  .card { border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elevated);
+          padding: 1rem; margin-bottom: 0.9rem; }
+  .card h3 { margin: 0 0 0.3rem; }
+  .card h3 a { color: var(--text); text-decoration: none; }
+  .card h3 a:hover { color: var(--accent); }
+  .meta { font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.5rem; }
+  .badge { display: inline-block; font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 999px;
+           background: var(--bg-hover); color: var(--text-dim); margin-right: 0.3rem; }
+  .badge.beets_track { background: rgba(91, 157, 255, 0.22); color: #a9c8ff; }
+  .badge.session      { background: rgba(240, 184, 110, 0.20); color: var(--gold); }
+  .badge.song          { background: rgba(167, 139, 250, 0.22); color: #c4b3fb; }
+  .badge.reference     { background: rgba(82, 199, 133, 0.20); color: var(--green); }
+  .badge.library       { background: rgba(240, 119, 106, 0.20); color: var(--coral); }
+  form.search-bar { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+  form.search-bar input[type=text], form.search-bar input[type=search] { flex: 1; }
+  .status-new { color: var(--text-dim); }
+  .status-reviewing { color: var(--gold); }
+  .status-needs_work { color: var(--coral); }
+  .status-approved { color: var(--green); }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border-soft); }
+  th { color: var(--text-dim); font-size: 0.85rem; }
+  .chips { display: flex; gap: 0.5rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+  .chip { padding: 0.3rem 0.75rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600;
+          border: 1px solid var(--border); text-decoration: none;
+          color: var(--text-dim); }
+  .chip:hover { color: var(--text); border-color: var(--accent); }
+  .chip.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .user-tag { font-size: 0.72rem; color: var(--text-dim); font-weight: 600; }
+  .rating-stars { letter-spacing: 0.1rem; color: var(--gold); }
+  .annotation { padding: 0.6rem 0; border-bottom: 1px solid var(--border-soft); }
+  .annotation:last-child { border-bottom: none; }
+  .annotation .meta { margin-bottom: 0.15rem; }
+  /* Musician platform (phase 1) */
+  .sheet .chord-sheet .paragraph { margin-bottom: 1.1em; }
+  .sheet .chord-sheet .row { display: flex; flex-wrap: wrap; }
+  .sheet .chord-sheet .column { display: flex; flex-direction: column; padding-right: 0.12em; }
+  .sheet .chord-sheet .chord { color: var(--gold); font-weight: 700; min-height: 1.3em; white-space: pre; }
+  .sheet .chord-sheet .lyrics { white-space: pre; }
+  .sheet .chord-sheet .label { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase;
+                               color: var(--text-dim); margin: 0.4em 0 0.2em; }
+  .sheet .chord-sheet .comment { color: var(--text-dim); font-style: italic; }
+  .sheet h1.title { font-size: 1.3rem; margin: 0 0 0.6rem; }
+  .sheet h2.subtitle { font-size: 1rem; color: var(--text-dim); margin: -0.4rem 0 0.8rem; }
+  .row-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  .muted { color: var(--text-dim); font-size: 0.85rem; }
+  .ok { color: var(--green); } .err { color: var(--coral); }
+  .files td { padding: 0.25rem 0.4rem; font-size: 0.9rem; }
+  .badge.original { background: rgba(82, 199, 133, 0.20); color: var(--green); }
+  .badge.commercial { background: rgba(240, 119, 106, 0.20); color: var(--coral); }
+  .badge.cover { background: rgba(240, 184, 110, 0.20); color: var(--gold); }
+</style>
+</head>
+<body>
+<nav>
+  <a href="/ui" class="{{ 'active' if request.url.path == '/ui' else '' }}">Browse &amp; Search</a>
+  <a href="/ui/history" class="{{ 'active' if request.url.path == '/ui/history' else '' }}">History</a>
+  <a href="/ui/songs" class="{{ 'active' if request.url.path.startswith('/ui/song') else '' }}">Songs</a>
+  <a href="/ui/suggestions" class="{{ 'active' if request.url.path == '/ui/suggestions' else '' }}">Suggestions</a>
+  <a href="/ui/progressions" class="{{ 'active' if request.url.path.startswith('/ui/progression') else '' }}">Progressions</a>
+  <a href="/ui/studio" class="{{ 'active' if request.url.path.startswith('/ui/studio') else '' }}">Studio</a>
+  <a href="/ui/field" class="{{ 'active' if request.url.path.startswith('/ui/field') else '' }}">Field</a>
+  <a href="/ui/practice" class="{{ 'active' if request.url.path.startswith('/ui/practice') else '' }}">Practice</a>
+  <div class="spacer"></div>
+  <form method="get" action="{{ request.url.path }}" style="margin:0">
+    {% for k, v in request.query_params.items() %}{% if k != 'user' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+    <select name="user" onchange="this.form.submit()">
+      {% for u in known_users %}
+      <option value="{{ u }}" {{ 'selected' if u == current_user else '' }}>{{ u | capitalize }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</nav>
+{% block content %}{% endblock %}
+</body>
+</html>

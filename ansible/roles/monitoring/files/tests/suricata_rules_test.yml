@@ -1,0 +1,60 @@
+# promtool unit tests for templates/rules/suricata.yml.j2 (2026-10-22).
+# Render the template (it is a {% raw %} block), then on web-01:
+#   docker run --rm -v rendered.yml:/r.yml:ro -v this.yml:/t.yml:ro \
+#     --entrypoint promtool prom/prometheus:latest test rules /t.yml
+# Covers the increase()-misses-first-sample trap: a brand-new suspect host must fire.
+rule_files:
+- /r.yml
+evaluation_interval: 1m
+tests:
+- interval: 1m
+  input_series:
+  - series: suricata_suspect_host_alerts_total{src_ip="172.16.0.30",category="ATTACK_RESPONSE",signature="GPL ATTACK_RESPONSE id check returned root",job="suricata_alert_exporter",instance="10.0.0.15:9752"}
+    values: _x20 1x40
+  - series: suricata_suspect_host_alerts_total{src_ip="10.0.20.55",category="MALWARE",signature="ET MALWARE x",job="suricata_alert_exporter",instance="10.0.0.15:9752"}
+    values: 3x29 4x30
+  - series: suricata_suspect_host_alerts_total{src_ip="10.0.30.99",category="CNC",signature="ET CNC y",job="suricata_alert_exporter",instance="10.0.0.15:9752"}
+    values: 5x60
+  alert_rule_test:
+  - eval_time: 22m
+    alertname: SuricataSuspectHost
+    exp_alerts:
+    - &id001
+      exp_labels:
+        severity: critical
+        src_ip: 172.16.0.30
+        category: ATTACK_RESPONSE
+        signature: GPL ATTACK_RESPONSE id check returned root
+      exp_annotations:
+        summary: 'Suricata: 172.16.0.30 may be compromised (ATTACK_RESPONSE)'
+        description: 'fw-01 saw internal host 172.16.0.30 as the SOURCE of ''GPL ATTACK_RESPONSE id check returned root'' in the last 15 min. Details: on the IaC VM `journalctl --user -u suricata-alert-exporter -o cat | grep 172.16.0.30`, or OPNsense -> Services -> Intrusion Detection -> Alerts.'
+  - eval_time: 32m
+    alertname: SuricataSuspectHost
+    exp_alerts:
+    - *id001
+    - exp_labels:
+        severity: critical
+        src_ip: 10.0.20.55
+        category: MALWARE
+        signature: ET MALWARE x
+      exp_annotations:
+        summary: 'Suricata: 10.0.20.55 may be compromised (MALWARE)'
+        description: 'fw-01 saw internal host 10.0.20.55 as the SOURCE of ''ET MALWARE x'' in the last 15 min. Details: on the IaC VM `journalctl --user -u suricata-alert-exporter -o cat | grep 10.0.20.55`, or OPNsense -> Services -> Intrusion Detection -> Alerts.'
+  - eval_time: 55m
+    alertname: SuricataSuspectHost
+    exp_alerts: []
+- interval: 1m
+  input_series:
+  - series: suricata_rules_installed{job="suricata_alert_exporter",instance="10.0.0.15:9752"}
+    values: '0x40'
+  alert_rule_test:
+  - eval_time: 35m
+    alertname: SuricataNoRules
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: suricata_alert_exporter
+        instance: 10.0.0.15:9752
+      exp_annotations:
+        summary: Suricata on fw-01 is running blind (0 rules)
+        description: Fewer than 1000 rules installed. Re-run the opnsense role with --tags suricata (enables opnsense_suricata_rulesets + update_rules) and check the Suricata log for 'rule reload complete'.

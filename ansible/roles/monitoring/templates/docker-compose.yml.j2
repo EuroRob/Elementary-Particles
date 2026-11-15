@@ -1,0 +1,130 @@
+services:
+  prometheus:
+    image: "{{ prometheus_image }}"
+    container_name: prometheus
+    restart: unless-stopped
+    # Hard caps so no single container can eat the host's RAM — see
+    # incident_web01_memory_exhaustion_2026-08-25 memory note. Prometheus
+    # sized generous since TSDB memory grows with retention/cardinality.
+    mem_limit: 1g
+    mem_reservation: 512m
+    networks:
+      - monitoring
+    volumes:
+      - "{{ monitoring_compose_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "{{ monitoring_compose_dir }}/rules:/etc/prometheus/rules:ro"
+      - "{{ prometheus_data_dir }}:/prometheus"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time={{ prometheus_retention }}"
+      - "--web.enable-lifecycle"
+    labels:
+      app.managed-by: "elementary-particles"
+      app.service: "prometheus"
+
+  grafana:
+    image: "{{ grafana_image }}"
+    container_name: grafana
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 256m
+    networks:
+      - monitoring
+      - traefik
+    volumes:
+      - "{{ grafana_data_dir }}:/var/lib/grafana"
+      - "{{ monitoring_compose_dir }}/grafana/provisioning:/etc/grafana/provisioning:ro"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "{{ _homepage_vault.secret.grafana_password }}"
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SERVER_DOMAIN: "{{ grafana_host }}"
+      GF_SERVER_ROOT_URL: "https://{{ grafana_host }}"
+      GF_AUTH_PROXY_ENABLED: "true"
+      GF_AUTH_PROXY_HEADER_NAME: "Remote-User"
+      GF_AUTH_PROXY_HEADER_PROPERTY: "username"
+      GF_AUTH_PROXY_AUTO_SIGN_UP: "true"
+    labels:
+      traefik.enable: "false"
+      app.managed-by: "elementary-particles"
+      app.service: "grafana"
+
+  postgres-exporter:
+    image: "prometheuscommunity/postgres-exporter:latest"
+    container_name: postgres-exporter
+    restart: unless-stopped
+    mem_limit: 64m
+    mem_reservation: 32m
+    networks:
+      - monitoring
+    environment:
+      # Fixed 2026-09-06: confirmed live (postgres-exporter logs: "invalid
+      # port after host") — app_password contains an unescaped '/', which
+      # breaks DSN parsing outright (interpreted as a host:port/path
+      # boundary). Same class of bug as feedback_jinja_urlencode_dsn_gotcha
+      # memory — urlencode alone still leaves '/' unescaped, needs the
+      # explicit replace too. This had silently broken ALL Postgres-level
+      # monitoring (pg_up stuck at 0, zero real metrics) since deployment.
+      DATA_SOURCE_NAME: "postgresql://{{ _pg_vault.secret.app_user | urlencode | replace('/', '%2F') }}:{{ _pg_vault.secret.app_password | urlencode | replace('/', '%2F') }}@{{ postgres_host | default('pg-01.internal') }}:5432/postgres?sslmode=disable"
+    # --collector.postmaster: confirmed live 2026-09-06 that
+    # pg_postmaster_start_time_seconds doesn't appear in this exporter's
+    # metrics without it explicitly enabled — needed to detect a pg-01
+    # restart (as opposed to just up/down) for PostgresRestarted below.
+    command:
+      - "--collector.postmaster"
+    labels:
+      app.managed-by: "elementary-particles"
+      app.service: "postgres-exporter"
+
+  alertmanager:
+    image: "{{ alertmanager_image }}"
+    container_name: alertmanager
+    restart: unless-stopped
+    mem_limit: 128m
+    mem_reservation: 64m
+    networks:
+      - monitoring
+      - traefik
+    volumes:
+      - "{{ monitoring_compose_dir }}/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"
+      - "{{ alertmanager_data_dir }}:/alertmanager"
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    labels:
+      app.managed-by: "elementary-particles"
+      app.service: "alertmanager"
+
+  # Added 2026-09-13 -- genuinely independent alert delivery path (Home
+  # Assistant Companion app push notification), built after a real
+  # incident where the only existing path (n8n -> Matrix) went dark
+  # because n8n itself got stuck as a downstream consequence of the very
+  # outage that needed alerting. See
+  # incident_iac_api_n8n_cascade_2026-09-13 memory. Pure stdlib script,
+  # no image build needed -- python:3.12-slim bind-mounting it directly.
+  ha-bridge:
+    image: python:3.12-slim
+    container_name: ha-bridge
+    restart: unless-stopped
+    mem_limit: 64m
+    working_dir: /app
+    networks:
+      - monitoring
+    volumes:
+      - "{{ monitoring_compose_dir }}/ha-bridge:/app:ro"
+    environment:
+      HA_URL: "{{ _ha_vault.secret.url }}"
+      HA_TOKEN: "{{ _ha_vault.secret.token }}"
+      HA_NOTIFY_SERVICE: "{{ ha_bridge_notify_service }}"
+    command: ["python", "alertmanager_ha_bridge.py"]
+    labels:
+      app.managed-by: "elementary-particles"
+      app.service: "ha-bridge"
+
+networks:
+  monitoring:
+    driver: bridge
+    name: monitoring
+  traefik:
+    external: true
+    name: traefik

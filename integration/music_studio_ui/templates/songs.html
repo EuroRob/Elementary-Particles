@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Songs — Music Studio{% endblock %}
+{% block content %}
+<h2>Songs</h2>
+<div class="row-actions" style="margin-bottom:1rem">
+  <a class="chip" href="/ui/suggestions?user={{ current_user }}">{{ summary.by_status.get('pending', 0) }} suggestions waiting for review &rarr;</a>
+  <button type="button" id="reindex" title="Pick up songs and files added straight in the songbook repo">Re-read songbook repo</button>
+  <span id="reindex-result" class="muted"></span>
+</div>
+
+<form class="search-bar" method="get" action="/ui/songs">
+  <input type="hidden" name="user" value="{{ current_user }}">
+  <input type="search" name="q" value="{{ query }}" placeholder="Search songs by title or project…">
+  <button type="submit">Search</button>
+</form>
+
+{% if songs %}
+<table>
+  <tr><th>Song</th><th>Project</th><th>Kind</th><th>Key</th><th>Recordings</th><th>Sheet</th></tr>
+  {% for s in songs %}
+  <tr>
+    <td><a href="/ui/song/{{ s.id }}?user={{ current_user }}">{{ s.title }}</a></td>
+    <td class="muted">{{ s.project or '' }}</td>
+    <td>{% if s.kind %}<span class="badge {{ s.kind }}">{{ s.kind }}</span>{% endif %}</td>
+    <td>{{ s.key_signature or '' }}</td>
+    <td>{{ s.recordings }}</td>
+    <td>{{ '✓' if s.has_sheet else '' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No songs yet — accept some <a href="/ui/suggestions?user={{ current_user }}">suggestions</a>, or add a
+  <code>songs/&lt;slug&gt;/song.cho</code> to the songbook repo and re-read it.</p>
+{% endif %}
+<script>
+document.getElementById('reindex').addEventListener('click', async () => {
+  const out = document.getElementById('reindex-result');
+  out.textContent = 'reading…';
+  const r = await fetch('/api/songbook/reindex', {method: 'POST'});
+  const d = await r.json().catch(() => ({}));
+  out.textContent = r.ok ? `${d.song_dirs} song folders, ${d.documents} files, ${d.songs_created_from_git} new from git`
+                         : (d.detail || 'error ' + r.status);
+  if (r.ok && d.songs_created_from_git) setTimeout(() => location.reload(), 800);
+});
+</script>
+{% endblock %}

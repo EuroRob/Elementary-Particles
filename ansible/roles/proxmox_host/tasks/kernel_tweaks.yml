@@ -1,0 +1,165 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/kernel_tweaks.yml
+#
+# Applies Proxmox host kernel parameters:
+#   - sysctl performance and VM tuning
+#   - ZFS ARC size limit
+#   - Proxmox-specific tweaks (memory overcommit, inotify limits)
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# 1. Apply sysctl parameters
+# ---------------------------------------------------------------------------
+- name: "KERNEL: Apply sysctl performance tweaks"
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ pve_kernel_tweaks }}"
+  loop_control:
+    label: "{{ item.key }}={{ item.value }}"
+  tags: [kernel, sysctl]
+
+- name: "KERNEL: Persist sysctl config file"
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-proxmox-homelab.conf
+    content: |
+      # Proxmox host tuning — managed by Ansible (proxmox_host role)
+      # Regenerated on: {{ ansible_date_time.iso8601 }}
+      {% for item in pve_kernel_tweaks %}
+      {{ item.key }} = {{ item.value }}
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [kernel, sysctl]
+
+# ---------------------------------------------------------------------------
+# 1b. Memory headroom: own sysctl file + THP defrag mode (2026-11-06, pve-01 froze
+#     25-60 s in direct reclaim/compaction). Separate from 99-proxmox-homelab.conf so
+#     it can be applied alone: --tags memory_headroom
+# ---------------------------------------------------------------------------
+- name: "KERNEL: Persist memory headroom sysctls"
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/90-memory-headroom.conf
+    content: |
+      # Memory headroom: managed by Ansible (proxmox_host, pve_memory_headroom_sysctls)
+      {% for item in pve_memory_headroom_sysctls %}
+      {{ item.key }} = {{ item.value }}
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+  register: pve_headroom_file
+  when: pve_memory_headroom_sysctls | length > 0
+  tags: [kernel, sysctl, memory_headroom]
+
+- name: "KERNEL: Load memory headroom sysctls"
+  ansible.builtin.command: sysctl -p /etc/sysctl.d/90-memory-headroom.conf
+  when: pve_headroom_file is changed
+  tags: [kernel, sysctl, memory_headroom]
+
+- name: "KERNEL: Persist THP defrag mode"
+  ansible.builtin.copy:
+    dest: /etc/tmpfiles.d/thp-defrag.conf
+    content: |
+      # Managed by Ansible (proxmox_host, pve_thp_defrag)
+      w /sys/kernel/mm/transparent_hugepage/defrag - - - - {{ pve_thp_defrag }}
+    owner: root
+    group: root
+    mode: "0644"
+  register: pve_thp_file
+  when: pve_thp_defrag | length > 0
+  tags: [kernel, memory_headroom]
+
+- name: "KERNEL: Apply THP defrag mode"
+  ansible.builtin.command: systemd-tmpfiles --create /etc/tmpfiles.d/thp-defrag.conf
+  when: pve_thp_file is changed
+  tags: [kernel, memory_headroom]
+
+# ---------------------------------------------------------------------------
+# 2. Disable Proxmox enterprise repo (avoids apt errors without subscription)
+#    Enable no-subscription community repo instead.
+# ---------------------------------------------------------------------------
+- name: "KERNEL: Disable enterprise subscription repo"
+  ansible.builtin.replace:
+    path: /etc/apt/sources.list.d/pve-enterprise.list
+    regexp: '^deb '
+    replace: '# deb '
+  ignore_errors: true   # file may not exist on all installs
+  tags: [kernel, apt]
+
+- name: "KERNEL: Enable Proxmox no-subscription repository"
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pve-no-subscription.list
+    content: |
+      # Proxmox no-subscription repo — managed by Ansible
+      deb http://download.proxmox.com/debian/pve bookworm pve-no-subscription
+    owner: root
+    group: root
+    mode: "0644"
+  tags: [kernel, apt]
+
+- name: "KERNEL: Disable Ceph enterprise repo (if present)"
+  ansible.builtin.replace:
+    path: /etc/apt/sources.list.d/ceph.list
+    regexp: '^deb '
+    replace: '# deb '
+  ignore_errors: true
+  tags: [kernel, apt]
+
+- name: "KERNEL: Update apt cache after repo changes"
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  tags: [kernel, apt]
+
+# ---------------------------------------------------------------------------
+# 3. Install useful host packages
+# ---------------------------------------------------------------------------
+- name: "KERNEL: Install host utilities"
+  ansible.builtin.apt:
+    name:
+      - htop
+      - iotop
+      - iftop
+      - lm-sensors
+      - smartmontools
+      - ethtool
+      - tmux
+      - vim
+      - git
+      - curl
+      - wget
+      - jq
+      - zfsutils-linux    # zfs/zpool CLI tools (should already be present)
+      - ifreload           # faster than reboot for network changes
+    state: present
+  tags: [kernel, packages]
+
+# ---------------------------------------------------------------------------
+# 4. Disable VM nag screen (community fix, no-subscription installs)
+# ---------------------------------------------------------------------------
+- name: "KERNEL: Check if nag screen patch is needed"
+  ansible.builtin.stat:
+    path: /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
+  register: pve_js
+  tags: [kernel, nag]
+
+- name: "KERNEL: Remove subscription nag screen from PVE web UI"
+  ansible.builtin.replace:
+    path: /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
+    regexp: "Ext.Msg.show\\(\\{[\\s\\S]*?title: gettext\\('No valid subscription'\\)[\\s\\S]*?\\}\\);"
+    replace: "void(0);"
+    backup: true
+  when: pve_js.stat.exists
+  ignore_errors: true   # non-critical; PVE JS may differ between versions
+  tags: [kernel, nag]
+
+# ---------------------------------------------------------------------------
+# 5. Handlers registration reminder
+# ---------------------------------------------------------------------------
+# Handlers update_grub and update_initramfs are defined in handlers/main.yml

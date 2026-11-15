@@ -1,0 +1,32 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/zfs_dataset.yml
+# Called by zfs_storage.yml in a loop for each pool.
+# Variable: zfs_pool  (the pool dict from pve_zfs_pools)
+# =============================================================================
+
+- name: "ZFS: Create dataset {{ zfs_pool.name }}/{{ item.path }}"
+  community.general.zfs:
+    name: "{{ zfs_pool.name }}/{{ item.path }}"
+    state: present
+    extra_zfs_properties:
+      recordsize: "{{ item.recordsize | default('128K') }}"
+      compression: "{{ item.compression | default('lz4') }}"
+      atime: "{{ item.atime | default('off') }}"
+      primarycache: "{{ item.primarycache | default('all') }}"
+  loop: "{{ zfs_pool.datasets }}"
+  loop_control:
+    label: "{{ zfs_pool.name }}/{{ item.path }}"
+  tags: [zfs]
+
+- name: "ZFS: Show dataset properties for {{ zfs_pool.name }}"
+  ansible.builtin.command:
+    cmd: "zfs get -t filesystem name,recordsize,compression,atime {{ zfs_pool.name }}"
+  register: zfs_props
+  changed_when: false
+  tags: [zfs, verify]
+
+- name: "ZFS: Print dataset properties"
+  ansible.builtin.debug:
+    msg: "{{ zfs_props.stdout_lines }}"
+  tags: [zfs, verify]

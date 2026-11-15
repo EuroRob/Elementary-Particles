@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Studio — Music Studio{% endblock %}
+{% block content %}
+<h2>Studio</h2>
+<p class="muted">Every Ableton Live set under My Recordings on DATAGRID. Each save is read by DOMO: what changed, plus
+  the notes, ideas and to-dos you say while working (“idea: …”, “todo: …”), and the studio sessions with DOMO.
+  Say “studio session” to DOMO to work on the set you saved last.</p>
+
+<form class="search-bar" method="get" action="/ui/studio">
+  <input type="hidden" name="user" value="{{ current_user }}">
+  <input type="search" name="q" value="{{ query }}" placeholder="Find a set by name or folder…">
+  <button type="submit">Search</button>
+</form>
+
+{% if error %}<p class="err">{{ error }}</p>{% endif %}
+{% if projects %}
+<table>
+  <tr><th>Set</th><th>Last saved</th><th>Saves</th><th>Notes</th><th>Tempo</th><th>Key</th><th>Status</th></tr>
+  {% for p in projects %}
+  <tr>
+    <td><a href="/ui/studio/{{ p.id }}?user={{ current_user }}"><b>{{ p.title }}</b></a><br>
+        <span class="muted" style="font-size:0.8rem">{{ p.folder }}</span></td>
+    <td class="muted">{{ p.last_saved[:16].replace('T', ' ') if p.last_saved else '' }}</td>
+    <td>{{ p.saves }}</td>
+    <td>{{ p.notes or '' }}</td>
+    <td>{{ '%g' % p.tempo_bpm if p.tempo_bpm else '' }}</td>
+    <td>{{ p.key_signature or '' }}</td>
+    <td><span class="badge">{{ p.status }}</span></td>
+  </tr>
+  {% endfor %}
+</table>
+{% elif not error %}
+<p class="muted">No Live sets found yet. The first scan of My Recordings runs a minute after studio-partner starts.</p>
+{% endif %}
+{% endblock %}

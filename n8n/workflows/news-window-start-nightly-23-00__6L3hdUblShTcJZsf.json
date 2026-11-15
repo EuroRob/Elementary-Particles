@@ -1,0 +1,464 @@
+{
+  "active": true,
+  "connections": {
+    "Check ES cluster health": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run News Ingest & Enrich",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Check pve-02 Online": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "pve-02 Online?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format pve-02 Offline Alert": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Alert: pve-02 Offline",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Send WoL to pve-02": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 180s (pve-02 cold boot)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Start pve-02 VM": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 120s (VMs + ES boot)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Stop git-01": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 3min (pve-01 settle)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 120s (VMs + ES boot)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Check ES cluster health",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 180s (pve-02 cold boot)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Check pve-02 Online",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Window Start Trigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Stop git-01",
+            "type": "main"
+          },
+          {
+            "index": 0,
+            "node": "Send WoL to pve-02",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "pve-02 Online?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format pve-02 Offline Alert",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "pve-02 VM list",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "pve-02 VM list": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Start pve-02 VM",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "6L3hdUblShTcJZsf",
+  "name": "News Window - Start (nightly 23:00)",
+  "nodes": [
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "alert-pve-02-offline-001",
+      "name": "Alert: pve-02 Offline",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        1056,
+        816
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hHmzeWPp3qhZwOf6",
+          "name": "Elasticsearch es-01 (header auth)"
+        }
+      },
+      "id": "6930975a-3c76-49cb-8e28-dcb57cb05b24",
+      "maxTries": 5,
+      "name": "Check ES cluster health",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {},
+        "url": "http://10.0.30.52:9200/_cluster/health"
+      },
+      "position": [
+        1600,
+        420
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "check-pve-02-online-001",
+      "maxTries": 4,
+      "name": "Check pve-02 Online",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 15000
+        },
+        "url": "https://iac.internal:8000/api/proxmox/pve-02/vm/106/status"
+      },
+      "position": [
+        864,
+        368
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "waitBetweenTries": 20000
+    },
+    {
+      "id": "format-pve-02-offline-alert-001",
+      "name": "Format pve-02 Offline Alert",
+      "parameters": {
+        "jsCode": "const text = '\\ud83d\\udea8 CRITICAL: pve-02 did not come online\\n\\n'\n  + 'The \"News Window - Start (nightly 23:00)\" workflow sent WoL to pve-02 and waited 180s, '\n  + 'but it is still unreachable. News enrichment (Ingest & Enrich) will NOT run this cycle.\\n\\n'\n  + 'Check: is pve-02 physically powered on? Note -- a full power loss (unplugged, not just '\n  + 'soft-off) disables Wake-on-LAN until the next manual boot, since the NIC has no standby '\n  + 'power to listen for the magic packet.';\nconst txn_id = 'pve-02-offline-' + Date.now();\nreturn [{ json: { txn_id, matrixPayload: { msgtype: 'm.text', body: text } } }];\n"
+      },
+      "position": [
+        880,
+        816
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "47fff0b3-c189-4b0b-9f7e-57b94e11f2dc",
+      "name": "Run News Ingest & Enrich",
+      "parameters": {
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "fOAvZ0NMS0oQbeYz"
+        },
+        "workflowInputs": {
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true,
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {}
+        }
+      },
+      "position": [
+        1820,
+        420
+      ],
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "19d4a21f-349c-42c5-b89f-fcb8a7c1df5b",
+      "name": "Send WoL to pve-02",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ {\"mac\": \"24:5e:be:50:c9:17\", \"broadcast\": \"10.0.0.255\", \"port\": 9} }}",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "https://iac.internal:8000/api/wol"
+      },
+      "position": [
+        512,
+        560
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "news-start-vmstart",
+      "name": "Start pve-02 VM",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 15000
+        },
+        "url": "=https://iac.internal:8000/api/proxmox/pve-02/vm/{{ $json.vmid }}/start"
+      },
+      "position": [
+        1260,
+        420
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "disabled": true,
+      "id": "b775edce-b6b5-428d-8162-73d4d60d4f72",
+      "name": "Stop git-01",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "url": "https://iac.internal:8000/api/proxmox/pve-01/vm/251/stop"
+      },
+      "position": [
+        448,
+        208
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3
+    },
+    {
+      "executeOnce": true,
+      "id": "news-start-wait120",
+      "name": "Wait 120s (VMs + ES boot)",
+      "parameters": {
+        "amount": 120
+      },
+      "position": [
+        1430,
+        420
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "news-start-wait120"
+    },
+    {
+      "id": "68a8f3af-a79b-4bfa-bb16-c7f4ac65e46a",
+      "name": "Wait 180s (pve-02 cold boot)",
+      "parameters": {
+        "amount": 180
+      },
+      "position": [
+        704,
+        560
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "20fc13f5-b31e-46f2-a17e-a6ffb7ea22c9"
+    },
+    {
+      "disabled": true,
+      "id": "71ae5368-79ab-463e-84fa-b926e3153c1f",
+      "name": "Wait 3min (pve-01 settle)",
+      "parameters": {
+        "amount": 180
+      },
+      "position": [
+        688,
+        208
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "f16fdd31-effc-4c2a-a51b-fb606896228d"
+    },
+    {
+      "id": "221dee96-4c79-4247-92a5-c9dd682a5e44",
+      "name": "Window Start Trigger",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "0 23 * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        240,
+        400
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "pve-02-online-if-001",
+      "name": "pve-02 Online?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "pve-02-online-cond-1",
+              "leftValue": "={{ $json.error }}",
+              "operator": {
+                "operation": "exists",
+                "singleValue": true,
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "position": [
+        880,
+        560
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2
+    },
+    {
+      "id": "news-start-vmlist",
+      "name": "pve-02 VM list",
+      "parameters": {
+        "jsCode": "// Every VM pve-02 runs - must match the list in 'pve-02 - Daily Shutdown (07:00)'.\n// None of them have onboot=1, so this wake flow is what brings them back.\nreturn [{\"vmid\": 106, \"name\": \"OSemSearch\"}, {\"vmid\": 231, \"name\": \"es-01\"}, {\"vmid\": 234, \"name\": \"es-02\"}, {\"vmid\": 301, \"name\": \"dl-01\"}, {\"vmid\": 302, \"name\": \"grid-01\"}, {\"vmid\": 304, \"name\": \"scout-01\"}, {\"vmid\": 110, \"name\": \"Minecraft\"}].map(v => ({ json: v }));"
+      },
+      "position": [
+        1080,
+        420
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "settings": {
+    "binaryMode": "separate",
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  },
+  "tags": []
+}

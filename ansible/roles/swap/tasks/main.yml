@@ -1,0 +1,57 @@
+---
+# =============================================================================
+# Role: swap
+# Creates a swapfile safety net. Written after gpu-01 was found running with
+# zero swap of any kind — when memory demand exceeded the guest's available
+# RAM there was nothing to fall back on, contributing to a full host hang
+# (SSH and the Ollama API both stopped responding; only ICMP still worked).
+# =============================================================================
+
+- name: Check current swap state
+  ansible.builtin.command: swapon --show=NAME --noheadings
+  register: swap_current
+  changed_when: false
+  failed_when: false
+  tags: [swap]
+
+- name: Create swapfile (fallocate)
+  ansible.builtin.command: >
+    fallocate -l {{ swap_size_mb }}M {{ swap_file_path }}
+  when: swap_file_path not in swap_current.stdout
+  tags: [swap]
+
+- name: Restrict swapfile permissions
+  ansible.builtin.file:
+    path: "{{ swap_file_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: swap_file_path not in swap_current.stdout
+  tags: [swap]
+
+- name: Format swapfile
+  ansible.builtin.command: mkswap {{ swap_file_path }}
+  when: swap_file_path not in swap_current.stdout
+  tags: [swap]
+
+- name: Enable swapfile
+  ansible.builtin.command: swapon {{ swap_file_path }}
+  when: swap_file_path not in swap_current.stdout
+  tags: [swap]
+
+- name: Persist swapfile in fstab
+  ansible.posix.mount:
+    path: none
+    src: "{{ swap_file_path }}"
+    fstype: swap
+    opts: sw
+    state: present
+  tags: [swap]
+
+- name: Set swappiness (low — emergency net, not routine paging)
+  ansible.posix.sysctl:
+    name: vm.swappiness
+    value: "{{ swap_swappiness }}"
+    state: present
+    reload: true
+  tags: [swap]

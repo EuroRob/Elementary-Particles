@@ -1,0 +1,100 @@
+---
+# =============================================================================
+# Role: proxmox_host — tasks/build_template_single.yml
+# Called by build_templates.yml for each template in pve_templates.
+# Variable: tmpl (dict from pve_templates loop)
+# =============================================================================
+
+- name: "TMPL: Check if VM {{ tmpl.id }} already exists"
+  ansible.builtin.command:
+    cmd: "qm status {{ tmpl.id }}"
+  register: tmpl_exists
+  changed_when: false
+  failed_when: false
+  tags: [templates, build]
+
+- name: "TMPL: Skip {{ tmpl.name }} — already exists (ID {{ tmpl.id }})"
+  ansible.builtin.debug:
+    msg: "Template {{ tmpl.id }} already exists — skipping download and creation."
+  when: tmpl_exists.rc == 0
+  tags: [templates, build]
+
+- name: "TMPL: Build {{ tmpl.name }} (ID {{ tmpl.id }})"
+  when: tmpl_exists.rc != 0
+  block:
+    - name: "TMPL: Download cloud image"
+      ansible.builtin.get_url:
+        url: "{{ tmpl.url }}"
+        dest: "/tmp/pve-template-build/{{ tmpl.id }}.img"
+        mode: "0644"
+        timeout: 1800
+      tags: [templates, build]
+
+    - name: "TMPL: Customise cloud image (install qemu-guest-agent)"
+      ansible.builtin.command:
+        cmd: >-
+          virt-customize -a /tmp/pve-template-build/{{ tmpl.id }}.img
+          --update
+          --install qemu-guest-agent
+          --run-command 'systemctl enable qemu-guest-agent'
+          --run-command 'apt-get clean && apt-get autoremove -y'
+          --truncate /etc/machine-id
+      environment:
+        LIBGUESTFS_BACKEND: direct   # avoids KVM permission issues on Proxmox host
+      tags: [templates, build]
+
+    - name: "TMPL: Create bare VM for template"
+      ansible.builtin.command:
+        cmd: >-
+          qm create {{ tmpl.id }}
+          --name {{ tmpl.name }}
+          --memory {{ tmpl.memory | default(2048) }}
+          --net0 virtio,bridge=vmbr0
+          --scsihw virtio-scsi-pci
+          --serial0 socket
+          --vga serial0
+          --agent enabled=1
+          --ostype l26
+      tags: [templates, build]
+
+    - name: "TMPL: Import disk to storage"
+      ansible.builtin.command:
+        cmd: >-
+          qm importdisk {{ tmpl.id }}
+          /tmp/pve-template-build/{{ tmpl.id }}.img
+          {{ pve_template_builder_storage }}
+      tags: [templates, build]
+
+    - name: "TMPL: Attach imported disk as boot disk"
+      ansible.builtin.command:
+        cmd: >-
+          qm set {{ tmpl.id }}
+          --scsi0 {{ pve_template_builder_storage }}:vm-{{ tmpl.id }}-disk-0
+          --ide2 {{ pve_template_builder_storage }}:cloudinit
+          --boot c
+          --bootdisk scsi0
+      tags: [templates, build]
+
+    - name: "TMPL: Resize disk to {{ tmpl.disk_size | default('20G') }}"
+      ansible.builtin.command:
+        cmd: >-
+          qm resize {{ tmpl.id }}
+          scsi0 {{ tmpl.disk_size | default('20G') }}
+      tags: [templates, build]
+
+    - name: "TMPL: Convert VM to template"
+      ansible.builtin.command:
+        cmd: "qm template {{ tmpl.id }}"
+      tags: [templates, build]
+
+    - name: "TMPL: Clean up downloaded image"
+      ansible.builtin.file:
+        path: "/tmp/pve-template-build/{{ tmpl.id }}.img"
+        state: absent
+      tags: [templates, build]
+
+    - name: "TMPL: Confirm template {{ tmpl.id }} created"
+      ansible.builtin.debug:
+        msg: "Template {{ tmpl.id }} ({{ tmpl.name }}) created successfully."
+      tags: [templates, build]
+  tags: [templates, build]

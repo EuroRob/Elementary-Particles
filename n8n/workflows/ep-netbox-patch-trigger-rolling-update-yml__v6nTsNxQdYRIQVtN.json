@@ -1,0 +1,428 @@
+{
+  "active": false,
+  "connections": {
+    "Format Failure Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Notify: patch failed (Matrix)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Format Success Message": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Notify: patch succeeded (Matrix)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "NetBox Patch Trigger": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Validate: is actually pending + has VM ID",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Poll task status": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Still running?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Still running?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 30s before next poll",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Success or failure?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Success or failure?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format Success Message",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Format Failure Message",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Trigger rolling_update.yml via IaC API": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait 10s for task to initialize",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Validate: is actually pending + has VM ID": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Trigger rolling_update.yml via IaC API",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Log skip reason",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 10s for task to initialize": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Poll task status",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait 30s before next poll": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Poll task status",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "v6nTsNxQdYRIQVtN",
+  "name": "EP: NetBox Patch Trigger → rolling_update.yml",
+  "nodes": [
+    {
+      "id": "afcc2f89-613f-4290-8603-5fc53b35631f",
+      "name": "Format Failure Message",
+      "parameters": {
+        "jsCode": "const n = $('NetBox Patch Trigger').item.json;\nconst t = $('Trigger rolling_update.yml via IaC API').item.json;\nconst text = `🔴 Patch FAILED: ${n.vm_name} (VM ${n.proxmox_vm_id}).\\nVM has been rolled back to its pre-patch snapshot.\\nCheck IaC API logs for details.\\nTask: ${t.task_id}`;\nreturn [{ json: { txn_id: 'patch-fail-' + Date.now(), matrixPayload: { msgtype: 'm.text', body: text } } }];",
+        "mode": "runOnceForEachItem"
+      },
+      "position": [
+        2250,
+        300
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "8db2cca2-dcce-448f-8f23-3efc8be59423",
+      "name": "Format Success Message",
+      "parameters": {
+        "jsCode": "const n = $('NetBox Patch Trigger').item.json;\nconst t = $('Trigger rolling_update.yml via IaC API').item.json;\nconst text = `✅ Patch complete: ${n.vm_name} (VM ${n.proxmox_vm_id} on ${n.proxmox_node}) patched successfully.\\nTask: ${t.task_id}`;\nreturn [{ json: { txn_id: 'patch-ok-' + Date.now(), matrixPayload: { msgtype: 'm.text', body: text } } }];",
+        "mode": "runOnceForEachItem"
+      },
+      "position": [
+        2250,
+        100
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "2d31252f-a132-4f99-809b-0e48cce08bc9",
+      "name": "Log skip reason",
+      "notes": "Fires when the guard IF returns false.\nCommon reasons: re-fire loop prevention, proxmox_vm_id not yet seeded.",
+      "parameters": {
+        "jsCode": "// Log the skipped item\nconst item = $input.item.json;\nconsole.log(`Skipping ${item.vm_name}: patch_status_new=${item.patch_status_new}, patch_status_old=${item.patch_status_old}, proxmox_vm_id=${item.proxmox_vm_id}`);\nreturn [{ json: { skipped: true, reason: 'guard conditions not met', vm: item.vm_name } }];",
+        "mode": "runOnceForEachItem"
+      },
+      "position": [
+        500,
+        500
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "95f26bb5-d2e8-4cdc-9e07-2fcf46826faf",
+      "name": "NetBox Patch Trigger",
+      "notes": "Receives POST from NetBox Event Rule when patch_status is set to 'pending'.\nPayload from netbox_setup_patch_fields.yml body_template.",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "netbox-patch-trigger",
+        "responseData": "{ \"received\": true, \"vm\": \"={{ $json.vm_name }}\" }",
+        "responseMode": "onReceived"
+      },
+      "position": [
+        250,
+        300
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "webhookId": "netbox-patch-trigger"
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "6e34c3f6-c711-4373-a4e7-6e46bf5645a3",
+      "name": "Notify: patch failed (Matrix)",
+      "notes": "Fires when rolling_update.yml returned non-zero.\nAt this point, rolling_update.yml has already:\n  - rolled back the VM snapshot\n  - set patch_status=failed in NetBox\n  - started the VM again from the clean snapshot\nCORRECTED 2026-08-17: same Slack->Matrix conversion as the success path.",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        2470,
+        300
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "3cee1890-a445-43d2-9ac5-61be85b70d02",
+      "name": "Notify: patch succeeded (Matrix)",
+      "notes": "CORRECTED 2026-08-17: was n8n-nodes-base.slack with no configured Slack credential —\nnever actually deliverable. Converted to this repo's real, live notification channel\n(Matrix System Alerts room), same exact pattern already proven by the Alertmanager->\nSystem Alerts workflow.",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        2470,
+        100
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "dd05b67d-3980-4ec9-8c92-ac264481bba8",
+      "name": "Poll task status",
+      "notes": "Polls GET /api/tasks/{task_id} until status != 'running'.\nCombined with the Loop node below for retry logic.\nCORRECTED 2026-08-17: same stale Vault-fetch reference as the trigger node, same fix.",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "url": "=https://iac.internal:8000/api/tasks/{{ $node['Trigger rolling_update.yml via IaC API'].json.task_id }}"
+      },
+      "position": [
+        1500,
+        200
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "37f236be-db3d-45f9-97cb-99b37eaec3d2",
+      "name": "Still running?",
+      "notes": "Routes back to Wait if still running, otherwise exits to success/failure branch.",
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "operation": "equal",
+              "value1": "={{ $json.status }}",
+              "value2": "running"
+            }
+          ]
+        }
+      },
+      "position": [
+        1750,
+        200
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1
+    },
+    {
+      "id": "e30e30ee-6828-4056-acb1-ab864e228c6f",
+      "name": "Success or failure?",
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "operation": "equal",
+              "value1": "={{ $json.status }}",
+              "value2": "success"
+            }
+          ]
+        }
+      },
+      "position": [
+        2000,
+        200
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ovDe3u6B9H0UlCbp",
+          "name": "IaC API (iac-api Bearer)"
+        }
+      },
+      "id": "1ffc6019-41fb-4ac3-a7ce-357b8de87504",
+      "name": "Trigger rolling_update.yml via IaC API",
+      "notes": "POSTs to the IaC API server to run rolling_update.yml for the specific VM.\nUses raw JSON body (specifyBody: json) — the API's AnsibleRequest model expects\nextra_vars as an actual object (Dict[str,str]), not a JSON-stringified form field;\nthe old bodyParameters version would have failed Pydantic validation on every call.\nThe playbook will:\n  1. Snapshot the VM on its Proxmox node\n  2. apt upgrade + docker compose pull/up\n  3. Health checks\n  4. Rollback on failure / delete snapshot on success\n  5. Update NetBox patch_status automatically\n\nCORRECTED 2026-08-17: dropped the separate Vault-fetch node (real n8n env vars\nVAULT_TOKEN/NETBOX_VAULT_PATH were never actually set — this whole branch was\nnever live). Uses the already-configured 'IaC API (iac-api Bearer)' credential\ndirectly, same pattern as the proven-live 'Continue Dev Backend - Wake gpu-02'\nworkflow.",
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "jsonBody": "={{ JSON.stringify({ playbook: 'rolling_update', inventory: 'production', extra_vars: { patch_host: $json.vm_name, skip_netbox: 'false' } }) }}",
+        "method": "POST",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "https://iac.internal:8000/api/tasks/ansible/rolling_update"
+      },
+      "position": [
+        750,
+        200
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "0f8b9819-ed27-4c5d-90f1-25f8a6750507",
+      "name": "Validate: is actually pending + has VM ID",
+      "notes": "Guard against:\n- Re-fire loops (patch_status_old already pending)\n- VMs not yet seeded (proxmox_vm_id == 0)",
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "operation": "larger",
+              "value1": "={{ $json.proxmox_vm_id }}",
+              "value2": 0
+            }
+          ],
+          "string": [
+            {
+              "operation": "equal",
+              "value1": "={{ $json.patch_status_new }}",
+              "value2": "pending"
+            },
+            {
+              "operation": "notEqual",
+              "value1": "={{ $json.patch_status_old }}",
+              "value2": "pending"
+            }
+          ]
+        }
+      },
+      "position": [
+        500,
+        300
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1
+    },
+    {
+      "id": "4d60e4cc-186e-4af9-b928-f06f733c9d26",
+      "name": "Wait 10s for task to initialize",
+      "parameters": {
+        "unit": "seconds",
+        "value": 10
+      },
+      "position": [
+        1250,
+        200
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "webhookId": "3b8eb13a-c5f8-4403-a890-0397e4065841"
+    },
+    {
+      "id": "9aed24ad-1c95-48bb-a90c-6fb9676fd183",
+      "name": "Wait 30s before next poll",
+      "notes": "30-second polling interval. Typical patch run takes 3-10 minutes.",
+      "parameters": {
+        "unit": "seconds",
+        "value": 30
+      },
+      "position": [
+        1750,
+        400
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "webhookId": "b7bed0c8-84d7-4fb0-9842-ca6c626f08d9"
+    }
+  ],
+  "settings": {
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "",
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "tags": []
+}

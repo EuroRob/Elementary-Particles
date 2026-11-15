@@ -1,0 +1,100 @@
+---
+name: example-service
+version: "1.0.0"
+tier: "application"
+description: "Template example service"
+owner: "ops-team"
+runbook: "https://docs.internal/example"
+
+tags:
+  expose: "false"              # Change to "true" to expose via Traefik
+  ingress: "https"
+  auth: "none"                 # Change to "oidc" for Authelia
+  auth_provider: "authelia"
+  network: "vlan30"
+  dns: "false"                 # Change to "true" to register DNS
+  tier: "application"
+  category: "Other"
+  icon: "cog"
+  sla: "medium"
+  backup: "never"              # Change to "daily"/"weekly"
+  owner: "ops"
+  environment: "production"
+
+deployment:
+  platform: "docker"
+  namespace: "vlan30"
+  replicas: 1
+  resources:
+    cpu: "1"
+    memory: "512Mi"
+    storage: "1Gi"
+  image: "example:latest"
+  service_template: |
+    example:
+      image: {{ image }}
+      container_name: example
+      environment:
+        - LOG_LEVEL=info
+      networks:
+        - services
+      restart: unless-stopped
+
+interfaces:
+  - name: "web"
+    protocol: "http"
+    port: 8080
+    internal_port: 8080
+
+dependencies: []
+
+provides: []
+
+# vault_secrets defines every secret this service needs at runtime.
+# vault_preflight.py reads this to build the readiness report and
+# generate .env templates.  Each entry maps to one Vault KV v2 key.
+#
+# Fields:
+#   path      — Vault path relative to the KV mount (no leading "secret/")
+#   key       — Key within that path (default: value)
+#   env_var   — Environment variable name injected into the container
+#   description — Human-readable description (shown in env-template output)
+#   required  — false marks a secret as optional (default: true)
+#
+# Example:
+#   vault_secrets:
+#     - path: example/db
+#       key: password
+#       env_var: DB_PASSWORD
+#       description: "PostgreSQL password for this service"
+#     - path: example/jwt
+#       key: secret
+#       env_var: JWT_SECRET
+#       description: "JWT signing secret"
+#     - path: example/smtp
+#       key: password
+#       env_var: SMTP_PASSWORD
+#       description: "SMTP relay password"
+#       required: false
+vault_secrets: []
+
+# Deprecated: use vault_secrets above.  Kept for back-compat.
+secrets: []
+
+monitoring:
+  health_check: "http://localhost:8080/health"
+  health_check_interval: "30s"
+
+backup:
+  enabled: false
+  schedule: "daily"
+  retention: "7d"
+
+networking:
+  vlan: "vlan30"
+  dns_enabled: false
+  dns_names:
+    - "example.internal"
+
+metadata:
+  data_classification: "internal"

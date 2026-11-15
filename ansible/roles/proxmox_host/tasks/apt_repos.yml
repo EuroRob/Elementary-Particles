@@ -1,0 +1,62 @@
+---
+# =============================================================================
+# Role: proxmox_host — apt_repos.yml
+#
+# Every fresh Proxmox install ships with the paid enterprise repos enabled
+# by default (pve-enterprise.sources, ceph.sources) — these 401 on every
+# `apt update` without an active subscription, and Debian/apt fails the
+# ENTIRE update hard on any single repo error, not just the broken one.
+# None of this homelab's PVE hosts have a paid subscription.
+#
+# Found live 2026-09-08 while trying to install node_exporter on pve-02
+# (pve-02) for the first time — `apt update` failed outright with a 401 on
+# enterprise.proxmox.com, blocking every apt-based task downstream, not
+# just node_exporter. pve-01 apparently already had this fixed by hand at
+# some point (its apt update already works); pve-02 and pve-03 did not.
+#
+# Fix: disable both enterprise .sources files (Enabled: no, deb822 format
+# — these are Debian Trixie hosts, not the old one-line sources.list
+# style) and add the free pve-no-subscription repo in their place.
+# =============================================================================
+
+- name: "[apt_repos] Check ceph.sources exists (not every node has Ceph configured)"
+  ansible.builtin.stat:
+    path: /etc/apt/sources.list.d/ceph.sources
+  register: ceph_sources_check
+
+- name: "[apt_repos] Disable pve-enterprise.sources (no paid subscription on this fleet)"
+  ansible.builtin.lineinfile:
+    path: /etc/apt/sources.list.d/pve-enterprise.sources
+    regexp: '^Enabled:'
+    line: 'Enabled: no'
+    insertafter: '^Types:'
+  when: pve_disable_enterprise_repos | default(true) | bool
+
+- name: "[apt_repos] Disable ceph.sources enterprise repo (same 401 issue, same fix)"
+  ansible.builtin.lineinfile:
+    path: /etc/apt/sources.list.d/ceph.sources
+    regexp: '^Enabled:'
+    line: 'Enabled: no'
+    insertafter: '^Types:'
+  when:
+    - pve_disable_enterprise_repos | default(true) | bool
+    - ceph_sources_check.stat.exists
+
+- name: "[apt_repos] Add free pve-no-subscription repo"
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pve-no-subscription.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: http://download.proxmox.com/debian/pve
+      Suites: {{ ansible_distribution_release }}
+      Components: pve-no-subscription
+      Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+  when: pve_disable_enterprise_repos | default(true) | bool
+
+- name: "[apt_repos] Refresh apt cache now that enterprise repos are disabled"
+  ansible.builtin.apt:
+    update_cache: true
+  when: pve_disable_enterprise_repos | default(true) | bool

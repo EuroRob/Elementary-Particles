@@ -1,0 +1,55 @@
+# Homepage info widgets — managed by Ansible homepage role
+# Ref: https://gethomepage.dev/latest/widgets/
+
+# ── Top bar: clock, greeting, search ─────────────────────────────────────────
+- logo:
+    icon: mdi-home
+
+- greeting:
+    text_size: xl
+    text: "{{ homepage_title }} — {{ homepage_description }}"
+
+- datetime:
+    text_size: xl
+    format:
+      dateStyle: short
+      timeStyle: short
+      hourCycle: h23
+
+- search:
+    provider: duckduckgo
+    focus: false
+    target: _blank
+
+# ── Resource monitor (web-01 host stats) ─────────────────────────────────────
+- resources:
+    backend: resources
+    cpu: true
+    memory: true
+    label: web-01
+    refresh: 5000
+
+# ── Traefik live route count ──────────────────────────────────────────────────
+- traefik:
+    url: "{{ homepage_services.traefik_url }}"
+
+# ── Pi-hole ad-block stats ────────────────────────────────────────────────────
+{% if _hw is defined and _hw.pihole_api_key is defined %}
+- pihole:
+    url: "{{ homepage_services.pihole_url }}"
+    key: "{{ _hw.pihole_api_key }}"
+    fields:
+      - ads_blocked_today
+      - ads_percentage_today
+{% else %}
+# Pi-hole widget: set 'pihole_api_key' in Vault at secret/homepage/widgets
+# then re-run the homepage role to enable live stats.
+{% endif %}
+
+# ── Grafana: latest alert count ───────────────────────────────────────────────
+{% if _hw is defined and _hw.grafana_password is defined %}
+- grafana:
+    url: "{{ homepage_services.grafana_url }}"
+    username: admin
+    password: "{{ _hw.grafana_password }}"
+{% endif %}
