@@ -222,6 +222,15 @@ FIELD=$(curl -sf -H "X-Vault-Token: $VAULT_TOKEN" \
 - **Every PR fills `.forgejo/PULL_REQUEST_TEMPLATE.md`** (what changed, what ran, known risks, what needs
   a human look) and must have the `checks` job green. Run `scripts/ci/check.sh` locally before opening
   one; it is the same script CI runs (runner on code-01, role `forgejo_runner`).
+- **Agents never push to master; owner, the human, may** (2026-11-16, his rule). An agent works on a branch and opens a
+  PR with the `checks` job green; owner merges it, or pushes to master himself when he chooses (a README line,
+  a hotfix). Forgejo's branch protection allows only the account `owner` to push or merge. Caveat, stated plainly:
+  agent sessions on the IaC VM currently authenticate AS `owner` (the VM's git key and the Vault admin secret), so
+  today this is a rule an agent must keep, not one Forgejo can enforce. It becomes enforced when agents use a bot
+  account that is not on the push whitelist. A rule from 2026-11-15 allowing agents docs-only direct pushes was
+  removed on purpose; do not reintroduce it.
+- **Commit identity:** never publish a history whose author or committer email is a personal address;
+  `public_export/release.sh` and `mac_publish.sh` refuse it.
 - `proxmox_node: pve-01` for ALL VMs on pve-01 (pve-01 is the Proxmox node name).
 - `proxmox_node: pve-02` for ALL VMs on pve-02 (pve-02 is the Proxmox node name).
 - `proxmox_node: pve-03` for ALL VMs on pve-03 (pve-03 is the Proxmox node name).

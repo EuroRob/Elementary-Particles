@@ -44,3 +44,10 @@ monitoring_watchdog_interval: "2min"
 
 vault_homepage_path:      "secret/homepage/widgets"
 vault_postgres_path:      "secret/postgres/pg-01"
+
+# Claude Code telemetry (OTLP metrics -> collector -> Prometheus). See
+# docs/CLAUDE_OBSERVABILITY.md. Pinned, not "latest": the collector's
+# component names/config shape change between releases.
+otel_collector_image:     "otel/opentelemetry-collector-contrib:0.116.1"
+otel_collector_otlp_http_port: 4318     # published on the host; write-only ingest
+otel_collector_prom_port: 8889          # monitoring network only; Prometheus scrapes it

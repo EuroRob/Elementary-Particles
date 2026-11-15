@@ -29,6 +29,22 @@ scrape_configs:
 {% endif %}
 {% endfor %}
 
+  # Claude Code sessions (via otel-collector) -- tokens, cost, active time,
+  # tool decisions. honor_labels keeps the collector's exported labels as-is.
+  - job_name: claude_code
+    honor_labels: true
+    static_configs:
+      - targets: ["otel-collector:{{ otel_collector_prom_port }}"]
+
+  # LiteLLM's own Prometheus callback: per-model request counts, latency,
+  # tokens, failures for everything that goes through the model registry
+  # (OpenClaw, n8n HA workflow, podcast-api, ...). Host IP, not a container
+  # name: litellm is a separate compose project, not on this network.
+  - job_name: litellm
+    metrics_path: /metrics/   # trailing slash: bare /metrics 307-redirects here
+    static_configs:
+      - targets: ["{{ ansible_host }}:{{ litellm_port | default(4100) }}"]
+
   - job_name: traefik
     static_configs:
       - targets: ["traefik:8080"]

@@ -226,6 +226,15 @@ authelia_access_rules:
     policy: bypass
     comment: "Authelia itself — no auth loop"
 
+  # Rules are first-match. Services whose /api is the application itself go here,
+  # BEFORE the fleet-wide /api bypass below (that bypass is a known gap, see
+  # docs/incidents; narrow it per service rather than widen it).
+  - domain:
+      - "music.{{ base_domain }}"
+      - "studio.{{ base_domain }}"
+    policy: one_factor
+    comment: "Music studio: the catalog API and UI are browser-only, every path behind SSO (2026-11-15)"
+
   - domain: "*.{{ base_domain }}"
     resources:
       - "^/api/.*$"

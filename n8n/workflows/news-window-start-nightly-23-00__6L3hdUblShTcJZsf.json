@@ -445,7 +445,7 @@
       "id": "news-start-vmlist",
       "name": "pve-02 VM list",
       "parameters": {
-        "jsCode": "// Every VM pve-02 runs - must match the list in 'pve-02 - Daily Shutdown (07:00)'.\n// None of them have onboot=1, so this wake flow is what brings them back.\nreturn [{\"vmid\": 106, \"name\": \"OSemSearch\"}, {\"vmid\": 231, \"name\": \"es-01\"}, {\"vmid\": 234, \"name\": \"es-02\"}, {\"vmid\": 301, \"name\": \"dl-01\"}, {\"vmid\": 302, \"name\": \"grid-01\"}, {\"vmid\": 304, \"name\": \"scout-01\"}, {\"vmid\": 110, \"name\": \"Minecraft\"}].map(v => ({ json: v }));"
+        "jsCode": "// Every VM pve-02 starts at 23:00 - the shutdown list in 'pve-02 - Daily Shutdown (07:00)' has these plus 302, 110.\n// None of them have onboot=1, so this wake flow is what brings them back.\n// grid-01 (302) and Minecraft (110) left out 2026-10-18: started by hand only (RAM);\n// they stay in the shutdown list so a hand-started one still stops cleanly.\nreturn [{\"vmid\": 106, \"name\": \"OSemSearch\"}, {\"vmid\": 231, \"name\": \"es-01\"}, {\"vmid\": 234, \"name\": \"es-02\"}, {\"vmid\": 301, \"name\": \"dl-01\"}, {\"vmid\": 304, \"name\": \"scout-01\"}].map(v => ({ json: v }));"
       },
       "position": [
         1080,

@@ -175,6 +175,15 @@
     mode: "0644"
   notify: restart monitoring
 
+- name: "[monitoring] Write otel-collector config (Claude Code telemetry)"
+  ansible.builtin.template:
+    src: otel-collector.yml.j2
+    dest: "{{ monitoring_compose_dir }}/otel-collector.yml"
+    mode: "0644"
+  # Single-file bind mount: needs a real container restart, not a reload
+  # (same stale-inode rule as prometheus.yml above).
+  notify: restart otel-collector container
+
 - name: "[monitoring] Write Prometheus alert rules"
   ansible.builtin.template:
     src: rules/critical_infra.yml.j2
@@ -195,6 +204,23 @@
     dest: "{{ alertmanager_rules_dir }}/iot_watch.yml"
     mode: "0644"
   notify: restart monitoring
+
+- name: "[monitoring] Grafana dashboards dir (read by the 'homelab' file provider)"
+  ansible.builtin.file:
+    path: "{{ grafana_data_dir }}/dashboards"
+    state: directory
+    owner: "472"
+    group: "472"
+    mode: "0755"
+
+- name: "[monitoring] Claude Code + Ollama dashboard"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../Grafana/claude_ollama_observability.json"
+    dest: "{{ grafana_data_dir }}/dashboards/claude_ollama_observability.json"
+    owner: "472"
+    group: "472"
+    mode: "0644"
+  # Grafana re-reads the provider path every 60 s; no restart needed.
 
 - name: "[monitoring] Write docker-compose.yml"
   ansible.builtin.template:
@@ -219,6 +245,7 @@
     - "{{ grafana_image }}"
     - "prometheuscommunity/postgres-exporter:latest"
     - "{{ alertmanager_image }}"
+    - "{{ otel_collector_image }}"
 
 - name: "[monitoring] Start Prometheus + Grafana"
   community.docker.docker_compose_v2:

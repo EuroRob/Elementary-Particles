@@ -1,0 +1,203 @@
+{
+  "active": true,
+  "connections": {
+    "Head status": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Judge",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Hourly": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Open PRs",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Judge": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Send to Matrix (System Alerts)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Open PRs": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Split PRs",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Split PRs": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Head status",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "w9Gosxv9070omvWe",
+  "name": "EP: PR Watch -> System Alerts (Matrix)",
+  "nodes": [
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K0pxCl9bHQgKQ4yh",
+          "name": "Forgejo PR Watcher (read-only)"
+        }
+      },
+      "id": "3cc2e9e1-4bd6-4097-b998-62a9e9d8dc59",
+      "name": "Head status",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "url": "=http://10.0.30.31:3000/api/v1/repos/owner/GitOps/commits/{{ $json.sha }}/status"
+      },
+      "position": [
+        660,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "55759e2f-e521-42f0-9310-417b27cfbedb",
+      "name": "Hourly",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "10 * * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "6bd25e5b-ae5b-44bd-bb1f-fe5c35bf1597",
+      "name": "Judge",
+      "parameters": {
+        "jsCode": "\n// One item per PR from \"Split PRs\", one status document per PR from \"Head status\" (same order).\nconst prs = $('Split PRs').all().map(i => i.json);\nconst stats = $input.all().map(i => i.json);\nconst now = Date.now(), STALE_H = 24;\nconst rows = prs.map((pr, i) => {\n  const s = stats[i] || {};\n  const ctx = (name) => (s.statuses || []).filter(x => x.context === name).sort((a,b) => (a.created_at < b.created_at ? 1 : -1))[0];\n  const checks = ctx('checks / checks (pull_request)'), drift = ctx('checks-drift');\n  const ageH = Math.round((now - Date.parse(pr.created_at)) / 36e5);\n  const idleH = Math.round((now - Date.parse(pr.updated_at)) / 36e5);\n  const flags = [];\n  if (ageH >= STALE_H) flags.push(`open ${ageH} h`);\n  if (!checks) flags.push('no checks status (rebase + push)');\n  else if (checks.status !== 'success') flags.push(`checks ${checks.status}`);\n  if (drift && drift.status === 'failure') flags.push('fails against current master');\n  if (pr.draft) flags.push('draft');\n  return { number: pr.number, title: pr.title, url: pr.html_url, author: pr.author, ageH, idleH, flags };\n});\nconst flagged = rows.filter(r => r.flags.length);\nif (!flagged.length) return [];\nconst lines = flagged.map(r => `• #${r.number} ${r.title} (${r.author}, ${r.ageH} h old, idle ${r.idleH} h): ${r.flags.join(', ')}`);\nconst body = `PR watch: ${flagged.length} of ${rows.length} open pull request(s) need a look\\n` + lines.join('\\n');\nconst html = `<b>PR watch:</b> ${flagged.length} of ${rows.length} open pull request(s) need a look<ul>` +\n  flagged.map(r => `<li><a href=\"${r.url}\">#${r.number}</a> ${r.title} <i>(${r.author}, ${r.ageH} h old, idle ${r.idleH} h)</i>: ${r.flags.join(', ')}</li>`).join('') + '</ul>';\nreturn [{ json: { txn_id: `prwatch-${now}`, matrixPayload: { msgtype: 'm.notice', body, format: 'org.matrix.custom.html', formatted_body: html }, flagged: flagged.length, total: rows.length } }];\n"
+      },
+      "position": [
+        880,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K0pxCl9bHQgKQ4yh",
+          "name": "Forgejo PR Watcher (read-only)"
+        }
+      },
+      "id": "022e1501-90ca-4415-89f9-dece8cff62c0",
+      "name": "Open PRs",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "url": "http://10.0.30.31:3000/api/v1/repos/owner/GitOps/pulls?state=open&limit=50"
+      },
+      "position": [
+        220,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "cqzqjeK3jtlIBvYD",
+          "name": "Matrix Bot Bearer"
+        }
+      },
+      "id": "f1f858e2-1bca-49cb-a54b-9fba6ef1db7f",
+      "name": "Send to Matrix (System Alerts)",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={{ $json.matrixPayload }}",
+        "method": "PUT",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+      },
+      "position": [
+        1100,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "055019f9-5ebd-4af8-8f1a-c6145c53cfd0",
+      "name": "Split PRs",
+      "parameters": {
+        "jsCode": "\nconst prs = Array.isArray($input.first().json) ? $input.first().json : $input.all().map(i => i.json);\nreturn prs.map(pr => ({ json: { number: pr.number, title: pr.title, sha: pr.head.sha, created_at: pr.created_at,\n  updated_at: pr.updated_at, html_url: pr.html_url, author: (pr.user || {}).login, draft: !!pr.draft } }));\n"
+      },
+      "position": [
+        440,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin"
+  },
+  "tags": []
+}

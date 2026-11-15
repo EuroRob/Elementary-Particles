@@ -143,7 +143,10 @@ def main():
         if not cursor:
             break
     wanted, changed, total_hits = {}, [], 0
+    archived = [m["name"] for m in items if m.get("isArchived")]
     for meta in items:
+        if meta.get("isArchived"):      # archived in n8n = not live; keep it out of live/
+            continue
         w = get(f"/workflows/{meta['id']}", key)
         hits = []
         clean = scrub(normalise(w), w["name"], hits)
@@ -157,7 +160,7 @@ def main():
         flag = f"  [{len(hits)} redaction(s): {', '.join(sorted(set(h.split('.', 1)[-1][:70] for h in hits))[:4])}]" if hits else ""
         print(f"{'*' if fn in changed else ' '} {'ACTIVE ' if w.get('active') else 'inactive'} {fn}{flag}")
     stale = sorted(p.name for p in out.glob("*.json") if p.name not in wanted) if out.exists() else []
-    print(f"\n{len(items)} workflows, {len(changed)} new/changed, {len(stale)} no longer in n8n, "
+    print(f"\n{len(items)} workflows ({len(archived)} archived, skipped), {len(changed)} new/changed, {len(stale)} no longer in n8n, "
           f"{total_hits} secret redaction(s)")
     if a.check:
         return 1 if changed or stale else 0

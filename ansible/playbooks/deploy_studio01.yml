@@ -180,8 +180,9 @@
       tags: ["music_studio"]
 
     # ---- Music Studio Traefik routes (web-01, file provider) ----
-    # catalog/assistant open (n8n/HA/DOMO call them machine-to-machine), beets
-    # one_factor. DNS: the three names point at web-01 (10.0.30.20) already.
+    # catalog/assistant behind Authelia (one_factor) since 2026-11-14: the browser is
+    # their only client through Traefik; DOMO and the macOS tools call the studio
+    # partner / field ingest on 10.0.30.59:8202/8203 directly. beets one_factor. DNS: the three names point at web-01 (10.0.30.20) already.
     - name: "Register Traefik route: music.home.example.org → music-catalog API"
       ansible.builtin.include_role:
         name: traefik_register
@@ -191,7 +192,7 @@
         traefik_service_name: "music-catalog"
         traefik_backend_url: "http://10.0.30.59:8200"
         traefik_domain: "music.home.example.org"
-        traefik_auth: "none"
+        traefik_auth: "one_factor"
         traefik_healthcheck_path: "/health"
       when: music_studio_enabled | default(false) | bool
       tags: ["traefik_register", "music_studio"]
@@ -205,7 +206,7 @@
         traefik_service_name: "music-assistant"
         traefik_backend_url: "http://10.0.30.59:8201"
         traefik_domain: "studio.home.example.org"
-        traefik_auth: "none"
+        traefik_auth: "one_factor"
         traefik_healthcheck_path: "/health"
       when: music_studio_enabled | default(false) | bool
       tags: ["traefik_register", "music_studio"]

@@ -121,6 +121,28 @@ services:
       app.managed-by: "elementary-particles"
       app.service: "ha-bridge"
 
+  # Claude Code telemetry ingest. Receives OTLP/HTTP metrics from Claude Code
+  # sessions, converts delta -> cumulative, strips identity attributes, and
+  # re-exposes them for Prometheus to scrape. Write-only from the outside:
+  # the only host-published port is the OTLP receiver. Config in
+  # otel-collector.yml (single-file bind mount -> restarted on change, same
+  # inode-staleness rule as prometheus.yml).
+  otel-collector:
+    image: "{{ otel_collector_image }}"
+    container_name: otel-collector
+    restart: unless-stopped
+    mem_limit: 128m
+    mem_reservation: 64m
+    networks:
+      - monitoring
+    ports:
+      - "{{ otel_collector_otlp_http_port }}:4318"
+    volumes:
+      - "{{ monitoring_compose_dir }}/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro"
+    labels:
+      app.managed-by: "elementary-particles"
+      app.service: "otel-collector"
+
 networks:
   monitoring:
     driver: bridge

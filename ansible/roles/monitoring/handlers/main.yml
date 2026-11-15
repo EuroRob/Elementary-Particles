@@ -53,3 +53,9 @@
     cmd: docker restart alertmanager
   changed_when: true
   listen: restart monitoring
+
+- name: restart otel-collector container
+  ansible.builtin.command:
+    cmd: docker restart otel-collector
+  changed_when: true
+  failed_when: false   # first deploy: container doesn't exist yet; compose-up creates it fresh

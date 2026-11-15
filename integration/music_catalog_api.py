@@ -62,6 +62,31 @@ SESSION_FILES_DIR   = Path(os.getenv("SESSION_FILES_DIR",   "/music/sessions"))
 FIELD_DIR           = Path(os.getenv("FIELD_RECORDINGS_DIR","/music/field"))
 MIDI_OUTPUT_DIR     = Path(os.getenv("MIDI_OUTPUT_DIR",     "/music/midi"))
 STEMS_OUTPUT_DIR    = Path(os.getenv("STEMS_OUTPUT_DIR",    "/music/stems"))
+# Files this service may hand to a subprocess (basic-pitch, demucs): only what lives
+# under its own mounts. A file_path row is data from the network, not a trusted path.
+ALLOWED_AUDIO_ROOTS = [Path(r) for r in os.getenv("ALLOWED_AUDIO_ROOTS", "/music").split(":") if r]
+
+
+def _safe_upload_name(name: Optional[str]) -> str:
+    """Basename only, no path separators, no empty/dot names: a filename is user input."""
+    base = Path(name or "").name.replace("\\", "_").strip()
+    if not base or base in (".", "..") or base.startswith("."):
+        raise HTTPException(400, "invalid filename")
+    return base
+
+
+def _audio_path_or_400(file_path: Optional[str]) -> Path:
+    """Resolve a recorded file_path and refuse anything outside ALLOWED_AUDIO_ROOTS."""
+    if not file_path:
+        raise HTTPException(400, "File not found: (empty path)")
+    p = Path(file_path)
+    try:
+        rp = p.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise HTTPException(400, f"File not found: {file_path}")
+    if not rp.is_file() or not any(rp.is_relative_to(root.resolve()) for root in ALLOWED_AUDIO_ROOTS):
+        raise HTTPException(400, f"File not allowed: {file_path}")
+    return rp
 AUDIO_ANALYSIS_URL  = os.getenv("AUDIO_ANALYSIS_URL",       "http://audio-analysis:8100")
 BEETS_URL           = os.getenv("MUSIC_BEETS_URL",          "http://music-beets:8337")
 # Separate from BEETS_URL on purpose: BEETS_URL is the internal docker
@@ -592,7 +617,9 @@ async def upload_field_recording(
     tags: str = "",
 ):
     """Accept a file upload and create a field recording entry."""
-    dest = FIELD_DIR / file.filename
+    dest = FIELD_DIR / _safe_upload_name(file.filename)
+    if dest.exists():
+        raise HTTPException(409, f"a recording named {dest.name} already exists")
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
@@ -636,9 +663,7 @@ async def _analyse_field_recording(rec_id: str, file_path: str):
 async def transcribe_to_midi(rec_id: str, background_tasks: BackgroundTasks):
     """Transcribe a field recording to MIDI using Spotify Basic Pitch."""
     row = await _get_or_404("field_recordings", rec_id)
-    file_path = row.get("file_path")
-    if not file_path or not Path(file_path).exists():
-        raise HTTPException(400, f"File not found: {file_path}")
+    file_path = str(_audio_path_or_400(row.get("file_path")))
 
     output_dir = MIDI_OUTPUT_DIR / rec_id
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -695,9 +720,7 @@ async def separate_stems(
 ):
     """Separate audio into drums / bass / vocals / other stems using Demucs."""
     row = await _get_or_404("field_recordings", rec_id)
-    file_path = row.get("file_path")
-    if not file_path or not Path(file_path).exists():
-        raise HTTPException(400, f"File not found: {file_path}")
+    file_path = str(_audio_path_or_400(row.get("file_path")))
 
     out_dir = STEMS_OUTPUT_DIR / rec_id
     out_dir.mkdir(parents=True, exist_ok=True)

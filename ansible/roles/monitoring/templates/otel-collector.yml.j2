@@ -1,0 +1,47 @@
+# Claude Code telemetry collector -- rendered by the monitoring role.
+# docs/CLAUDE_OBSERVABILITY.md. Metrics only: no logs/traces pipeline, so
+# prompt/response/tool-detail events are never stored even if a client
+# enables them.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Claude Code defaults to delta temporality; Prometheus wants cumulative.
+  deltatocumulative:
+    max_stale: 24h
+  # Identity attributes are not needed for a one-person lab and would sit in
+  # Prometheus for 30 days. session.id is kept (per-session cost is the point).
+  attributes/strip_identity:
+    actions:
+      - { key: user.email,        action: delete }
+      - { key: user.id,           action: delete }
+      - { key: user.account_uuid, action: delete }
+      - { key: user.account_id,   action: delete }
+      - { key: organization.id,   action: delete }
+  resource/strip_identity:
+    attributes:
+      - { key: user.email,        action: delete }
+      - { key: user.id,           action: delete }
+      - { key: user.account_uuid, action: delete }
+      - { key: user.account_id,   action: delete }
+      - { key: organization.id,   action: delete }
+  batch: {}
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:{{ otel_collector_prom_port }}
+    # Resource attributes (host.name, os.type, service.version, ...) become
+    # labels so sessions from different machines stay distinguishable.
+    resource_to_telemetry_conversion:
+      enabled: true
+    metric_expiration: 24h
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [resource/strip_identity, attributes/strip_identity, deltatocumulative, batch]
+      exporters: [prometheus]

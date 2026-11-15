@@ -27,6 +27,23 @@ jobs:
           git checkout -q "$SHA"
           echo "checked out $(git rev-parse --short HEAD), base origin/${BASE} = $(git rev-parse --short "origin/${BASE}")"
 
+      # The gate runs from the base branch, not from the commit under review: a pull
+      # request cannot weaken the checks that judge it. Changes to the gate itself take
+      # effect once they are merged. (The workflow file is still read from the PR head;
+      # that part is Forgejo's, and a reviewer sees any diff under .forgejo/.)
+      - name: Take the gate from the base branch
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -eu
+          GATE="scripts/ci .gitleaks.toml .forgejo"
+          if ! git diff --quiet "origin/${BASE}" HEAD -- $GATE; then
+            echo "::notice::this pull request changes the gate itself:"
+            git diff --stat "origin/${BASE}" HEAD -- $GATE
+          fi
+          git checkout -q "origin/${BASE}" -- scripts/ci .gitleaks.toml
+
       - name: Run the checks
         env:
           BASE_REF: origin/${{ github.base_ref || github.ref_name }}

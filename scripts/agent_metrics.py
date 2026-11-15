@@ -60,14 +60,18 @@ def git_metrics(commits: list[dict], window_days: int) -> dict:
         by_month[m][1] += c["agent"]
 
     win = window_days * 86400
-    followed = 0
+
+    def fixes_after(c: dict) -> list[dict]:
+        return [d for d in commits if c["t"] < d["t"] <= c["t"] + win and FIX.search(d["subject"]) and d["files"] & c["files"]]
+
+    followed = followed_by_human = 0
     for c in agent:
-        if any(c["t"] < d["t"] <= c["t"] + win and FIX.search(d["subject"]) and d["files"] & c["files"] for d in commits):
+        fx = fixes_after(c)
+        if fx:
             followed += 1
-    followed_h = 0
-    for c in human:
-        if any(c["t"] < d["t"] <= c["t"] + win and FIX.search(d["subject"]) and d["files"] & c["files"] for d in commits):
-            followed_h += 1
+            if any(not d["agent"] for d in fx):
+                followed_by_human += 1
+    followed_h = sum(1 for c in human if fixes_after(c))
 
     reverts = [c for c in commits if c["subject"].lower().startswith("revert")]
     reverted_agent = sum(1 for r in reverts if any(a["subject"][:40] and a["subject"][:40] in r["subject"] for a in agent))
@@ -79,6 +83,8 @@ def git_metrics(commits: list[dict], window_days: int) -> dict:
         "first_agent_commit": dt.datetime.fromtimestamp(first_agent, dt.UTC).date().isoformat() if first_agent else None,
         "followed_by_fix_within_days": window_days,
         "agent_commits_followed_by_fix_pct": round(100 * followed / len(agent), 1) if agent else None,
+        "agent_commits_followed_by_human_fix_pct": round(100 * followed_by_human / len(agent), 1) if agent else None,
+        "human_commits_in_period": len(human),
         "human_commits_followed_by_fix_pct": round(100 * followed_h / len(human), 1) if human else None,
         "reverts_total": len(reverts),
         "reverts_of_agent_commits": reverted_agent,
@@ -129,7 +135,8 @@ def markdown(g: dict, p: dict | None) -> str:
            f"| First agent commit | {g['first_agent_commit']} |",
            f"| Agent share of commits since then | {g['agent_share_since_first_agent']} % |",
            f"| Agent commits followed within {g['followed_by_fix_within_days']} days by a fix/revert touching the same files | {g['agent_commits_followed_by_fix_pct']} % |",
-           f"| Same, for human-only commits in the same period | {g['human_commits_followed_by_fix_pct']} % |",
+           f"| ... of which the fix came from a person, not the agent | {g['agent_commits_followed_by_human_fix_pct']} % |",
+           f"| Human-only commits in the same period ({g['human_commits_in_period']}) followed by a fix | {g['human_commits_followed_by_fix_pct']} % |",
            f"| Reverts (total / of agent commits) | {g['reverts_total']} / {g['reverts_of_agent_commits']} |"]
     if p:
         out += [f"| Pull requests (merged / closed without merge) | {p['prs_merged']} / {p['prs_closed_unmerged']} |",
@@ -141,10 +148,10 @@ def markdown(g: dict, p: dict | None) -> str:
     out += ["", "## Commits per month", "", "| Month | Commits | Agent co-authored |", "| --- | --- | --- |"]
     out += [f"| {m} | {v['commits']} | {v['agent']} |" for m, v in g["by_month"].items()]
     out += ["", "## What changed because of this", "",
-            "The first run of these numbers (2026-11-14) showed agent commits followed by a fix five times as often "
-            "as human-only commits in the same period, a six-minute median from pull request to merge, and review "
-            "comments on 2 of 68 pull requests: review happened in the agent session, and nothing ran the tests or "
-            "any validation automatically. In response, the repository got a Forgejo Actions pipeline on its own "
+            "The first run of these numbers (2026-11-14) showed about a third of agent commits followed within a "
+            "week by a fix on the same files, a six-minute median from pull request to merge, and review comments "
+            "on 2 of 68 pull requests: review happened in the agent session, and nothing ran the tests or any "
+            "validation automatically. In response, the repository got a Forgejo Actions pipeline on its own "
             "isolated runner (`scripts/ci/check.sh`: YAML, Python, shell, Terraform formatting, Ansible syntax, "
             "300 offline tests, secret scan on every pull request) and a pull-request template that asks for what "
             "changed, what ran, known risks and what needs a human look. The next recomputation is the test of "
@@ -152,7 +159,12 @@ def markdown(g: dict, p: dict | None) -> str:
             "becomes measurable from the pipeline's history.", ""]
     out += ["## How to read this", "",
             "- The follow-up-fix rate is an upper bound on rework: it counts any later fix on the same files, "
-            "whether or not the agent's change caused it. Comparing it with the human-only rate is the useful part.",
+            "whether or not the agent's change caused it. Almost all of those fixes are agent commits too, i.e. the "
+            "agent iterating on its own work inside the same task; the row below it counts only fixes a person "
+            "made afterwards, which is the closer measure of defects that got past the session.",
+            "- The human-only rate is not a like-for-like baseline: those commits are few, and many are large "
+            "catch-up commits whose files were touched again later for unrelated reasons. It is shown for "
+            "completeness, not as a ratio to quote.",
             "- Fast merges reflect a one-reviewer repository: the reviewer is the person who asked for the change "
             "and read it as it was produced. The number to watch over time is reverts of agent commits.",
             "- Pull-request figures need `--prs` with an export from the git host's API; the git-only figures work on any clone."]
