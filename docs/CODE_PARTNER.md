@@ -108,7 +108,7 @@ Conversation and model:
 
 The page at code.home.example.org shows:
 - the conversation;
-- every waiting change as a coloured diff, with **Apply** and **Reject** buttons;
+- every waiting change as a colored diff, with **Apply** and **Reject** buttons;
 - **Push + PR**, **New conversation** and **End session** buttons.
 
 It refreshes every 4 s, so a voice turn shows up while you talk. You can also type there instead of

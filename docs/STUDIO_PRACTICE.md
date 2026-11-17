@@ -3,7 +3,7 @@
 owner asked (2026-10-31) for a music tutor next to the studio: ear training, better piano
 playing through chords, scales and progressions, and a visual guide to progressions. The
 starting point was [vpavlenko/study-music](https://github.com/vpavlenko/study-music).
-- **What that repo is:** a reading list (143 Markdown files of links, no licence file).
+- **What that repo is:** a reading list (143 Markdown files of links, no license file).
   It's linked from here, not copied.
 - **No ear trainer to host:** every ear trainer it lists is a hosted service (ToneGym, Artusi, Teoria, Theta).
 - **So two things were built:**
@@ -124,6 +124,6 @@ Chromatone = `deploy_studio01.yml --tags chromatone`.
   The data is all in `/practice/stats`; the router would need a route.
 - **Keys from your sets:** progression drills in the keys of the sets you're working on.
   `music.sessions.key_signature` and Live 12's scale setting are already read.
-- **Rawl-style colour piano roll** of your own MIDI clips from Live 12 sets (step 3 of the evaluation).
+- **Rawl-style color piano roll** of your own MIDI clips from Live 12 sets (step 3 of the evaluation).
   The idea, not the code: Rawl is GPL-3.
 - **Audio-only takes:** Basic Pitch (audio → MIDI) on gpu-02, so audio-only takes get the same view.

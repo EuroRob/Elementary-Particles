@@ -10,7 +10,7 @@ It is distributed WITHOUT ANY WARRANTY; see [LICENSE](LICENSE) for details.
 ## Dual licensing
 
 The copyright holder may also offer this code under separate commercial terms, for
-organisations that cannot meet the AGPL's obligations. To make this possible, contributors
+organizations that cannot meet the AGPL's obligations. To make this possible, contributors
 agree to the terms in [CONTRIBUTING.md](CONTRIBUTING.md#contributor-license-agreement).
 
 ## Sanitized edition

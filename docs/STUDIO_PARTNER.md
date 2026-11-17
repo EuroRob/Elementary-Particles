@@ -36,7 +36,7 @@ is served by studio-partner too: see [STUDIO_PRACTICE.md](STUDIO_PRACTICE.md).
 | "studio session" / "let's make some music" | Opens a conversation on the set saved last (within 3 h). While it's open, every sentence goes there. It ends with "end studio session", "that's it for today" or after 30 min of silence; a summary goes into the chronicle. |
 | "idea: half-time bridge" / "song idea: …" / "studio todo: …" | Filed under the set you saved last. Inside a session, a bare "note:" / "todo:" works too. Outside a session it doesn't, because "todo: buy milk" is not music. |
 | "what did I do in the studio today?" | Today's saves (what changed) and notes |
-| "where are the files for Grand Times?" | The set's path on DATAGRID, and how many of its recordings are in the catalogue |
+| "where are the files for Grand Times?" | The set's path on DATAGRID, and how many of its recordings are in the catalog |
 
 ## The chronicle
 
@@ -57,7 +57,7 @@ is served by studio-partner too: see [STUDIO_PRACTICE.md](STUDIO_PRACTICE.md).
   first, so the chronicle starts before DOMO did.
 - **Projects** are `music.sessions` rows. Title, status and notes are yours; DOMO never
   overwrites them.
-- **Files:** `music.studio_files` links a set to its audio in the catalogue (`audio_locations`).
+- **Files:** `music.studio_files` links a set to its audio in the catalog (`audio_locations`).
   - A `… Project/` folder counts as a whole; otherwise `<name> Sounds/` and `Samples/Recorded/` next to the set.
   - The set's own sample references are resolved relative to the project. A set saved on the Mac
     (absolute `/Users/…` paths) still finds its files in the DATAGRID mirror.
@@ -70,14 +70,14 @@ The model is `gpu01-primary` with `num_ctx` 16384. It gets these facts:
 - the key: Live 12's scale setting, the session's key, or a key owner names;
 - for that key: diatonic, borrowed and secondary-dominant chords, spelled by letter (F# major's vii° is E#dim);
 - related keys;
-- the owner's most-played progressions from `music.progressions` (his own recordings), realised in the key;
+- the owner's most-played progressions from `music.progressions` (his own recordings), realized in the key;
 - the Live 12 Suite instruments and his plugins.
 
 **Checked by code, because the model got it wrong in testing (2026-10-24):**
 - **Chords.** In A minor the model wrote "V Em" (Em is v).
   - `music_theory.check_chords` checks every "numeral + chord" pair and every chord name against the computed lists.
   - On a mismatch, the model rewrites once, from an internal system note. Sent as "user", the
-    note made it apologise to owner.
+    note made it apologize to owner.
   - Anything still wrong is flagged in the reply.
 - **Bar plan.** The model invented bar counts ("fits your 64-bar set perfectly").
   - For an arrangement question, code writes the plan into the reply: the common form, in 8/16-bar

@@ -24,7 +24,7 @@ Your commit will therefore not appear here as-is; you will be credited in the co
 ## Contributor License Agreement
 
 Contributions need a signed Contributor License Agreement, [CLA.md](CLA.md). It lets the
-maintainer keep the project available under more than one licence; you keep your copyright.
+maintainer keep the project available under more than one license; you keep your copyright.
 
 How it works: open a pull request, and the CLA bot comments with the text to post to sign
 (one comment, once, for all your later pull requests). Until you have signed, the pull request

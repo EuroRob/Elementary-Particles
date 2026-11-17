@@ -188,7 +188,7 @@ Build one Live Set and save it with **File > Save Live Set as Default Set**. Eve
 | Traktor | Audio | Traktor (9/10) | Monitor In, for recording DJ sets |
 | Return A / B | Reverb / Delay |  |  |
 
-Turn on **Settings > Record, Warp & Launch > Start Recording on Scene Launch**. Colour-code the tracks (drums red, keys blue, vocals yellow) so your eyes find things before your brain has to.
+Turn on **Settings > Record, Warp & Launch > Start Recording on Scene Launch**. Color-code the tracks (drums red, keys blue, vocals yellow) so your eyes find things before your brain has to.
 
 ## Fixed studio vs mobile rig
 
@@ -341,7 +341,7 @@ After the training, run these six recording sessions to build instinct. Each one
 
 1. **Warm up, 5 min:** play with nothing recording except Capture MIDI.
 2. **Record, 25 to 40 min:** keep the record button on. Never stop to fix a mistake; play the next take.
-3. **Mark, 5 min:** colour the best clips green and add a locator (**Create > Add Locator**) at the best moments.
+3. **Mark, 5 min:** color the best clips green and add a locator (**Create > Add Locator**) at the best moments.
 4. **Save, 2 min:** **File > Save Live Set As** with the date and one word (2026-10-27 drumsfire). Use **Collect All and Save** so samples travel with the project.
 
 **Session 3 tip:** clip the AKG mic on a stand near the drum throne, and turn the TD-25 down in your headphone mix so the vocal is clear. Set the vocal track to monitor **In** so you hear yourself with no delay.

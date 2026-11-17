@@ -231,6 +231,10 @@ FIELD=$(curl -sf -H "X-Vault-Token: $VAULT_TOKEN" \
   removed on purpose; do not reintroduce it.
 - **Commit identity:** never publish a history whose author or committer email is a personal address;
   `public_export/release.sh` and `mac_publish.sh` refuse it.
+- **American English** in everything written for this repo: docs, comments, UI text, commit messages, PR text.
+  color, center, datacenter, catalog, analyze, license (noun and verb), summarize, behavior. Proper names keep their
+  spelling (Sonic Visualiser, Centre for Digital Music). Do not rename identifiers, files or database columns just
+  to change a spelling. The public export prints an `american-english` warning for British spellings it finds.
 - `proxmox_node: pve-01` for ALL VMs on pve-01 (pve-01 is the Proxmox node name).
 - `proxmox_node: pve-02` for ALL VMs on pve-02 (pve-02 is the Proxmox node name).
 - `proxmox_node: pve-03` for ALL VMs on pve-03 (pve-03 is the Proxmox node name).

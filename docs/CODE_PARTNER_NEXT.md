@@ -158,7 +158,7 @@ heavy one. Measure on the first build; resize the VM to 3 GB only if needed (the
 **[vibecoder](https://github.com/dublyo/vibecoder)** is not adopted.
 - It's young: 10 commits, 5 stars.
 - It uses only cloud models through OpenRouter, and it's built to generate and deploy new Next.js apps.
-- Its licence is fair-code, not open source.
+- Its license is fair-code, not open source.
 
 Three of its ideas fit our weak spot, a 14B model with a 16K window doing slow tool rounds:
 

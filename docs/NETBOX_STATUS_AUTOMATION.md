@@ -259,7 +259,7 @@ systemd_services:
   - another-service
 ```
 
-### Customising the Docker compose directory
+### Customizing the Docker compose directory
 
 ```yaml
 docker:
@@ -374,7 +374,7 @@ curl http://localhost:3000/netbox/status-log?vm=web-01
 | Symptom | Check |
 |---------|-------|
 | Nothing triggers | NetBox webhook URL reachable from NetBox container? Test with `curl`. |
-| SSH steps fail | `SSH_KEY_FILE` set? Key authorised on target VM? Run `--dry-run` first. |
+| SSH steps fail | `SSH_KEY_FILE` set? Key authorized on target VM? Run `--dry-run` first. |
 | Proxmox steps skip | `PROXMOX_HOST` and `PROXMOX_TOKEN_VALUE` set? Token has VM.PowerMgmt privilege? |
 | Grafana silence not created | `GRAFANA_URL` set? API key has `alerting:write` scope? |
 | pg_notify not firing | Trigger installed? (`--install-trigger`). NetBox status column name is `status` in `virtualization_virtualmachine`. |
@@ -392,7 +392,7 @@ This integration follows all EP conventions:
 - **Invoked via** `sync_wrapper.js` HTTP endpoints (`/netbox/status-change`)
 - **n8n workflow** uses webhook trigger + manual trigger + Slack + PostgreSQL audit
 - **Structured JSON** output consumable by n8n downstream nodes
-- **dry-run** mode honours `--dry-run` flag at every step
+- **dry-run** mode honors `--dry-run` flag at every step
 - **Graceful degradation**: missing credentials skip that step rather than aborting
 
 Related EP components:

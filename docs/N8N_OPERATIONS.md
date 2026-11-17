@@ -20,7 +20,7 @@ touches the DB, which is how the incident went unnoticed. The watchdog requires 
 2. `GET /api/v1/workflows?limit=1` with the API key = 200 — validating the key is a real DB
    round trip, exactly what returned 401/timeouts during the incident.
 
-**Behaviour:** 3 consecutive failures (~6 min) → `docker restart n8n` → wait ≤120 s →
+**Behavior:** 3 consecutive failures (~6 min) → `docker restart n8n` → wait ≤120 s →
 Matrix: "restarted, healthy again" or "NOT healthy, needs manual attention". At most one
 automatic restart per 30 min; while still failing after that it only re-alerts hourly (no
 restart loops). A container that is stopped, restarting or younger than 3 min is left alone

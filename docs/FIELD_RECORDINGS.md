@@ -1,7 +1,7 @@
 # Field recordings: Zoom H2n, Zoom R16, Tascam, iPhone Voice Memos → Music Studio
 
 Cards from the field recorders come into Music Studio through the Mac. A card is only erased
-once two checks pass. Studio then turns the takes into sessions it has analysed and enriched.
+once two checks pass. Studio then turns the takes into sessions it has analyzed and enriched.
 Everything stays in the house: the Mac, nas-02, studio-01, and Whisper on gpu-02.
 
 ```
@@ -47,7 +47,7 @@ Everything stays in the house: the Mac, nas-02, studio-01, and Whisper on gpu-02
 - 342 files: 215 H2n, 77 Tascam, 50 R16 tracks (7 live sessions).
 - 67 sessions in all.
 - 144 takes with a set clock.
-- 353 of the 371 catalogued were already analysed (key, tempo, chords).
+- 353 of the 371 cataloged were already analyzed (key, tempo, chords).
 - Voice Memos (added the same day): 25 from `FieldRecordings/` (2012) and `VoiceRecordings/` (2020),
   all with real times. The m4a files inside `Friends/` and `ABOM/` project folders are left out.
 
@@ -64,8 +64,8 @@ See MACOS_STUDIO_SETUP.md, section 7. In short:
 
 **"Processed"** means all of these:
 - registered;
-- in the catalogue (Beets);
-- analysed, or under 6 s (too short to analyse);
+- in the catalog (Beets);
+- analyzed, or under 6 s (too short to analyze);
 - arrived more than 65 minutes ago, so an hourly DATAGRID snapshot has run since.
 
 ## Server
@@ -79,7 +79,7 @@ See MACOS_STUDIO_SETUP.md, section 7. In short:
 | UI | studio.home.example.org → **Field** |
 | ep-probe | `field-ingest` |
 
-Why the trigger file: the nightly `audio_identity_sync` marks every catalogue location Beets
+Why the trigger file: the nightly `audio_identity_sync` marks every catalog location Beets
 doesn't know as missing. So field-ingest never writes `audio_locations` itself. It asks for a
 Beets import of the new folder, and a container can't `docker exec` into another one.
 
@@ -98,5 +98,5 @@ Beets import of the new folder, and a container can't `docker exec` into another
 - Splitting a session by hand. The 66 untimed Tascam takes sit in one folder, so they are one session.
 - DOMO voice ("what did I record on Saturday?"), and song suggestions for field takes.
 - Moving a non-musical memo (family moments) out of Studio into another area, for example the
-  Personal Chronicle. Decision 2026-10-25: **all memos stay catalogued in Studio for now**,
+  Personal Chronicle. Decision 2026-10-25: **all memos stay cataloged in Studio for now**,
   including the speech-only ones ("could be fun to include them in songs someday").
