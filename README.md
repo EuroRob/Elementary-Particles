@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.jpg" alt="Elementary Particles" width="900">
+</p>
+
 # Elementary Particles
 
 Infrastructure as code for a self-hosted family cloud and household assistant: photos, files,
@@ -15,7 +19,7 @@ access model rather than as a chat window:
 
 | | Claude Code (cloud) | Code partner (on premise) |
 | --- | --- | --- |
-| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 430 of the 902 commits on the main branch (69 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
+| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 431 of the 906 commits on the main branch (69 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
 | **May never touch** | Secrets outside its Vault lane; see [agent access lanes](docs/AGENT_ACCESS_LANES.md), [`vault/lanes.yml`](vault/lanes.yml) and the generated [policies](vault/policies). | `.env`, state files, keys, its own code and policy, CI, `CLAUDE.md`. No tool to apply, commit, push or run anything; no network beyond three hosts. See [code partner](docs/CODE_PARTNER.md) and [`code_partner_policy.yml`](integration/code_partner_policy.yml). |
 | **A person approves** | Every change lands as a pull request on a protected main branch. A `checks` job ([`.forgejo/workflows/ci.yml`](.forgejo/workflows/ci.yml) running [`scripts/ci/check.sh`](scripts/ci/check.sh): YAML, Python, shell, `terraform fmt`, Ansible syntax, the offline tests, gitleaks) must be green before a person reviews and merges. | Apply, push and "open the pull request" are fixed phrases or buttons a person uses; merging is not in the code at all. |
 
@@ -121,6 +125,8 @@ If you run a modified version as a network service, you must offer its source to
 this into a proprietary product or run it as a closed service, a commercial license can be arranged with
 the maintainer. Open an issue titled "Commercial license" (no details needed) and you will be contacted
 privately. Consulting and help adapting this to your own setup are available the same way.
+
+The name "Elementary Particles" and the banner image are not licensed under the AGPL. Please do not use them in a way that suggests your fork is the original or is endorsed by the maintainer.
 
 Contributions are welcome and need a signed Contributor License Agreement; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
