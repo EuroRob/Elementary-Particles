@@ -19,7 +19,7 @@ access model rather than as a chat window:
 
 | | Claude Code (cloud) | Code partner (on premise) |
 | --- | --- | --- |
-| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 431 of the 907 commits on the main branch (69 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
+| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 431 of the 908 commits on the main branch (69 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
 | **May never touch** | Secrets outside its Vault lane; see [agent access lanes](docs/AGENT_ACCESS_LANES.md), [`vault/lanes.yml`](vault/lanes.yml) and the generated [policies](vault/policies). | `.env`, state files, keys, its own code and policy, CI, `CLAUDE.md`. No tool to apply, commit, push or run anything; no network beyond three hosts. See [code partner](docs/CODE_PARTNER.md) and [`code_partner_policy.yml`](integration/code_partner_policy.yml). |
 | **A person approves** | Every change lands as a pull request on a protected main branch. A `checks` job ([`.forgejo/workflows/ci.yml`](.forgejo/workflows/ci.yml) running [`scripts/ci/check.sh`](scripts/ci/check.sh): YAML, Python, shell, `terraform fmt`, Ansible syntax, the offline tests, gitleaks) must be green before a person reviews and merges. | Apply, push and "open the pull request" are fixed phrases or buttons a person uses; merging is not in the code at all. |
 
@@ -62,7 +62,7 @@ someone remembers how it was set up.
 | **One source of truth** | Hosts, IPs and settings live in one inventory ([`ansible/inventory/services.yml`](ansible/inventory/services.yml)). Secrets live only in Vault, never in git. |
 | **Everything stays in the house** | Data on your own disks, models on your own GPUs: two NVIDIA cards (RTX 4060 Ti, RTX 2070) for Ollama, Whisper and Piper, and two Intel iGPUs passed through to VMs for media transcoding and the camera NVR. Voice never goes through a cloud API. |
 | **Layered and re-runnable** | A numbered build order: network → secrets → storage and database → reverse proxy → applications. Every layer can be run again without disturbing what is already up. |
-| **AI suggests, code checks, people decide** | Models draft, summarise and converse; every suggestion passes checks written in code. Facts that must be right (chords, bar counts, "was it saved?") are checked by code, and changes to real things stay with a person. |
+| **AI suggests, checks code, people decide** | Models draft, summarise and converse; every suggestion passes checks written in code. Facts that must be right (chords, bar counts, "was it saved?") are checked by code, and changes to real things stay with a person. |
 
 Longer versions: [solution overview](docs/SOLUTION_OVERVIEW.md) ·
 [VMs as particles](docs/VM_ELEMENTARY_PARTICLES.md) ·
