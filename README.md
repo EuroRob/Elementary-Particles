@@ -19,7 +19,7 @@ access model rather than as a chat window:
 
 | | Claude Code (cloud) | Code partner (on premise) |
 | --- | --- | --- |
-| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 431 of the 906 commits on the main branch (69 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
+| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 431 of the 907 commits on the main branch (69 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
 | **May never touch** | Secrets outside its Vault lane; see [agent access lanes](docs/AGENT_ACCESS_LANES.md), [`vault/lanes.yml`](vault/lanes.yml) and the generated [policies](vault/policies). | `.env`, state files, keys, its own code and policy, CI, `CLAUDE.md`. No tool to apply, commit, push or run anything; no network beyond three hosts. See [code partner](docs/CODE_PARTNER.md) and [`code_partner_policy.yml`](integration/code_partner_policy.yml). |
 | **A person approves** | Every change lands as a pull request on a protected main branch. A `checks` job ([`.forgejo/workflows/ci.yml`](.forgejo/workflows/ci.yml) running [`scripts/ci/check.sh`](scripts/ci/check.sh): YAML, Python, shell, `terraform fmt`, Ansible syntax, the offline tests, gitleaks) must be green before a person reviews and merges. | Apply, push and "open the pull request" are fixed phrases or buttons a person uses; merging is not in the code at all. |
 
@@ -35,7 +35,7 @@ Three small pieces, on two machines, so that a person only reviews work a machin
 
 The runner can run code but holds no secrets; the watcher holds a credential but can only read. Neither is a model: the checks are deterministic, and a person reads and merges. The agent that writes the code is separate and described above.
 
-The rule behind both: **AI suggests, code checks, people decide.** Every guardrail that matters
+The rule behind both: **AI suggests, checks code, people decide.** Every guardrail that matters
 is enforced in code (path deny-lists, exactly-once edit matching, re-parsing, a secret scan on
 every proposed line), not by asking the model nicely. The instructions Claude Code works from
 are the root [`CLAUDE.md`](CLAUDE.md). What the agents produced, and how often it had to be
