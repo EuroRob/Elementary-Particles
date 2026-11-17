@@ -36,6 +36,17 @@ house, watches for bad weather, helps with workouts, cooking recipes and warns m
 I build this with Claude Code and a local code partner. I decide what gets built, and I review and
 merge every change. The sections below show how the agents are kept in check.
 
+## What it runs
+
+For the family: files, calendars and contacts (Nextcloud), photos (Immich), movies and music
+(Jellyfin), scanned documents (Paperless-ngx), a wiki (Outline), recipes (Tandoor), household
+finances (Firefly III), workouts (WGER) and the smart home (Home Assistant with Frigate cameras and Alarmo).
+Behind them sit the AI concierge, a music studio toolset and the news and travel helpers as well as a journal app.
+
+Under the hood: Proxmox, Terraform, Ansible, Vault, Traefik with Authelia single sign-on,
+OPNsense with separate VLANs, Wireguard, PostgreSQL, Prometheus and Grafana, Pulse, NetBox and n8n for automation. The
+full list is in the [solution overview](docs/SOLUTION_OVERVIEW.md).
+
 ## The philosophy
 
 **Everything is an elementary particle.** Each piece of a household's digital life is a small,
@@ -87,7 +98,7 @@ access model rather than as a chat window:
 
 | | Claude Code (cloud) | Code partner (on premise) |
 | --- | --- | --- |
-| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 437 of the 923 commits on the main branch (68 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
+| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 437 of the 927 commits on the main branch (68 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
 | **May never touch** | Secrets outside its Vault lane; see [agent access lanes](docs/AGENT_ACCESS_LANES.md), [`vault/lanes.yml`](vault/lanes.yml) and the generated [policies](vault/policies). | `.env`, state files, keys, its own code and policy, CI, `CLAUDE.md`. No tool to apply, commit, push or run anything; no network beyond three hosts. See [code partner](docs/CODE_PARTNER.md) and [`code_partner_policy.yml`](integration/code_partner_policy.yml). |
 | **A person approves** | Every change lands as a pull request on a protected main branch. A `checks` job ([`.forgejo/workflows/ci.yml`](.forgejo/workflows/ci.yml) running [`scripts/ci/check.sh`](scripts/ci/check.sh): YAML, Python, shell, `terraform fmt`, Ansible syntax, the offline tests, gitleaks) must be green before a person reviews and merges. | Apply, push and "open the pull request" are fixed phrases or buttons a person uses; merging is not in the code at all. |
 

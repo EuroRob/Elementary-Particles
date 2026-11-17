@@ -1,10 +1,5 @@
 # Elementary Particles — Solution Overview
 
-*One-page summary of the platform and its tech stack, written 2026-09-15
-to support evaluating a dual-license (AGPL-3.0 + commercial) release.
-Factual/descriptive only — no licensing recommendation made here; that's
-the open question this doc is meant to inform.*
-
 ## What it is
 
 A fully self-hosted, infrastructure-as-code-driven personal/family cloud
@@ -37,7 +32,7 @@ incident postmortems are the evidence.
 
 ## Scale
 
-Three Proxmox hypervisors, 20+ production VMs, several dozen
+Three Proxmox hypervisors, 30+ production VMs, several dozen
 self-hosted applications, real multi-VLAN network segmentation
 (management/IoT/services/storage/media/DMZ), full SSO across
 web-facing services, and a monitoring/alerting stack independent enough
@@ -107,12 +102,3 @@ pitch:
   Terraform modules, the MCP tool servers, the alerting/monitoring
   glue, the Echo voice app, and the overall architecture — not to the
   third-party apps being orchestrated.
-- AGPL-3.0's defining feature (network use counts as distribution,
-  closing the "SaaS loophole") is directly relevant here since this
-  *is* a network-facing service platform — worth Fable's attention
-  specifically on how that interacts with a commercial dual-license
-  tier.
-- A clean dual-license offering generally needs unambiguous ownership
-  of the dual-licensed code — worth an explicit pass over which pieces
-  are wholly original vs. adapted from other open-source examples
-  before publishing anything.
