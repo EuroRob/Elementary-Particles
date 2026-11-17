@@ -46,7 +46,6 @@ SHELL_KNOWN_BROKEN=(
 )
 PLAYBOOK_KNOWN_BROKEN=(
   "$ANS/playbooks/deploy_single.yml"       # legacy: expects service.yml next to a compose file, pre-particle layout
-  "$ANS/playbooks/install_docker.yml"      # legacy, replaced by Roles/docker via deploy.yml
   "$ANS/playbooks/install_node_exporter.yml"  # legacy, replaced by deploy_node_exporter.yml
   "$ANS/playbooks/site.yml"                # references role multi_mounts, which no longer exists
 )
