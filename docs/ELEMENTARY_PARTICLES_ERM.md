@@ -328,7 +328,7 @@ vms:
     identity:
       name: pg-01
       fqdn: pg-01.internal
-      ip: 10.0.40.10
+      ip: 10.10.40.10
     contains:
       containers:
         - name: postgres
@@ -371,7 +371,7 @@ vms:
     identity:
       name: web-01
       fqdn: web-01.internal
-      ip: 10.0.30.10
+      ip: 10.10.30.10
     contains:
       containers:
         - name: n8n

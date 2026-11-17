@@ -36,7 +36,7 @@
 # every other personal-data schema in this database.
 - name: Fetch Scout's Postgres credentials from Vault
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "scout/postgres"

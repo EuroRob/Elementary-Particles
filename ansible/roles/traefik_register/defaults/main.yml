@@ -3,12 +3,12 @@
 # These are overridden per-service via host_vars or playbook vars.
 
 traefik_host: "web-01"          # Ansible inventory hostname for the Traefik host
-traefik_host_ip: "10.0.30.10"  # kept for backwards compat; traefik_host is used for delegate_to
+traefik_host_ip: "10.10.30.10"  # kept for backwards compat; traefik_host is used for delegate_to
 traefik_dynamic_dir: /etc/traefik/dynamic
 
 # Per-service vars (set by calling playbook or host_vars):
 # traefik_service_name:   "open-webui"         # used for file name + router name
-# traefik_backend_url:    "http://10.0.30.50:3000"
+# traefik_backend_url:    "http://10.10.30.50:3000"
 # traefik_domain:         "chat.internal"       # .internal  → internal CA
 #                                               # .yourdomain.com → ACME wildcard
 # traefik_auth:           "one_factor"          # one_factor | two_factor → adds authelia@file (forward auth)

@@ -448,7 +448,7 @@ SELECT hostname, status, last_health_check, services_healthy FROM elementary_par
 
 **Solutions:**
 - Check Proxmox node is online: `ping proxmox-node`
-- Verify network connectivity: `ping 10.0.30.1` (VLAN30 gateway)
+- Verify network connectivity: `ping 10.10.30.1` (VLAN30 gateway)
 - Check datastore space: `df -h` on Proxmox
 - Verify storage connectivity: `lsblk` on Proxmox
 

@@ -80,7 +80,7 @@ SECRET_MAP: dict[str, dict[str, tuple[str, bool, str]]] = {
     },
 
     "proxmox/api/pve-01": {
-        "api_url":      ("PROXMOX_PVE01_API_URL",      True,  "PVE-01 API URL (https://10.0.0.11:8006)"),
+        "api_url":      ("PROXMOX_PVE01_API_URL",      True,  "PVE-01 API URL (https://10.10.0.11:8006)"),
         "node":         ("PROXMOX_PVE01_NODE",         True,  "PVE-01 node name"),
         "token_id":     ("PROXMOX_PVE01_TOKEN_ID",     True,  "Terraform API token ID (user@pam!name)"),
         "token_secret": ("PROXMOX_PVE01_TOKEN_SECRET", True,  "Terraform API token secret UUID"),
@@ -238,7 +238,7 @@ SECRET_MAP: dict[str, dict[str, tuple[str, bool, str]]] = {
 
     # ── NetBox ────────────────────────────────────────────────────────────────
     "netbox/api": {
-        "url":                ("NETBOX_URL",                True,  "NetBox API URL (http://10.0.30.20:8001)"),
+        "url":                ("NETBOX_URL",                True,  "NetBox API URL (http://10.10.30.20:8001)"),
         "token":              ("NETBOX_API_TOKEN",          True,  "NetBox API token (created during NetBox setup)"),
         "superuser_password": ("NETBOX_SUPERUSER_PASSWORD", True,  "NetBox admin UI password"),
         "superuser_email":    ("NETBOX_SUPERUSER_EMAIL",    False, "NetBox admin email"),
@@ -382,7 +382,7 @@ SECRET_MAP: dict[str, dict[str, tuple[str, bool, str]]] = {
     },
 
     # ── MinIO (S3-compatible object storage on nas-01) ─────────────────────────
-    # MinIO runs as a Docker container on nas-01 (OMV NAS, 10.0.40.20).
+    # MinIO runs as a Docker container on nas-01 (OMV NAS, 10.10.40.20).
     # Serves as the Restic backup backend and pgBackRest WAL archive destination.
     #
     # Bootstrap:
@@ -812,8 +812,8 @@ def _check_live_services(client: "hvac.Client | None") -> None:
     # Fall back to env vars
     if not services_to_check:
         iac_url = os.environ.get("IAC_API_URL", "http://iac.internal:8000")
-        nb_url  = os.environ.get("NETBOX_URL",  "http://10.0.30.20:8001")
-        hp_url  = os.environ.get("HOMEPAGE_URL", "http://10.0.30.20:3000")
+        nb_url  = os.environ.get("NETBOX_URL",  "http://10.10.30.20:8001")
+        hp_url  = os.environ.get("HOMEPAGE_URL", "http://10.10.30.20:3000")
         services_to_check = [
             ("IaC API",  f"{iac_url}/health", None),
             ("NetBox",   f"{nb_url}/api/status/", None),

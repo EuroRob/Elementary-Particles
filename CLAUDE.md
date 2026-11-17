@@ -19,33 +19,33 @@ These rules apply to every session. No exceptions, even in agent/autonomous mode
 6. **Confirm before seeding new Vault paths.** Before writing a new secret to Vault, state the path and key names (not values) and confirm it's the right path.
 7. **No secrets in CLAUDE.md or memory files.** These files may be committed. Store only paths and key names — never values.
 8. **Never remove entries from `/opt/vault/.env` on the user's behalf.** The user manages that file directly. When keys have been confirmed in Vault, inform the user which entries they can safely delete — but do not delete them. Accidental removal could silently break automation.
-9. **Never generate or export a WireGuard peer's `.conf` file, QR code, or any credential-bearing peer config** — this includes calling wg-easy's `/api/wireguard/client/.../configuration` or `/qrcode.svg` endpoints on the user's behalf, even when asked and even to fix a real problem (e.g. a stale AllowedIPs). Added 2026-09-03 after doing exactly this for a peer named "Papa_Mac" — sent via a private out-of-band channel (not printed in chat), but the user correctly flagged that the file itself is a live, complete network credential (private key + preshared key) regardless of delivery channel, equivalent to handing out an SSH private key. **Creating new peers and exporting/re-exporting existing peer configs is the end user's job**, done directly via the wg-easy admin UI (`http://10.0.10.5:51821` / `vpn.internal`). What Claude *can* still do: list/inspect peer state (name, enabled, AllowedIPs, handshake time) for diagnosis, and make server-side changes (AllowedIPs defaults in the wireguard role, DNS, firewall rules, admin password resets) — the line is specifically at generating or handling the peer credential file itself. If a peer's config is stale after a server-side fix, tell the user to re-fetch/re-scan it themselves — don't fetch it for them.
+9. **Never generate or export a WireGuard peer's `.conf` file, QR code, or any credential-bearing peer config** — this includes calling wg-easy's `/api/wireguard/client/.../configuration` or `/qrcode.svg` endpoints on the user's behalf, even when asked and even to fix a real problem (e.g. a stale AllowedIPs). Added 2026-09-03 after doing exactly this for a peer named "Papa_Mac" — sent via a private out-of-band channel (not printed in chat), but the user correctly flagged that the file itself is a live, complete network credential (private key + preshared key) regardless of delivery channel, equivalent to handing out an SSH private key. **Creating new peers and exporting/re-exporting existing peer configs is the end user's job**, done directly via the wg-easy admin UI (`http://10.10.10.5:51821` / `vpn.internal`). What Claude *can* still do: list/inspect peer state (name, enabled, AllowedIPs, handshake time) for diagnosis, and make server-side changes (AllowedIPs defaults in the wireguard role, DNS, firewall rules, admin password resets) — the line is specifically at generating or handling the peer credential file itself. If a peer's config is stale after a server-side fix, tell the user to re-fetch/re-scan it themselves — don't fetch it for them.
 10. **New or rotated credentials go to Vault — never to a file, not even a shredded scratch file, not even sent privately via SendUserFile.** Added 2026-09-04 after resetting the wg-easy admin password 4 times in one session (chasing unrelated Authelia/AllowedIPs/LAN-firewall issues that turned out not to be the password at all): the first 3 resets each got written to a local scratch file and delivered via SendUserFile, shredded locally right after — technically compliant with guardrail 1-3, but the user still ended up with 3 similarly-named files and no way to tell which was current. Reset #4 wrote the plaintext straight to `secret/vpn/wg-easy` → `admin_password` (a new key, alongside the existing `password_hash`) instead — one durable value, no ambiguity, nothing to shred. Going forward: pipe a generated credential directly into the Vault write, never through an intermediate file on disk at all if avoidable; if a file is briefly unavoidable, its content must never leave the local machine — hand the user the Vault path/key (per guardrail 6) and, if they need the raw value, the read command to fetch it themselves in their own terminal, not the value itself. This does not relax guardrail 9 (WireGuard peer `.conf`s specifically must not be generated at all, Vault or otherwise) — it governs bare credential values: passwords, tokens, API keys.
 11. **Never clone a real, identifiable person's voice without their explicit consent — public figure or not.** Added 2026-09-07 during Concierge voice-persona design, after the user floated cloning specific actors' voices (Hugh Grant, Jon Stewart) as a reference for a TTS persona. A voice is not a generic style — TTS voice-cloning tools (Chatterbox and similar) make lifting one from a few seconds of audio technically trivial, which is exactly why this needs to be a standing rule, not a case-by-case judgment call. What's fine: aiming for a *character* (warm/posh/charming; wry/deadpan) via an original synthetic voice, a self-recorded reference clip from someone who consents, or a licensed voice actor's commissioned session. What's not: a reference clip sampled from a real person's actual performance (a movie, a show, an interview) without their consent, regardless of technical ease or how "just for personal homelab use" it feels. See `IaC/docs/CONCIERGE_VOICE_PERSONAS.md` and `Ansible/Roles/gpu/files/chatterbox-voices/README.md` for where this is enforced in practice.
 
 ## Identity
 Elementary-particles homelab. Terraform + Ansible + HashiCorp Vault + n8n.
-All automation runs **from the IaC VM** (10.0.0.15 / vault.internal / iac.internal).
+All automation runs **from the IaC VM** (10.10.0.15 / vault.internal / iac.internal).
 
 ## Node Map
 | Host | IP | Role | Proxmox node |
 |---|---|---|---|
-| IaC VM | 10.0.0.15 | Vault + Terraform + Ansible + API server — **VM 103 ("Netsible") on pve-01**, not bare-metal (corrected 2026-09-13; never tracked as a managed VM anywhere until found during a monitoring gap investigation, see incident_iac_api_n8n_cascade_2026-09-13 memory) | pve-01 |
-| pve-01 | 10.0.0.11 | Primary Proxmox hypervisor | — |
-| pve-02 | 10.0.0.12 | Burst GPU (WoL-managed) | — |
-| pve-03 | 10.0.0.13 | Burst media (WoL-managed) — physical install in progress 2026-08-23 | — |
-| fw-01 | 10.0.10.1 | OPNSense firewall — manual install | pve-01 |
-| dns-01 | 10.0.30.10 | Pi-hole DNS | pve-01 |
-| vpn-01 | 10.0.10.5 | WireGuard + wg-easy | pve-01 |
-| nas-01 | 10.0.40.20 | OpenMediaVault — **VM 232 on pve-01**, not bare-metal (corrected 2026-08-10; 3x 6TB HDD passthrough for the ETBs ZFS pool) | pve-01 |
-| pg-01 | 10.0.40.10 | PostgreSQL 15 primary | pve-01 |
-| web-01 | 10.0.30.20 | Traefik + n8n + Grafana + NetBox | pve-01 |
-| git-01 | 10.0.30.31 | Forgejo (git host, port 3000) — cut over from GitLab CE 2026-07-29 | pve-01 |
-| git-01-gitlab-decommissioned | 10.0.30.30 | **DECOMMISSIONED** — old GitLab CE, orphaned (still running, no longer routed); Pi-hole hostname already renamed | pve-01 |
-| web-02 | 10.0.30.11 | Jira + Confluence | pve-01 |
-| gpu-01 | 10.0.30.50 | Ollama + Open-WebUI + YOLO | pve-01 |
-| gpu-02 | 10.0.30.51 | Ollama burst (WoL) | pve-02 |
-| media-vm | 10.0.50.10 | Jellyfin | pve-03 |
+| IaC VM | 10.10.0.15 | Vault + Terraform + Ansible + API server — **VM 103 ("Netsible") on pve-01**, not bare-metal (corrected 2026-09-13; never tracked as a managed VM anywhere until found during a monitoring gap investigation, see incident_iac_api_n8n_cascade_2026-09-13 memory) | pve-01 |
+| pve-01 | 10.10.0.11 | Primary Proxmox hypervisor | — |
+| pve-02 | 10.10.0.12 | Burst GPU (WoL-managed) | — |
+| pve-03 | 10.10.0.13 | Burst media (WoL-managed) — physical install in progress 2026-08-23 | — |
+| fw-01 | 10.10.10.1 | OPNSense firewall — manual install | pve-01 |
+| dns-01 | 10.10.30.10 | Pi-hole DNS | pve-01 |
+| vpn-01 | 10.10.10.5 | WireGuard + wg-easy | pve-01 |
+| nas-01 | 10.10.40.20 | OpenMediaVault — **VM 232 on pve-01**, not bare-metal (corrected 2026-08-10; 3x 6TB HDD passthrough for the ETBs ZFS pool) | pve-01 |
+| pg-01 | 10.10.40.10 | PostgreSQL 15 primary | pve-01 |
+| web-01 | 10.10.30.20 | Traefik + n8n + Grafana + NetBox | pve-01 |
+| git-01 | 10.10.30.31 | Forgejo (git host, port 3000) — cut over from GitLab CE 2026-07-29 | pve-01 |
+| git-01-gitlab-decommissioned | 10.10.30.30 | **DECOMMISSIONED** — old GitLab CE, orphaned (still running, no longer routed); Pi-hole hostname already renamed | pve-01 |
+| web-02 | 10.10.30.11 | Jira + Confluence | pve-01 |
+| gpu-01 | 10.10.30.50 | Ollama + Open-WebUI + YOLO | pve-01 |
+| gpu-02 | 10.10.30.51 | Ollama burst (WoL) | pve-02 |
+| media-vm | 10.10.50.10 | Jellyfin | pve-03 |
 
 > **pve-01 = pve-01, pve-02 = pve-02, pve-03 = pve-03** — same physical hosts; Proxmox
 > was installed with hostnames "pve-01"/"pve-02"/"pve-03" respectively. The `pve-0N`
@@ -58,23 +58,23 @@ All automation runs **from the IaC VM** (10.0.0.15 / vault.internal / iac.intern
 > `"pve-02"` — gpu-02 currently only works because its `terraform.tfvars`
 > overrides it correctly. Worth fixing the same way pve-03/pve-03 was fixed here,
 > but out of scope for this change since gpu-02 is live — flag before touching.
-> IaC VM and pve-01 will move to VLAN10 (10.0.10.15 / 10.0.10.11) after MGMT VLAN migration.
+> IaC VM and pve-01 will move to VLAN10 (10.10.10.15 / 10.10.10.11) after MGMT VLAN migration.
 
 ## DNS (Pi-hole local records — add after Layer 1)
 ```
-vault.internal  → 10.0.0.15
-iac.internal    → 10.0.0.15
+vault.internal  → 10.10.0.15
+iac.internal    → 10.10.0.15
 ```
-Before dns-01 exists: `echo "10.0.0.15  vault.internal  iac.internal" >> /etc/hosts` on IaC VM.
+Before dns-01 exists: `echo "10.10.0.15  vault.internal  iac.internal" >> /etc/hosts` on IaC VM.
 
 ## VLAN Scheme
 | VLAN | Subnet | Purpose |
 |---|---|---|
-| 10 | 10.0.10.0/24 | Management (fw-01, vpn-01; future: IaC VM + pve-01) |
-| 20 | 10.0.20.0/24 | IoT (isolated) |
-| 30 | 10.0.30.0/24 | Services (VMs: dns, web, git, gpu, apps) |
-| 40 | 10.0.40.0/24 | Storage (nas-01, pg-01) |
-| 50 | 10.0.50.0/24 | Media |
+| 10 | 10.10.10.0/24 | Management (fw-01, vpn-01; future: IaC VM + pve-01) |
+| 20 | 10.10.20.0/24 | IoT (isolated) |
+| 30 | 10.10.30.0/24 | Services (VMs: dns, web, git, gpu, apps) |
+| 40 | 10.10.40.0/24 | Storage (nas-01, pg-01) |
+| 50 | 10.10.50.0/24 | Media |
 | 99 | — | WAN/DMZ (OPNSense vtnet0) |
 
 ## Deployment Layers
@@ -95,7 +95,7 @@ Before dns-01 exists: `echo "10.0.0.15  vault.internal  iac.internal" >> /etc/ho
 bash IaC/bootstrap.sh
 
 # Layers 5-8 (after web-01 is up)
-curl -X POST http://10.0.30.20:5678/webhook/deploy-stack \
+curl -X POST http://10.10.30.20:5678/webhook/deploy-stack \
   -H "Content-Type: application/json" \
   -d '{"layer_start": 5, "layer_end": 8}'
 ```
@@ -247,7 +247,7 @@ FIELD=$(curl -sf -H "X-Vault-Token: $VAULT_TOKEN" \
 ## Proxmox Access — API only, no CLI
 Proxmox is accessed **exclusively via its REST API**. There is no working SSH login to the Proxmox host itself for automation purposes.
 
-- **API URL**: `https://10.0.0.11:8006/api2/json` (TLS, self-signed — always pass `-k` with curl)
+- **API URL**: `https://10.10.0.11:8006/api2/json` (TLS, self-signed — always pass `-k` with curl)
 - **Auth**: API token — `PROXMOX_TOKEN_ID` + `PROXMOX_TOKEN_SECRET` from `/opt/vault/.env`
 - **Token header format**: `Authorization: PVEAPIToken=<token_id>=<token_secret>`
   - e.g. `terraform@pve!terraform-token=e4b8da72-...`
@@ -257,37 +257,37 @@ Proxmox is accessed **exclusively via its REST API**. There is no working SSH lo
 # Example: list VMs via API
 source /opt/vault/.env
 curl -sk -H "Authorization: PVEAPIToken=${PROXMOX_TOKEN_ID}=${PROXMOX_TOKEN_SECRET}" \
-  https://10.0.0.11:8006/api2/json/nodes/pve-01/qemu | jq '.data[].name'
+  https://10.10.0.11:8006/api2/json/nodes/pve-01/qemu | jq '.data[].name'
 
 # Example: list storage pools
 curl -sk -H "Authorization: PVEAPIToken=${PROXMOX_TOKEN_ID}=${PROXMOX_TOKEN_SECRET}" \
-  https://10.0.0.11:8006/api2/json/nodes/pve-01/storage | jq '.data[].storage'
+  https://10.10.0.11:8006/api2/json/nodes/pve-01/storage | jq '.data[].storage'
 ```
 
-**SSH note**: The `terraform` user SSH key (`id_iac.pub`) is NOT authorized on Proxmox — the bpg Terraform provider works around this via `user_account` in the `initialization` block instead (no SSH needed) for VM provisioning. **Correction 2026-08-10**: `root@10.0.0.11` (and the other PVE hosts) via `~/.ssh/id_ansible` DOES work (confirmed live) — inventory (`proxmox_hosts` group in services.yml) already has `ansible_user: root` + `id_ansible` configured for this. The `proxmox_host` Ansible role's SSH-dependent tasks (kernel tweaks, pvesm-over-SSH, ZFS dataset creation, etc.) are therefore reachable — they just also happen to be unverified/untested against real hardware, and several (`pve_storage_definitions`, `pve_zfs_pools`) reference fictional pool/path names that don't match any real host (confirmed real pools on pve-01: `SSDs`, `zfs-nvme`, plus per-purpose zvols `elasticsearch`/`postgres`/`general` — not `zfs-nvme/zfs-ssd/zfs-sata` as host_vars claims). Verify against live state before trusting that data. Prefer the Proxmox REST API (below) for anything new — it's the path actually exercised and known to work end-to-end (see `Roles/proxmox_host/tasks/nas_backup_storage.yml`).
+**SSH note**: The `terraform` user SSH key (`id_iac.pub`) is NOT authorized on Proxmox — the bpg Terraform provider works around this via `user_account` in the `initialization` block instead (no SSH needed) for VM provisioning. **Correction 2026-08-10**: `root@10.10.0.11` (and the other PVE hosts) via `~/.ssh/id_ansible` DOES work (confirmed live) — inventory (`proxmox_hosts` group in services.yml) already has `ansible_user: root` + `id_ansible` configured for this. The `proxmox_host` Ansible role's SSH-dependent tasks (kernel tweaks, pvesm-over-SSH, ZFS dataset creation, etc.) are therefore reachable — they just also happen to be unverified/untested against real hardware, and several (`pve_storage_definitions`, `pve_zfs_pools`) reference fictional pool/path names that don't match any real host (confirmed real pools on pve-01: `SSDs`, `zfs-nvme`, plus per-purpose zvols `elasticsearch`/`postgres`/`general` — not `zfs-nvme/zfs-ssd/zfs-sata` as host_vars claims). Verify against live state before trusting that data. Prefer the Proxmox REST API (below) for anything new — it's the path actually exercised and known to work end-to-end (see `Roles/proxmox_host/tasks/nas_backup_storage.yml`).
 
 ## Active Constraints
 - `pve-01` is pve-01's Proxmox node name — do NOT rename.
 - `pve-02` is pve-02's Proxmox node name — do NOT rename.
 - `pve-03` is pve-03's Proxmox node name — do NOT rename. (Physical install in
   progress 2026-08-23; set the Proxmox installer hostname to "pve-03" and give it
-  10.0.0.13 on the flat/client VLAN, matching pve-01/pve-02 — NOT 10.0.10.13, the
+  10.10.0.13 on the flat/client VLAN, matching pve-01/pve-02 — NOT 10.10.10.13, the
   VLAN10 MGMT migration hasn't happened for any PVE host yet.)
-- `192.168.x.x` is NOT used — all hosts on `10.0.x.x`.
-- Proxmox API URL for pve-01: `https://10.0.0.11:8006`.
-- Proxmox API URL for pve-02: `https://10.0.0.12:8006`.
-- Proxmox API URL for pve-03: `https://10.0.0.13:8006` (once installed).
-- **pve-01<->pve-03 10G direct cross-connect** (2026-08-23): `172.31.99.1` (pve-01,
-  `enp3s0f1`) <-> `172.31.99.2` (pve-03, `nic1`), MTU 9000, deliberately outside
-  the `10.0.x.0/24` VLAN scheme. Verified 9.89 Gbits/sec (iperf3). Use this
+- `192.168.x.x` is NOT used — all hosts on `10.10.x.x`.
+- Proxmox API URL for pve-01: `https://10.10.0.11:8006`.
+- Proxmox API URL for pve-02: `https://10.10.0.12:8006`.
+- Proxmox API URL for pve-03: `https://10.10.0.13:8006` (once installed).
+- **pve-01<->pve-03 10G direct cross-connect** (2026-08-23): `172.31.109.1` (pve-01,
+  `enp3s0f1`) <-> `172.31.109.2` (pve-03, `nic1`), MTU 9000, deliberately outside
+  the `10.10.x.0/24` VLAN scheme. Verified 9.89 Gbits/sec (iperf3). Use this
   link's IPs (not the management IPs) for bulk VM disk transfers between
   pve-01 and pve-03 — no Proxmox cluster exists, so this is a fast rsync/scp
   path, not live migration. Config is hand-staged in `/etc/network/interfaces`
   on both hosts, not yet Ansible-managed — see `host_vars/pve-01.yml` and
   `host_vars/pve-03.yml` for the full writeup.
-- VLAN10 migration pending: IaC VM (10.0.0.15→10.0.10.15) and pve-01 (10.0.0.11→10.0.10.11). When done: update `pve_mgmt_ip` in host_vars/pve-01.yml and Pi-hole records only.
+- VLAN10 migration pending: IaC VM (10.10.0.15→10.10.10.15) and pve-01 (10.10.0.11→10.10.10.11). When done: update `pve_mgmt_ip` in host_vars/pve-01.yml and Pi-hole records only.
 
-## Pi-hole v6 Operations (dns-01 — 10.0.30.10)
+## Pi-hole v6 Operations (dns-01 — 10.10.30.10)
 
 Pi-hole v6 is deployed as a Docker container on dns-01 (VLAN30). **dns-01 is the ONLY
 DNS server for every VLAN + the VPN** — anything that restarts the container drops DNS
@@ -309,20 +309,20 @@ PIHOLE_PASS=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" \
   "$VAULT_ADDR/v1/secret/data/pihole/api" | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['data']['webpassword'])")
 
-SID=$(curl -s -X POST 'http://10.0.30.10/api/auth' \
+SID=$(curl -s -X POST 'http://10.10.30.10/api/auth' \
   -H 'Content-Type: application/json' \
   -d "{\"password\":\"$PIHOLE_PASS\"}" | \
   python3 -c "import sys,json; print(json.load(sys.stdin)['session']['sid'])")
 # ... use $SID ..., then log the session out (max_sessions is limited):
-curl -s -X DELETE 'http://10.0.30.10/api/auth' -H "X-FTL-SID: $SID"
+curl -s -X DELETE 'http://10.10.30.10/api/auth' -H "X-FTL-SID: $SID"
 ```
 
-**Do NOT use `$PIHOLE` from `/opt/vault/.env`** — that is the old decommissioned Pi-hole (10.0.0.7).
-The current Pi-hole is at 10.0.30.10 and uses `secret/pihole/api → webpassword`.
+**Do NOT use `$PIHOLE` from `/opt/vault/.env`** — that is the old decommissioned Pi-hole (10.10.0.7).
+The current Pi-hole is at 10.10.30.10 and uses `secret/pihole/api → webpassword`.
 
 ### Read current custom DNS hosts
 ```bash
-curl -s "http://10.0.30.10/api/config/dns/hosts" -H "X-FTL-SID: $SID" | \
+curl -s "http://10.10.30.10/api/config/dns/hosts" -H "X-FTL-SID: $SID" | \
   python3 -c "import sys,json; d=json.load(sys.stdin); [print(h) for h in d['config']['dns']['hosts']]"
 ```
 
@@ -331,7 +331,7 @@ curl -s "http://10.0.30.10/api/config/dns/hosts" -H "X-FTL-SID: $SID" | \
 Check the record isn't already there first (read above).
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" -X PUT -H "X-FTL-SID: $SID" \
-  "http://10.0.30.10/api/config/dns/hosts/$(python3 -c 'import urllib.parse;print(urllib.parse.quote("10.0.30.20 new-service.home.example.org"))')"
+  "http://10.10.30.10/api/config/dns/hosts/$(python3 -c 'import urllib.parse;print(urllib.parse.quote("10.10.30.20 new-service.home.example.org"))')"
 getent hosts new-service.home.example.org   # verify
 ```
 Remove one: same path with `-X DELETE`. (`POST /api/config/dns/hosts` without the element is a
@@ -408,7 +408,7 @@ of truth; the snapshot is a sanitized copy.
 ```
 MacBook Pro
   └── VS Code (local) + Remote SSH extension
-       └── SSH → IaC VM (10.0.0.15 / iac.internal)
+       └── SSH → IaC VM (10.10.0.15 / iac.internal)
             ├── VS Code Server (auto-installed on first connect)
             ├── File explorer   = IaC VM filesystem
             ├── Terminal pane   = shell on the IaC VM
@@ -428,7 +428,7 @@ Your Claude Pro subscription authenticates once on the IaC VM via `claude login`
    ```
    # ~/.ssh/config
    Host iac
-     HostName 10.0.0.15          # or iac.internal once dns-01 is up
+     HostName 10.10.0.15          # or iac.internal once dns-01 is up
      User ansible                # or your admin user
      IdentityFile ~/.ssh/id_iac  # private key — public key must be in authorized_keys on IaC VM
      ForwardAgent yes            # allows IaC VM to use your Mac's SSH agent for git ops

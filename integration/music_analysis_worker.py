@@ -53,8 +53,8 @@ PEAKS_MAX        = 4000
 # at once plus page cache from the temp WAVs would brush the 3 GB mem_limit.
 LONG_SECONDS     = 1200
 # Phase 3 (draft lead sheets) — GPU work happens on gpu-02.
-STEM_API_URL     = os.getenv("STEM_API_URL", "http://10.0.30.51:8020")
-WHISPER_URL      = os.getenv("WHISPER_URL", "http://10.0.30.51:5000")
+STEM_API_URL     = os.getenv("STEM_API_URL", "http://10.10.30.51:8020")
+WHISPER_URL      = os.getenv("WHISPER_URL", "http://10.10.30.51:5000")
 WHISPER_MODEL    = os.getenv("WHISPER_MODEL", "mobiuslabsgmbh/faster-whisper-large-v3-turbo")
 WHISPER_FALLBACK_LANGUAGE = os.getenv("WHISPER_FALLBACK_LANGUAGE", "en")
 STEMS_DIR        = os.getenv("STEMS_DIR", "/music/stems")

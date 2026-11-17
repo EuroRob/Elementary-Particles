@@ -47,9 +47,9 @@ deployment:
   datastore: "ssd"
   vm_network:
     vlan: "vlan10"
-    ip: "10.0.10.5"          # Static IP — update to match your subnet
-    gateway: "10.0.10.1"
-    dns: "10.0.30.10"        # Pi-hole on DNS-01
+    ip: "10.10.10.5"          # Static IP — update to match your subnet
+    gateway: "10.10.10.1"
+    dns: "10.10.30.10"        # Pi-hole on DNS-01
 
 services:
   - name: "wg-easy"
@@ -103,9 +103,9 @@ vpn_config:
   # Routes pushed to clients (split-tunnel — internal VLANs only)
   allowed_ips:
     - "10.8.0.0/24"            # VPN subnet
-    - "10.0.10.0/24"        # vlan10 — management
-    - "10.0.30.0/24"        # vlan30 — services
-    - "10.0.40.0/24"        # vlan40 — storage / NAS
+    - "10.10.10.0/24"        # vlan10 — management
+    - "10.10.30.0/24"        # vlan30 — services
+    - "10.10.40.0/24"        # vlan40 — storage / NAS
   # DNS pushed to WireGuard clients
   # Only Pi-hole is listed — no public fallback by design.
   # Rationale: a fallback to 9.9.9.9 / 8.8.8.8 would bypass Pi-hole filtering
@@ -114,11 +114,11 @@ vpn_config:
   # iptables DNAT on vpn-01 (dns_enforcement.yml) intercepts any client that
   # tries to hard-code a different resolver.
   dns_servers:
-    - "10.0.30.10"          # Pi-hole on DNS-01 (vlan30) — sole VPN resolver
+    - "10.10.30.10"          # Pi-hole on DNS-01 (vlan30) — sole VPN resolver
   dns_enforcement:
     method: "iptables PREROUTING DNAT"
     interface: "wg0"
-    redirects_to: "10.0.30.10:53"
+    redirects_to: "10.10.30.10:53"
     covers: "UDP+TCP/53 — all client destinations"
     doh_bypass_risk: true      # DoH on port 443 cannot be caught by port-53 DNAT
   persistent_keepalive: 25     # seconds — keep NAT mappings alive
@@ -142,7 +142,7 @@ firewall_requirements:
   port_forwards:
     - protocol: "udp"
       external_port: 51820
-      destination_ip: "10.0.10.5"   # vpn-01 static IP
+      destination_ip: "10.10.10.5"   # vpn-01 static IP
       destination_port: 51820
   vlan_routing:
     - from: "vpn-subnet:10.8.0.0/24"
@@ -250,7 +250,7 @@ networking:
   dns_names:
     - "vpn.internal"
     - "wg.internal"
-  static_ip: "10.0.10.5"
+  static_ip: "10.10.10.5"
 
 metadata:
   data_classification: "restricted"

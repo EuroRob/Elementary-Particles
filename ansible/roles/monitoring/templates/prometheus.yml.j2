@@ -95,14 +95,14 @@ scrape_configs:
   - job_name: suricata_alert_exporter
     scrape_interval: 60s
     static_configs:
-      - targets: ["10.0.0.15:9752"]
+      - targets: ["10.10.0.15:9752"]
 
   # VLAN20 IoT contacts via scripts/iot_watch_exporter.py on the IaC VM
   # (2026-11-03). Same path as above: fw rule seq 2057 (web-01 -> :9753).
   - job_name: iot_watch_exporter
     scrape_interval: 60s
     static_configs:
-      - targets: ["10.0.0.15:9753"]
+      - targets: ["10.10.0.15:9753"]
 
   # pve-exporter runs on the IaC VM on port 9100 (VLAN30→MGMT only has port 9100 allowed).
   # web-01 cannot reach Proxmox API directly — the exporter relays scrapes for us.
@@ -126,13 +126,13 @@ scrape_configs:
       cluster: ['1']
       node: ['1']
     static_configs:
-      - targets: ["10.0.0.11:8006"]
+      - targets: ["10.10.0.11:8006"]
         labels:
           pve_module: default
-      - targets: ["10.0.0.12:8006"]
+      - targets: ["10.10.0.12:8006"]
         labels:
           pve_module: pve-02
-      - targets: ["10.0.0.13:8006"]
+      - targets: ["10.10.0.13:8006"]
         labels:
           pve_module: pve-03
     relabel_configs:
@@ -143,4 +143,4 @@ scrape_configs:
       - source_labels: [__param_target]
         target_label: instance
       - target_label: __address__
-        replacement: "{{ iac_vm_ip | default('10.0.0.15') }}:9100"
+        replacement: "{{ iac_vm_ip | default('10.10.0.15') }}:9100"

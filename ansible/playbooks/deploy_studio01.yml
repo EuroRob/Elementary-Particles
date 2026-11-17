@@ -1,7 +1,7 @@
 ---
 # =============================================================================
 # Playbook: deploy_studio01.yml
-# studio-01 (VM 283 on pve-03, 10.0.30.59) — the music studio's own VM.
+# studio-01 (VM 283 on pve-03, 10.10.30.59) — the music studio's own VM.
 #
 # Docker, the music-studio stack (role music_studio: catalog, assistant, beets,
 # analysis, studio-partner, field-ingest; moved from gpu-01 2026-11-01, see
@@ -121,7 +121,7 @@
       tags: ["chromatone"]
 
     # Open like studio.home.example.org (static, no secrets, LAN only). DNS: Pi-hole host
-    # "10.0.30.20 theory.home.example.org" added live via the v6 REST API (one-time).
+    # "10.10.30.20 theory.home.example.org" added live via the v6 REST API (one-time).
     - name: "Register Traefik route: theory.home.example.org → studio-01 chromatone"
       ansible.builtin.include_role:
         name: traefik_register
@@ -129,7 +129,7 @@
           tags: ["traefik_register", "chromatone"]
       vars:
         traefik_service_name: "chromatone"
-        traefik_backend_url: "http://10.0.30.59:8204"
+        traefik_backend_url: "http://10.10.30.59:8204"
         traefik_domain: "theory.home.example.org"
         traefik_auth: "none"
         traefik_healthcheck_path: "/health"
@@ -182,7 +182,7 @@
     # ---- Music Studio Traefik routes (web-01, file provider) ----
     # catalog/assistant behind Authelia (one_factor) since 2026-11-14: the browser is
     # their only client through Traefik; DOMO and the macOS tools call the studio
-    # partner / field ingest on 10.0.30.59:8202/8203 directly. beets one_factor. DNS: the three names point at web-01 (10.0.30.20) already.
+    # partner / field ingest on 10.10.30.59:8202/8203 directly. beets one_factor. DNS: the three names point at web-01 (10.10.30.20) already.
     - name: "Register Traefik route: music.home.example.org → music-catalog API"
       ansible.builtin.include_role:
         name: traefik_register
@@ -190,7 +190,7 @@
           tags: ["traefik_register", "music_studio"]
       vars:
         traefik_service_name: "music-catalog"
-        traefik_backend_url: "http://10.0.30.59:8200"
+        traefik_backend_url: "http://10.10.30.59:8200"
         traefik_domain: "music.home.example.org"
         traefik_auth: "one_factor"
         traefik_healthcheck_path: "/health"
@@ -204,7 +204,7 @@
           tags: ["traefik_register", "music_studio"]
       vars:
         traefik_service_name: "music-assistant"
-        traefik_backend_url: "http://10.0.30.59:8201"
+        traefik_backend_url: "http://10.10.30.59:8201"
         traefik_domain: "studio.home.example.org"
         traefik_auth: "one_factor"
         traefik_healthcheck_path: "/health"
@@ -248,7 +248,7 @@
           tags: ["traefik_register", "music_studio"]
       vars:
         traefik_service_name: "music-beets"
-        traefik_backend_url: "http://10.0.30.59:8337"
+        traefik_backend_url: "http://10.10.30.59:8337"
         traefik_domain: "beets.home.example.org"
         traefik_auth: "one_factor"
       when: music_studio_enabled | default(false) | bool

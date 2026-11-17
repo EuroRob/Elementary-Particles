@@ -75,8 +75,8 @@ resources:
       - name: "eth0"
         vlan: "vlan40"                 # Storage VLAN
         dhcp: false
-        gateway: "10.0.40.1"
-        ip: "10.0.40.10"
+        gateway: "10.10.40.1"
+        ip: "10.10.40.10"
 
 # Roles/Personas
 roles:

@@ -61,14 +61,14 @@ AUDIT_LOG = Path(os.environ.get("CODE_PARTNER_AUDIT", "/var/log/code-partner/aud
 ROUTER_KEY = os.environ.get("CODE_PARTNER_ROUTER_KEY", "")
 # Authelia's Remote-User -> person. Trusted only from the proxy (web-01's Traefik).
 UI_USERS: dict[str, str] = json.loads(os.environ.get("UI_USERS_JSON", '{"owner": "owner"}'))
-TRUSTED_PROXIES = set(json.loads(os.environ.get("TRUSTED_PROXIES_JSON", '["10.0.30.20"]')))
-FORGEJO_URL = os.environ.get("FORGEJO_URL", "http://10.0.30.31:3000").rstrip("/")
+TRUSTED_PROXIES = set(json.loads(os.environ.get("TRUSTED_PROXIES_JSON", '["10.10.30.20"]')))
+FORGEJO_URL = os.environ.get("FORGEJO_URL", "http://10.10.30.31:3000").rstrip("/")
 FORGEJO_REPO = os.environ.get("FORGEJO_REPO", "owner/GitOps")
 FORGEJO_KEY_FILE = Path(os.environ.get("FORGEJO_KEY_FILE", "/etc/code-partner/forgejo_key"))
 PR_REVIEWER = os.environ.get("PR_REVIEWER", "owner")
 # Voice in the browser (2026-11-05): Whisper on gpu-02 (DOMO's), Piper in this process
 # with DOMO's voice from nas-02 (never downloaded at runtime: on-premise rule).
-WHISPER_URL = os.environ.get("WHISPER_URL", "http://10.0.30.51:5000").rstrip("/")
+WHISPER_URL = os.environ.get("WHISPER_URL", "http://10.10.30.51:5000").rstrip("/")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "mobiuslabsgmbh/faster-whisper-large-v3-turbo")
 PIPER_VOICE_PATH = Path(os.environ.get("PIPER_VOICE_PATH", "/opt/code-partner/voices/en_GB-alan-medium.onnx"))
 MAX_AUDIO_BYTES = 12 * 1024 * 1024

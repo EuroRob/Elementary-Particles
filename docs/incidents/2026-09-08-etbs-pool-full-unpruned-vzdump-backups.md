@@ -12,7 +12,7 @@ status: resolved — root-cause fix (retention/pruning) still outstanding
 # Incident: ETBs Pool Hit 0% Free — Unpruned vzdump Backups, ~2 Hours Before Next Backup Window
 
 **Date:** 2026-09-08
-**Host:** nas-01 (10.0.40.20), ZFS pool `ETBs`
+**Host:** nas-01 (10.10.40.20), ZFS pool `ETBs`
 **Severity:** High — caught with ~2 hours to spare before the nightly 03:00
 vzdump run, which would otherwise have failed for the entire fleet
 **Status:** Resolved for tonight. Root cause (no backup retention/pruning

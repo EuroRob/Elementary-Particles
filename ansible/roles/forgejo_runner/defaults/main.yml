@@ -23,9 +23,9 @@ forgejo_runner_job_timeout: "30m"
 forgejo_runner_memory_max: "1G"
 
 # Forgejo is reached directly on git-01, not through Traefik/Authelia.
-forgejo_instance_url: "http://10.0.30.31:3000"
+forgejo_instance_url: "http://10.10.30.31:3000"
 forgejo_api_url: "{{ forgejo_instance_url }}/api/v1"
-forgejo_runner_git_host_ip: "10.0.30.31"           # the only address the unit may talk to
+forgejo_runner_git_host_ip: "10.10.30.31"           # the only address the unit may talk to
 forgejo_runner_repo: "owner/GitOps"                  # registration scope: this repository only
 vault_forgejo_admin_path: "secret/forgejo/admin"   # keys: username, password (used once, to mint a registration token)
 

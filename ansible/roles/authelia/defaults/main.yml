@@ -25,7 +25,7 @@ authelia_url:  "https://{{ authelia_fqdn }}"
 base_domain: "homelab.local"    # override in group_vars or inventory
 
 # ── PostgreSQL backend (pg-01, Layer 3) ───────────────────────────────────────
-authelia_pg_host:   "{{ hostvars['pg-01'].ansible_host | default('10.0.40.10') }}"
+authelia_pg_host:   "{{ hostvars['pg-01'].ansible_host | default('10.10.40.10') }}"
 authelia_pg_port:   5432
 authelia_pg_db:     authelia
 authelia_pg_user:   authelia

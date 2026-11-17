@@ -905,7 +905,7 @@
         "responseFormat": "json",
         "sendBody": true,
         "specifyBody": "json",
-        "url": "http://10.0.30.14:8123/api/conversation/process"
+        "url": "http://10.10.30.14:8123/api/conversation/process"
       },
       "position": [
         1300,
@@ -935,7 +935,7 @@
         "responseFormat": "json",
         "sendBody": true,
         "specifyBody": "json",
-        "url": "http://10.0.30.14:8123/api/conversation/process"
+        "url": "http://10.10.30.14:8123/api/conversation/process"
       },
       "position": [
         1300,
@@ -1102,7 +1102,7 @@
         "sendBody": true,
         "sendHeaders": false,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/v1/chat/completions"
+        "url": "http://10.10.30.50:11434/v1/chat/completions"
       },
       "position": [
         640,
@@ -1129,7 +1129,7 @@
         "sendBody": true,
         "sendHeaders": false,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/v1/chat/completions"
+        "url": "http://10.10.30.50:11434/v1/chat/completions"
       },
       "position": [
         640,
@@ -1311,7 +1311,7 @@
         "options": {
           "timeout": 10000
         },
-        "url": "http://10.0.30.14:8123/api/states/weather.forecast_home"
+        "url": "http://10.10.30.14:8123/api/states/weather.forecast_home"
       },
       "position": [
         1400,
@@ -1336,7 +1336,7 @@
         "options": {
           "timeout": 10000
         },
-        "url": "http://10.0.30.14:8123/api/states/weather.forecast_home_2"
+        "url": "http://10.10.30.14:8123/api/states/weather.forecast_home_2"
       },
       "position": [
         1400,
@@ -1508,7 +1508,7 @@
         "sendBody": true,
         "sendHeaders": false,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/v1/chat/completions"
+        "url": "http://10.10.30.50:11434/v1/chat/completions"
       },
       "position": [
         1960,
@@ -1535,7 +1535,7 @@
         "sendBody": true,
         "sendHeaders": false,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/v1/chat/completions"
+        "url": "http://10.10.30.50:11434/v1/chat/completions"
       },
       "position": [
         1960,
@@ -2366,7 +2366,7 @@
         "responseFormat": "json",
         "sendBody": true,
         "specifyBody": "json",
-        "url": "http://10.0.30.14:8123/api/services/tts/speak"
+        "url": "http://10.10.30.14:8123/api/services/tts/speak"
       },
       "position": [
         2620,
@@ -2394,7 +2394,7 @@
         "sendBody": true,
         "sendHeaders": false,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/v1/chat/completions"
+        "url": "http://10.10.30.50:11434/v1/chat/completions"
       },
       "position": [
         1740,
@@ -2422,7 +2422,7 @@
         "sendBody": true,
         "sendHeaders": false,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/v1/chat/completions"
+        "url": "http://10.10.30.50:11434/v1/chat/completions"
       },
       "position": [
         1740,

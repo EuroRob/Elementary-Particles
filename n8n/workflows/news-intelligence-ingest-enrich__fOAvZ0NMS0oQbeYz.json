@@ -154,7 +154,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/api/embeddings"
+        "url": "http://10.10.30.50:11434/api/embeddings"
       },
       "position": [
         1168,
@@ -184,7 +184,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/api/generate"
+        "url": "http://10.10.30.50:11434/api/generate"
       },
       "position": [
         928,
@@ -238,7 +238,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "http://10.0.30.52:9200/news_articles/_doc"
+        "url": "http://10.10.30.52:9200/news_articles/_doc"
       },
       "position": [
         1616,
@@ -290,7 +290,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/%21PeQimUgIMsVJniLtzD%3Ahome.example.org/send/m.room.message/{{ $now.toMillis() }}-{{ $json.category }}"
+        "url": "=http://10.10.30.45:8448/_matrix/client/v3/rooms/%21PeQimUgIMsVJniLtzD%3Ahome.example.org/send/m.room.message/{{ $now.toMillis() }}-{{ $json.category }}"
       },
       "position": [
         2096,

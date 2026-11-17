@@ -66,7 +66,7 @@
         "sendBody": true,
         "sendHeaders": true,
         "specifyBody": "json",
-        "url": "http://10.0.60.5:5091/api/imports"
+        "url": "http://10.10.60.5:5091/api/imports"
       },
       "position": [
         280,

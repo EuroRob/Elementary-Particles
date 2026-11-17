@@ -55,7 +55,7 @@
         "method": "GET",
         "options": {},
         "sendHeaders": false,
-        "url": "=http://10.0.60.5:5091/api/downloads?{{ $json.queryString }}"
+        "url": "=http://10.10.60.5:5091/api/downloads?{{ $json.queryString }}"
       },
       "position": [
         -80,

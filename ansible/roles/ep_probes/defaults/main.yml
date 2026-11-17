@@ -16,19 +16,19 @@ ep_probes:
      url: "https://auth.home.example.org/.well-known/openid-configuration", expect_body: '"issuer"',
      what: "Authelia SSO (every login)"}
   - {name: pihole-dns, group: health, interval_s: 60, threshold: 3, type: dns,
-     server: "10.0.30.10", qname: "travel.home.example.org", expect_ip: "10.0.30.20",
+     server: "10.10.30.10", qname: "travel.home.example.org", expect_ip: "10.10.30.20",
      what: "Pi-hole local DNS (only DNS for every VLAN)"}
   - {name: matrix-homeserver, group: health, interval_s: 300, threshold: 2, type: http,
-     url: "http://10.0.30.45:8448/_matrix/client/versions", expect_body: '"versions"',
+     url: "http://10.10.30.45:8448/_matrix/client/versions", expect_body: '"versions"',
      what: "Matrix (the alert path itself — if this fails, alerts are only in the journal)"}
   # ---- Concierge: travel ----
   - {name: travel-api-adventurelog, group: health, interval_s: 300, threshold: 2, type: http,
      url: "container://travel-api:5240/al/trips?profile=papa", expect_body: '^\s*\[',
      what: "travel-api reading the owner's trips from AdventureLog (API key + both services)"}
   - {name: adventurelog, group: health, interval_s: 120, threshold: 3, type: http,
-     url: "http://10.0.30.11:8015/health", what: "AdventureLog (travel.home.example.org)"}
+     url: "http://10.10.30.11:8015/health", what: "AdventureLog (travel.home.example.org)"}
   - {name: wanderer-api, group: health, interval_s: 300, threshold: 2, type: http,
-     url: "http://10.0.30.11:3010/api/v1/trail?perPage=1",
+     url: "http://10.10.30.11:3010/api/v1/trail?perPage=1",
      headers: {Authorization: "Bearer ${WANDERER_TOKEN}"}, expect_body: '"items"',
      what: "Wanderer + its PocketBase DB (hike.home.example.org)"}
   - {name: travel-mcp-owner, group: health, interval_s: 120, threshold: 3, type: http,
@@ -45,18 +45,18 @@ ep_probes:
   # patch run) and nothing alerted. Cheap checks only: domo-router's own /health
   # loads the classifier model each call and would pin it in VRAM.
   - {name: gpu02-ollama, group: health, interval_s: 300, threshold: 2, type: http,
-     url: "http://10.0.30.51:11434/api/version", expect_body: '"version"',
+     url: "http://10.10.30.51:11434/api/version", expect_body: '"version"',
      what: "Ollama on gpu-02 (DOMO's router model; without it every DOMO question falls back to Serge)",
      hint: "pve-03: qm status 211 (gpu-02); start with qm start 211 --timeout 300"}
   - {name: domo-gateway, group: health, interval_s: 300, threshold: 2, type: http,
-     url: "http://10.0.30.51:7860/status",
+     url: "http://10.10.30.51:7860/status",
      what: "DOMO voice gateway on gpu-02 (the DOMO app's voice calls)", hint: "gpu-02: docker logs domo-gateway"}
   - {name: gpu02-whisper, group: health, interval_s: 300, threshold: 2, type: http,
-     url: "http://10.0.30.51:5000/health",
+     url: "http://10.10.30.51:5000/health",
      what: "Whisper on gpu-02 (DOMO voice, HA Assist incl. Apple Watch, podcast backlog)",
      hint: "gpu-02: docker logs whisper"}
   - {name: ha-stt-bridge, group: health, interval_s: 300, threshold: 2, type: tcp,
-     host: "10.0.30.51", port: 10300, send: "{\"type\": \"describe\"}\n", expect_body: '"type":\s*"info"',
+     host: "10.10.30.51", port: 10300, send: "{\"type\": \"describe\"}\n", expect_body: '"type":\s*"info"',
      what: "HA speech-to-text bridge on gpu-02 (Apple Watch Assist, Voice PE)",
      hint: "gpu-02: docker logs wyoming-whisper-bridge"}
   - {name: domo-foresight, group: health, interval_s: 600, threshold: 2, type: http,
@@ -67,42 +67,42 @@ ep_probes:
      url: "container://domo-winddown:5175/health", expect_body: '"status":\s*"ok"',
      what: "DOMO wind-down (the owner's 22:00 routine + evening session)", hint: "docker logs domo-winddown"}
   - {name: studio-partner, group: health, interval_s: 600, threshold: 2, type: http,
-     url: "http://10.0.30.59:8202/health", expect_body: '"status":\s*"ok"',
+     url: "http://10.10.30.59:8202/health", expect_body: '"status":\s*"ok"',
      what: "DOMO studio partner on gpu-01 (Live-set chronicle + studio sessions), as domo-router reaches it",
      hint: "gpu-01: docker logs studio-partner; My Recordings NFS mount /mnt/nasty-music"}
   - {name: field-ingest, group: health, interval_s: 600, threshold: 2, type: http,
-     url: "http://10.0.30.59:8203/health", expect_body: '"status":\s*"ok"',
+     url: "http://10.10.30.59:8203/health", expect_body: '"status":\s*"ok"',
      what: "Field recorder ingest on gpu-01 (the Mac's field import waits on it before erasing a card)",
      hint: "gpu-01: docker logs field-ingest; systemctl status field-catalogue.path"}
   # ---- Concierge: agents + model ----
   - {name: openclaw-owner, group: health, interval_s: 300, threshold: 2, type: http,
-     url: "http://10.0.30.50:18789/v1/models", headers: {Authorization: "Bearer ${OPENCLAW_ROB}"},
+     url: "http://10.10.30.50:18789/v1/models", headers: {Authorization: "Bearer ${OPENCLAW_ROB}"},
      what: "the owner's Serge gateway (authenticated)"}
   - {name: openclaw-partner, group: health, interval_s: 300, threshold: 2, type: http,
-     url: "http://10.0.30.50:18791/v1/models", headers: {Authorization: "Bearer ${OPENCLAW_PARTNER}"},
+     url: "http://10.10.30.50:18791/v1/models", headers: {Authorization: "Bearer ${OPENCLAW_PARTNER}"},
      what: "Partner's Serge gateway (authenticated)"}
   - {name: ollama-gpu01, group: health, interval_s: 120, threshold: 3, type: http,
-     url: "http://10.0.30.50:11434/api/tags", expect_body: "gpu01-primary",
+     url: "http://10.10.30.50:11434/api/tags", expect_body: "gpu01-primary",
      what: "Ollama on gpu-01 (primary model registered)"}
   - {name: ollama-gpu01-generate, group: health, interval_s: 900, threshold: 2, type: http,
-     method: POST, url: "http://10.0.30.50:11434/api/generate", timeout_s: 90,
+     method: POST, url: "http://10.10.30.50:11434/api/generate", timeout_s: 90,
      json: {model: "gpu01-primary", prompt: "Reply OK", stream: false, keep_alive: "30m",
             options: {num_predict: 2, num_ctx: 16384}},
      expect_body: '"response"', what: "gpu-01 actually generating (GPU + model loaded)"}
   # ---- home + media ----
   - {name: home-assistant, group: health, interval_s: 300, threshold: 2, type: http,
-     url: "http://10.0.30.14:8123/api/", headers: {Authorization: "Bearer ${HA_TOKEN}"},
+     url: "http://10.10.30.14:8123/api/", headers: {Authorization: "Bearer ${HA_TOKEN}"},
      expect_body: "API running", what: "Home Assistant API (authenticated)"}
   # setup_retry is left out on purpose: a powered-off plug retries forever. setup_error is
   # what a dead credential looks like (CalDAV sat in it unnoticed from ~2026-09-08 to 10-23).
   - {name: home-assistant-integrations, group: health, interval_s: 900, threshold: 2, type: http,
-     url: "http://10.0.30.14:8123/api/config/config_entries/entry",
+     url: "http://10.10.30.14:8123/api/config/config_entries/entry",
      headers: {Authorization: "Bearer ${HA_TOKEN}"},
      expect_body: '^(?=.*"domain")(?!.*"state":\s*"(setup_error|migration_error)")',
      what: "Home Assistant integrations (none in setup_error)",
      hint: "GET /api/config/config_entries/entry, find the entry, usually a stale credential"}
   - {name: immich, group: health, interval_s: 300, threshold: 2, type: http,
-     url: "http://10.0.30.46:2283/api/server/ping", expect_body: "pong", what: "Immich photos"}
+     url: "http://10.10.30.46:2283/api/server/ping", expect_body: "pong", what: "Immich photos"}
 
   # ---- daily canary questions through the REAL front door (n8n echo-chat) ----
   - {name: canary-train, group: canary, interval_s: 0, threshold: 1, type: http, method: POST,
@@ -110,11 +110,11 @@ ep_probes:
      json: {model: "x", speaker: "owner", history: [], text: "When does the next train leave Hometown-Reutin?",
             prompt: "user: When does the next train leave Hometown-Reutin?\nassistant:"},
      expect_body: '^(?=.*"source":\s*"travel-api")(?=.*\d{1,2}:\d{2})',
-     what: "Echo → n8n → travel-api → ÖBB live board", hint: "travel-api logs; ÖBB HAFAS reachability"}
+     what: "Echo → n8n → travel-api → national rail live board", hint: "travel-api logs; national rail HAFAS reachability"}
   - {name: canary-weather, group: canary, interval_s: 0, threshold: 1, type: http, method: POST,
      url: "https://n8n.home.example.org/webhook/echo-chat", timeout_s: 60,
-     json: {model: "x", speaker: "owner", history: [], text: "What's the weather in Bregenz tomorrow?",
-            prompt: "user: What's the weather in Bregenz tomorrow?\nassistant:"},
+     json: {model: "x", speaker: "owner", history: [], text: "What's the weather in Zurich tomorrow?",
+            prompt: "user: What's the weather in Zurich tomorrow?\nassistant:"},
      expect_body: '^(?=.*"source":\s*"travel-api")(?=.*(°|\d+\s*degrees|\d+\s*C\b))',
      what: "travel-api → Open-Meteo"}
   - {name: canary-hikes, group: canary, interval_s: 0, threshold: 1, type: http, method: POST,
@@ -134,14 +134,14 @@ ep_probes:
      # a fact, not a wording game: "reply PONG" got "PING" on the first dry run
      expect_body: '"response":\s*"[^"]*\b4\b', what: "Echo plain chat path (n8n → Ollama)"}
   - {name: canary-serge, group: canary, interval_s: 0, threshold: 1, type: http, method: POST,
-     url: "http://10.0.30.50:18789/v1/chat/completions", timeout_s: 120,
+     url: "http://10.10.30.50:18789/v1/chat/completions", timeout_s: 120,
      headers: {Authorization: "Bearer ${OPENCLAW_ROB}"},
      json: {model: "openclaw", user: "ep-canary", messages: [{role: "user", content: "Reply with the single word PONG."}]},
      expect_body: "pong", what: "Serge deep path (OpenClaw agent)"}
   # Local agent, not conversation.mixtral: answered by HA's own voice_weather_today
   # automation, so the canary never lands in the n8n voice memory tables.
   - {name: canary-ha-voice, group: canary, interval_s: 0, threshold: 1, type: http, method: POST,
-     url: "http://10.0.30.14:8123/api/conversation/process", timeout_s: 30,
+     url: "http://10.10.30.14:8123/api/conversation/process", timeout_s: 30,
      headers: {Authorization: "Bearer ${HA_TOKEN}"},
      json: {text: "What is the weather like today?", agent_id: "conversation.home_assistant", language: "en"},
      expect_body: "forecast is", what: "HA voice intent → Met.no forecast (weather.forecast_home_2)"}

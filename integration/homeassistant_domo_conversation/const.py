@@ -3,4 +3,4 @@
 DOMAIN = "domo_conversation"
 CONF_URL = "url"
 CONF_KEY = "key"
-DEFAULT_URL = "http://10.0.30.20:5140"
+DEFAULT_URL = "http://10.10.30.20:5140"

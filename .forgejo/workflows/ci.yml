@@ -22,7 +22,7 @@ jobs:
           set -eu
           find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
           git init -q .
-          git remote add origin "http://x-access-token:${TOKEN}@10.0.30.31:3000/${REPO}.git"
+          git remote add origin "http://x-access-token:${TOKEN}@10.10.30.31:3000/${REPO}.git"
           git -c protocol.version=2 fetch -q --filter=blob:none origin "$SHA" "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
           git checkout -q "$SHA"
           echo "checked out $(git rev-parse --short HEAD), base origin/${BASE} = $(git rev-parse --short "origin/${BASE}")"

@@ -157,7 +157,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+        "url": "=http://10.10.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
       },
       "position": [
         1056,
@@ -181,7 +181,7 @@
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "options": {},
-        "url": "http://10.0.30.52:9200/_cluster/health"
+        "url": "http://10.10.30.52:9200/_cluster/health"
       },
       "position": [
         1600,
@@ -273,7 +273,7 @@
       "name": "Send WoL to pve-02",
       "parameters": {
         "authentication": "predefinedCredentialType",
-        "jsonBody": "={{ {\"mac\": \"24:5e:be:50:c9:17\", \"broadcast\": \"10.0.0.255\", \"port\": 9} }}",
+        "jsonBody": "={{ {\"mac\": \"00:00:5e:00:53:01\", \"broadcast\": \"10.10.0.255\", \"port\": 9} }}",
         "method": "POST",
         "nodeCredentialType": "httpHeaderAuth",
         "options": {

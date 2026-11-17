@@ -1,7 +1,7 @@
 ---
 # =============================================================================
 # Playbook: deploy_code01.yml
-# code-01 (VM 252 on pve-01, 10.0.30.32) -- DOMO's code partner.
+# code-01 (VM 252 on pve-01, 10.10.30.32) -- DOMO's code partner.
 # Design: IaC/docs/CODE_PARTNER.md
 #
 # Prerequisites (CODE_PARTNER.md, "Deploy"):
@@ -34,7 +34,7 @@
   tasks:
     # two_factor: the page can commit and push. Authelia's Remote-User names the
     # person; code_partner.py trusts it only from web-01 (TRUSTED_PROXIES_JSON).
-    # DNS: Pi-hole host "10.0.30.20 code.home.example.org" via the v6 REST API (one-time).
+    # DNS: Pi-hole host "10.10.30.20 code.home.example.org" via the v6 REST API (one-time).
     - name: "Register Traefik route: code.home.example.org -> code-01 code-partner"
       ansible.builtin.include_role:
         name: traefik_register
@@ -42,7 +42,7 @@
           tags: ["traefik_register", "code_partner"]
       vars:
         traefik_service_name: "code-partner"
-        traefik_backend_url: "http://10.0.30.32:{{ code_partner_port | default(8210) }}"
+        traefik_backend_url: "http://10.10.30.32:{{ code_partner_port | default(8210) }}"
         traefik_domain: "code.home.example.org"
         traefik_auth: "two_factor"
         traefik_healthcheck_path: "/health"

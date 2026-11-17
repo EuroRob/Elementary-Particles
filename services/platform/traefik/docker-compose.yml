@@ -1,7 +1,7 @@
 # =============================================================================
 # Traefik docker-compose.yml
 # File: IaC/services/platform/traefik/docker-compose.yml
-# Deployed on: web-01 (10.0.30.10)
+# Deployed on: web-01 (10.10.30.10)
 #
 # Key design decisions:
 #   - Static config mounted from /etc/traefik/traefik.yml

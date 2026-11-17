@@ -162,7 +162,7 @@ unaffected.
 
 ## 4. Where you run
 
-- **Operator**: **`comms-01`** (10.0.30.45, VLAN30 — the existing
+- **Operator**: **`comms-01`** (10.10.30.45, VLAN30 — the existing
   Matrix/Synapse/Element/matrix-bot host), decided 2026-09-08. Not a new
   VM: comms-01 is already always-on critical infra, already on VLAN30, and
   already has an open firewall path to pg-01 (`Services → pg-01:5432`,

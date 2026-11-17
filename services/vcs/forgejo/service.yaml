@@ -5,7 +5,7 @@ tier: "application"
 description: >
   Lightweight self-hosted git hosting (Go binary + SQLite), replacing GitLab CE
   on the old git-01 (decommissioned 2026-07-29). Runs on its own VM (git-01,
-  10.0.30.31) to keep the git host isolated from other application services.
+  10.10.30.31) to keep the git host isolated from other application services.
   Authelia OIDC wired up 2026-07-30 (client id "forgejo").
 owner: "infra"
 

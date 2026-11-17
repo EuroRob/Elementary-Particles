@@ -15,7 +15,7 @@ access model rather than as a chat window:
 
 | | Claude Code (cloud) | Code partner (on premise) |
 | --- | --- | --- |
-| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 427 of the 896 commits on the main branch (69 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
+| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 430 of the 902 commits on the main branch (69 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
 | **May never touch** | Secrets outside its Vault lane; see [agent access lanes](docs/AGENT_ACCESS_LANES.md), [`vault/lanes.yml`](vault/lanes.yml) and the generated [policies](vault/policies). | `.env`, state files, keys, its own code and policy, CI, `CLAUDE.md`. No tool to apply, commit, push or run anything; no network beyond three hosts. See [code partner](docs/CODE_PARTNER.md) and [`code_partner_policy.yml`](integration/code_partner_policy.yml). |
 | **A person approves** | Every change lands as a pull request on a protected main branch. A `checks` job ([`.forgejo/workflows/ci.yml`](.forgejo/workflows/ci.yml) running [`scripts/ci/check.sh`](scripts/ci/check.sh): YAML, Python, shell, `terraform fmt`, Ansible syntax, the offline tests, gitleaks) must be green before a person reviews and merges. | Apply, push and "open the pull request" are fixed phrases or buttons a person uses; merging is not in the code at all. |
 
@@ -95,13 +95,32 @@ You will need Proxmox VE, Terraform ≥ 1.6, Ansible ≥ 2.15, a HashiCorp Vault
 
 Expect to adapt things: this is a working homelab shared as a reference, not a turnkey product.
 
+
+## Known gaps
+
+This is a home lab that is hardened in the open, not a finished product. Open items you will notice:
+
+- **n8n webhooks have no authentication.** About ten webhook nodes in [`n8n/workflows/`](n8n/workflows)
+  accept unauthenticated requests. They are reachable from the home network and the VPN only, never from
+  the internet. Header authentication for them is planned.
+- **Some services also publish their port directly** on the VM address, next to the authenticated route
+  through the reverse proxy. Per-port firewall rules are planned.
+- **Agent sessions and the human share one Git identity today.** The rule that agents never push to the
+  main branch is written down and followed; giving agents their own account so the host can enforce it
+  is planned.
+- **GitHub Actions only runs the CLA check.** The pipeline described above is a Forgejo Actions workflow
+  (`.forgejo/`); it does not run on GitHub.
+
 ## License
 
 Copyright © 2026 Rob Carroll.
 Licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).
 If you run a modified version as a network service, you must offer its source to its users.
 
-For a commercial license, consulting or help adapting this to your own setup, open an issue or
-see [NOTICE.md](NOTICE.md).
+**Commercial licensing is available.** If the AGPL does not fit your use, for example you want to build
+this into a proprietary product or run it as a closed service, a commercial license can be arranged with
+the maintainer. Open an issue titled "Commercial license" (no details needed) and you will be contacted
+privately. Consulting and help adapting this to your own setup are available the same way.
 
-Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome and need a signed Contributor License Agreement; see
+[CONTRIBUTING.md](CONTRIBUTING.md).

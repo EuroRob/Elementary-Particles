@@ -94,7 +94,7 @@ models:
   default: gpu01-primary
   allowed:
     gpu01-primary:
-      url: "http://10.0.30.50:11434"
+      url: "http://10.10.30.50:11434"
       model: "gpu01-primary"
       num_ctx: 16384
       temperature: 0.2

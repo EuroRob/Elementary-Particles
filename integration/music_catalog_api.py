@@ -1120,7 +1120,7 @@ import base64
 import re as _re
 import tempfile
 
-FORGEJO_URL     = os.getenv("FORGEJO_URL", "http://10.0.30.31:3000")
+FORGEJO_URL     = os.getenv("FORGEJO_URL", "http://10.10.30.31:3000")
 FORGEJO_TOKEN   = os.getenv("FORGEJO_TOKEN", "")
 SONGBOOK_OWNER  = os.getenv("SONGBOOK_OWNER", "owner")
 SONGBOOK_REPO   = os.getenv("SONGBOOK_REPO", "songbook")

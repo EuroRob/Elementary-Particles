@@ -308,7 +308,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+        "url": "=http://10.10.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
       },
       "position": [
         3740,
@@ -336,7 +336,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+        "url": "=http://10.10.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
       },
       "position": [
         3080,
@@ -471,7 +471,7 @@
       "id": "pve-02-shutdown-18",
       "name": "Host still up?",
       "parameters": {
-        "jsCode": "const j = $input.first().json;\nconst up = !!j.data?.status;\nconst txn_id = 'pve-02-shutdown-hostup-' + Date.now();\nconst body = '\\u26a0\\ufe0f pve-02 daily shutdown: all VMs stopped cleanly and host shutdown was sent, '\n  + 'but pve-02 still answers 150s later. Check pve-02 (10.0.0.12) manually.';\nreturn [{ json: { up, txn_id, matrixPayload: { msgtype: 'm.text', body } } }];"
+        "jsCode": "const j = $input.first().json;\nconst up = !!j.data?.status;\nconst txn_id = 'pve-02-shutdown-hostup-' + Date.now();\nconst body = '\\u26a0\\ufe0f pve-02 daily shutdown: all VMs stopped cleanly and host shutdown was sent, '\n  + 'but pve-02 still answers 150s later. Check pve-02 (10.10.0.12) manually.';\nreturn [{ json: { up, txn_id, matrixPayload: { msgtype: 'm.text', body } } }];"
       },
       "position": [
         3300,

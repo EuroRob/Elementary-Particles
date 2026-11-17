@@ -102,7 +102,7 @@
     name: UTC
 
 # ---------------------------------------------------------------------------
-# NTP — anchored on dns-01 (10.0.30.10), audited/rebuilt 2026-08-14. See
+# NTP — anchored on dns-01 (10.10.30.10), audited/rebuilt 2026-08-14. See
 # project_ntp_infrastructure_idea memory + IaC/docs/NTP_INFRASTRUCTURE.md for
 # the full story (triggered by NASTY's 45s clock drift silently breaking OTP
 # login). Two real bugs found in what this replaces:
@@ -183,7 +183,7 @@
   ansible.builtin.lineinfile:
     path: /etc/ntpsec/ntp.conf
     regexp: '^server 10\.0\.30\.10\b'
-    line: "server 10.0.30.10 iburst"
+    line: "server 10.10.30.10 iburst"
     insertafter: "^# Specify one or more NTP servers"
     state: present
   when:
@@ -218,7 +218,7 @@
   ansible.builtin.lineinfile:
     path: /etc/chrony/chrony.conf
     regexp: '^server 10\.0\.30\.10\b'
-    line: "server 10.0.30.10 iburst"
+    line: "server 10.10.30.10 iburst"
     insertafter: EOF
     state: present
   when:
@@ -245,7 +245,7 @@
     content: |
       # Managed by Ansible (base role) — see Roles/base/tasks/main.yml
       [Time]
-      NTP=dns-01.internal 10.0.30.10
+      NTP=dns-01.internal 10.10.30.10
       FallbackNTP=0.debian.pool.ntp.org 1.debian.pool.ntp.org
     owner: root
     group: root

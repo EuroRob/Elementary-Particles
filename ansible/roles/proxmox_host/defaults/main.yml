@@ -22,9 +22,9 @@ pve_wan_nic:    ""           # 1 Gbps NIC → vmbr2 (WAN/DMZ). Empty = skip vmbr
 
 # VLAN ID of the Proxmox management interface on vmbr0
 pve_mgmt_vlan:   10
-pve_mgmt_ip:     "10.0.10.11/24"
-pve_mgmt_gw:     "10.0.10.1"
-pve_mgmt_dns:    "10.0.30.10"
+pve_mgmt_ip:     "10.10.10.11/24"
+pve_mgmt_gw:     "10.10.10.1"
+pve_mgmt_dns:    "10.10.30.10"
 
 # ---------------------------------------------------------------------------
 # ZFS storage pools — list the pools that ALREADY EXIST on this host.
@@ -126,7 +126,7 @@ pve_storage_definitions:
 
   - id: "nas-templates"
     type: "nfs"
-    server: "10.0.40.20"       # NAS-01 IP — override per environment
+    server: "10.10.40.20"       # NAS-01 IP — override per environment
     export: "/srv/nas/pve-templates"
     content: "images,vztmpl,iso"
     options: "vers=4,soft"
@@ -177,7 +177,7 @@ pve_terraform_privs: >-
 # ---------------------------------------------------------------------------
 # NAS NFS mounts
 # ---------------------------------------------------------------------------
-pve_nas_server: "10.0.40.20"          # NAS-01 VLAN40 IP
+pve_nas_server: "10.10.40.20"          # NAS-01 VLAN40 IP
 pve_nas_mounts:
   - name: "pve-templates"
     export: "/srv/nas/pve-templates"

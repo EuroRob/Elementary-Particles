@@ -98,7 +98,7 @@
         "method": "GET",
         "options": {},
         "sendHeaders": false,
-        "url": "http://10.0.60.5:5091/api/analytics/summary"
+        "url": "http://10.10.60.5:5091/api/analytics/summary"
       },
       "position": [
         -160,
@@ -123,7 +123,7 @@
         "method": "GET",
         "options": {},
         "sendHeaders": false,
-        "url": "http://10.0.60.5:5092/api/analytics/by-type"
+        "url": "http://10.10.60.5:5092/api/analytics/by-type"
       },
       "position": [
         -160,
@@ -155,7 +155,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+        "url": "=http://10.10.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
       },
       "position": [
         340,

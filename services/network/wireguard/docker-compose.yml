@@ -48,7 +48,7 @@ services:
       # Quad9 / external DNS belongs as Pi-hole's UPSTREAM, not here.
       # Additionally, dns_enforcement.yml adds iptables DNAT on wg0 so clients
       # cannot bypass Pi-hole even by manually specifying a different resolver.
-      WG_DEFAULT_DNS: "${PIHOLE_IP:-10.0.30.10}"
+      WG_DEFAULT_DNS: "${PIHOLE_IP:-10.10.30.10}"
 
       # Allowed IPs pushed to clients — sourced from .env (Roles/wireguard/
       # templates/wg_easy.env.j2, driven by the wireguard_allowed_ips role

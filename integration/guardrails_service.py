@@ -21,9 +21,9 @@ Pipeline (in order):
 
 Environment variables:
   DB_DSN           postgresql://...
-  OLLAMA_URL       http://10.0.30.50:11434
+  OLLAMA_URL       http://10.10.30.50:11434
   OLLAMA_MODEL     llama3.2:3b-instruct-q4_K_M
-  QDRANT_URL       http://10.0.30.20:6333  (for hallucination check)
+  QDRANT_URL       http://10.10.30.20:6333  (for hallucination check)
   CONFIDENCE_THRESHOLD  0.6  (below this → hitl)
   TOXICITY_THRESHOLD    0.7  (above this → block)
   GROUNDING_THRESHOLD   0.35 (RAG similarity below this → hallucination flag)
@@ -47,8 +47,8 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-DB_DSN               = os.getenv("DB_DSN",            "postgresql://n8n:changeme@10.0.40.10:5432/elementary_particles")
-OLLAMA_URL           = os.getenv("OLLAMA_URL",        "http://10.0.30.50:11434")
+DB_DSN               = os.getenv("DB_DSN",            "postgresql://n8n:changeme@10.10.40.10:5432/elementary_particles")
+OLLAMA_URL           = os.getenv("OLLAMA_URL",        "http://10.10.30.50:11434")
 OLLAMA_MODEL         = os.getenv("OLLAMA_MODEL",      "llama3.2:3b-instruct-q4_K_M")
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.60"))
 TOXICITY_THRESHOLD   = float(os.getenv("TOXICITY_THRESHOLD",   "0.70"))

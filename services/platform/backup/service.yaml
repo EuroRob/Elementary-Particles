@@ -65,7 +65,7 @@ deployment:
 # ---------------------------------------------------------------------------
 hosts:
   web-01:
-    ip: 10.0.30.10
+    ip: 10.10.30.10
     jobs:
       - name: docker-volumes
         type: docker          # pause compose stacks → backup → unpause
@@ -93,7 +93,7 @@ hosts:
         schedule: "01:30"
 
   pg-01:
-    ip: 10.0.40.10
+    ip: 10.10.40.10
     jobs:
       - name: postgres-dumps
         type: postgres
@@ -108,7 +108,7 @@ hosts:
         schedule: "01:15"
 
   gpu-01:
-    ip: 10.0.30.50
+    ip: 10.10.30.50
     jobs:
       - name: gpu-data
         type: files

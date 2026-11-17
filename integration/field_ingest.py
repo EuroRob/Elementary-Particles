@@ -62,7 +62,7 @@ ROOT = os.environ.get("RECORDINGS_ROOT", "/import/nasty")                 # = My
 FIELD_DIR = os.environ.get("FIELD_DIR", "Field Recordings")                # new imports land here
 BACKFILL = json.loads(os.environ.get("FIELD_BACKFILL_JSON", '["ZOOM", "FieldRecordings", "VoiceRecordings", "Projects"]'))
 TRIGGERS = os.environ.get("TRIGGER_DIR", "/triggers")
-WHISPER_URL = os.environ.get("WHISPER_URL", "http://10.0.30.51:5000").rstrip("/")
+WHISPER_URL = os.environ.get("WHISPER_URL", "http://10.10.30.51:5000").rstrip("/")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "mobiuslabsgmbh/faster-whisper-large-v3-turbo")
 NOTE_SECS = 20
 NOTES_PER_ROUND = int(os.environ.get("NOTES_PER_ROUND", "5"))             # Whisper is shared with DOMO's voice

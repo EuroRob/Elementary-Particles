@@ -26,7 +26,7 @@ variable "proxmox_node" {
 
 variable "proxmox_url" {
   description = "Proxmox API URL for pve-01"
-  default     = "https://10.0.0.11:8006"
+  default     = "https://10.10.0.11:8006"
 }
 
 variable "vm_id" {
@@ -77,15 +77,15 @@ variable "vm_vlan_tag" {
 
 variable "vm_static_ip" {
   description = "Static IP for web-02 on VLAN30"
-  default     = "10.0.30.11"
+  default     = "10.10.30.11"
 }
 
 variable "vm_gateway" {
   description = "Default gateway for VLAN30"
-  default     = "10.0.30.1"
+  default     = "10.10.30.1"
 }
 
 variable "vm_dns" {
   description = "Primary DNS server (Pi-hole on VLAN30)"
-  default     = "10.0.30.10"
+  default     = "10.10.30.10"
 }

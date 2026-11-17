@@ -111,7 +111,7 @@
           "allowUnauthorizedCerts": true,
           "timeout": 15000
         },
-        "url": "=https://10.0.0.11:8006/api2/json/nodes/{{ $json.node }}/qemu/{{ $json.vmid }}/snapshot"
+        "url": "=https://10.10.0.11:8006/api2/json/nodes/{{ $json.node }}/qemu/{{ $json.vmid }}/snapshot"
       },
       "position": [
         860,
@@ -137,7 +137,7 @@
           "allowUnauthorizedCerts": true,
           "timeout": 15000
         },
-        "url": "https://10.0.0.11:8006/api2/json/cluster/resources?type=vm"
+        "url": "https://10.10.0.11:8006/api2/json/cluster/resources?type=vm"
       },
       "position": [
         420,
@@ -165,7 +165,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
+        "url": "=http://10.10.30.45:8448/_matrix/client/v3/rooms/!EXAMPLEROOMID0000:home.example.org/send/m.room.message/{{ $json.txn_id }}"
       },
       "position": [
         1300,

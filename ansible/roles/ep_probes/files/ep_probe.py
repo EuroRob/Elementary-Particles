@@ -14,7 +14,7 @@ never through n8n.
 Usage:  ep_probe.py --config probes.json --group health|canary [--dry-run] [--only NAME]
 Config: JSON list of probes, e.g.
   {"name": "wanderer-api", "group": "health", "interval_s": 300, "threshold": 2,
-   "type": "http", "method": "GET", "url": "http://10.0.30.11:3010/api/v1/trail?perPage=1",
+   "type": "http", "method": "GET", "url": "http://10.10.30.11:3010/api/v1/trail?perPage=1",
    "headers": {"Authorization": "Bearer ${WANDERER_TOKEN}"}, "expect_status": [200],
    "expect_body": "\"items\"", "timeout_s": 15, "what": "Wanderer + its PocketBase DB"}
   url may be "container://NAME:PORT/path" (resolved to the container's IP — for

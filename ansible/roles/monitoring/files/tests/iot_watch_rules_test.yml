@@ -9,27 +9,27 @@ tests:
 - interval: 1m
   input_series:
   # new peer: present for a while, then the exporter drops it (24 h window)
-  - series: iot_watch_new_peer_first_seen_timestamp_seconds{device="INSTAR-9010",ip="10.0.20.19",peer="evil.example",kind="dns",job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_new_peer_first_seen_timestamp_seconds{device="INSTAR-9010",ip="10.10.20.19",peer="evil.example",kind="dns",job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: _x5 600x10 _x10
   # last seen at t=0 (epoch 0 + 60 s), so silent from the start; another device keeps talking
-  - series: iot_watch_device_last_seen_timestamp_seconds{device="Feefcam",ip="10.0.20.18",job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_device_last_seen_timestamp_seconds{device="Feefcam",ip="10.10.20.18",job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 60x2000
-  - series: iot_watch_device_last_seen_timestamp_seconds{device="FrontDoor-Cam",ip="10.0.20.90",job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_device_last_seen_timestamp_seconds{device="FrontDoor-Cam",ip="10.10.20.90",job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 60+60x2000
-  - series: iot_watch_unknown_device{ip="10.0.20.150",mac="aa:bb:cc:dd:ee:ff",job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_unknown_device{ip="10.10.20.150",mac="aa:bb:cc:dd:ee:ff",job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 1x10
   # spike: 600 MB vs a 20 MB baseline; small device 30 kB vs 2 kB must stay quiet
-  - series: iot_watch_external_bytes_today{device="HS100-StringDing",ip="10.0.20.81",job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_external_bytes_today{device="HS100-StringDing",ip="10.10.20.81",job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 600e6x30
-  - series: iot_watch_external_bytes_baseline{device="HS100-StringDing",ip="10.0.20.81",job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_external_bytes_baseline{device="HS100-StringDing",ip="10.10.20.81",job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 20e6x30
-  - series: iot_watch_external_bytes_today{device="HS110-Waschy",ip="10.0.20.83",job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_external_bytes_today{device="HS110-Waschy",ip="10.10.20.83",job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 30000x30
-  - series: iot_watch_external_bytes_baseline{device="HS110-Waschy",ip="10.0.20.83",job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_external_bytes_baseline{device="HS110-Waschy",ip="10.10.20.83",job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 2000x30
-  - series: up{job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: up{job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 1x30
-  - series: iot_watch_last_success_timestamp_seconds{job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_last_success_timestamp_seconds{job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 0+60x30
   alert_rule_test:
   - eval_time: 3m
@@ -41,14 +41,14 @@ tests:
     - exp_labels:
         severity: warning
         device: INSTAR-9010
-        ip: 10.0.20.19
+        ip: 10.10.20.19
         peer: evil.example
         kind: dns
         job: iot_watch_exporter
-        instance: 10.0.0.15:9753
+        instance: 10.10.0.15:9753
       exp_annotations:
         summary: 'IoT: INSTAR-9010 contacted something new: evil.example'
-        description: 'INSTAR-9010 (10.0.20.19) reached evil.example (dns) for the first time since its learning week. Usual after a firmware update; worth a look if not. Details: on the IaC VM `sqlite3 ~/.local/share/iot-watch/iot_watch.db "select * from peers where device=''10.0.20.19'' order by first_seen desc limit 10"`.'
+        description: 'INSTAR-9010 (10.10.20.19) reached evil.example (dns) for the first time since its learning week. Usual after a firmware update; worth a look if not. Details: on the IaC VM `sqlite3 ~/.local/share/iot-watch/iot_watch.db "select * from peers where device=''10.10.20.19'' order by first_seen desc limit 10"`.'
   - eval_time: 20m
     alertname: IotNewPeer
     exp_alerts: []
@@ -57,33 +57,33 @@ tests:
     exp_alerts:
     - exp_labels:
         severity: warning
-        ip: 10.0.20.150
+        ip: 10.10.20.150
         mac: aa:bb:cc:dd:ee:ff
         job: iot_watch_exporter
-        instance: 10.0.0.15:9753
+        instance: 10.10.0.15:9753
       exp_annotations:
-        summary: 'IoT: unknown device 10.0.20.150 on VLAN20'
-        description: '10.0.20.150 (MAC aa:bb:cc:dd:ee:ff) has no Kea reservation and showed up after the learning week. Add a reservation if it''s yours (OPNsense -> Services -> Kea DHCPv4 -> Reservations); find it otherwise.'
+        summary: 'IoT: unknown device 10.10.20.150 on VLAN20'
+        description: '10.10.20.150 (MAC aa:bb:cc:dd:ee:ff) has no Kea reservation and showed up after the learning week. Add a reservation if it''s yours (OPNsense -> Services -> Kea DHCPv4 -> Reservations); find it otherwise.'
   - eval_time: 20m
     alertname: IotVolumeSpike
     exp_alerts:
     - exp_labels:
         severity: warning
         device: HS100-StringDing
-        ip: 10.0.20.81
+        ip: 10.10.20.81
         job: iot_watch_exporter
-        instance: 10.0.0.15:9753
+        instance: 10.10.0.15:9753
       exp_annotations:
         summary: 'IoT: HS100-StringDing uploaded 572.2MiB to the internet today'
-        description: 'More than 10x its usual daily upload. Check where it went: `sqlite3 ~/.local/share/iot-watch/iot_watch.db "select peer, port, octets from flows where device=''10.0.20.81'' and day=date(''now'') order by octets desc limit 10"` on the IaC VM.'
+        description: 'More than 10x its usual daily upload. Check where it went: `sqlite3 ~/.local/share/iot-watch/iot_watch.db "select peer, port, octets from flows where device=''10.10.20.81'' and day=date(''now'') order by octets desc limit 10"` on the IaC VM.'
   - eval_time: 20m
     alertname: IotWatchExporterDown
     exp_alerts: []
 - interval: 1m
   input_series:
-  - series: iot_watch_device_last_seen_timestamp_seconds{device="Feefcam",ip="10.0.20.18",job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_device_last_seen_timestamp_seconds{device="Feefcam",ip="10.10.20.18",job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 60x1600
-  - series: iot_watch_device_last_seen_timestamp_seconds{device="FrontDoor-Cam",ip="10.0.20.90",job="iot_watch_exporter",instance="10.0.0.15:9753"}
+  - series: iot_watch_device_last_seen_timestamp_seconds{device="FrontDoor-Cam",ip="10.10.20.90",job="iot_watch_exporter",instance="10.10.0.15:9753"}
     values: 60+60x1600
   alert_rule_test:
   # silent since t=1m: > 24 h at 1441m, plus for: 30m
@@ -96,9 +96,9 @@ tests:
     - exp_labels:
         severity: warning
         device: Feefcam
-        ip: 10.0.20.18
+        ip: 10.10.20.18
         job: iot_watch_exporter
-        instance: 10.0.0.15:9753
+        instance: 10.10.0.15:9753
       exp_annotations:
         summary: 'IoT: Feefcam has been silent for over 24 h'
-        description: 'No traffic and no DNS from Feefcam (10.0.20.18) since 1d 0h 34m 0s ago. Dead, unplugged or off the network? It drops off this alert after 14 days of silence.'
+        description: 'No traffic and no DNS from Feefcam (10.10.20.18) since 1d 0h 34m 0s ago. Dead, unplugged or off the network? It drops off this alert after 14 days of silence.'

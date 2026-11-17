@@ -14,7 +14,7 @@
 #
 # Required variables (set in playbook vars or host_vars):
 #   traefik_service_name  — unique slug, becomes filename + router name
-#   traefik_backend_url   — full URL of backend, e.g. http://10.0.30.50:3000
+#   traefik_backend_url   — full URL of backend, e.g. http://10.10.30.50:3000
 #   traefik_domain        — FQDN to match, e.g. chat.internal
 #   traefik_auth          — one_factor | two_factor | none
 # =============================================================================

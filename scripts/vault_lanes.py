@@ -135,7 +135,7 @@ def cmd_diff(cfg: dict) -> int:
 
 
 # No token_bound_cidrs yet: Vault runs in Docker, so local clients arrive from the
-# bridge address, not 10.0.0.15. Read the real remote_address from the audit log
+# bridge address, not 10.10.0.15. Read the real remote_address from the audit log
 # (step 0) first, then bind the AppRoles to it.
 def cmd_apply(cfg: dict) -> int:
     for name, text in (("claude-iac", render_claude(cfg)), ("deploy-runner", render_runner())):

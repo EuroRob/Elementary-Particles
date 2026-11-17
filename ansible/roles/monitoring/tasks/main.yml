@@ -1,7 +1,7 @@
 ---
 - name: "[monitoring] Fetch homepage widget secrets from Vault"
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "{{ vault_homepage_path | regex_replace('^secret/', '') }}"
@@ -13,7 +13,7 @@
 
 - name: "[monitoring] Fetch postgres credentials from Vault"
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "{{ vault_postgres_path | regex_replace('^secret/', '') }}"
@@ -30,7 +30,7 @@
   # needs it templated in from somewhere Ansible can read, so it's mirrored
   # to secret/iac/api_token for this and any other future Ansible consumer.
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "iac/api_token"
@@ -47,7 +47,7 @@
   # because n8n itself got stuck as a downstream consequence of the very
   # outage that needed alerting. See incident_iac_api_n8n_cascade_2026-09-13.
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "home-assistant/api"
@@ -59,7 +59,7 @@
 
 - name: "[monitoring] Fetch dead man's switch webhook id from Vault"
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "{{ vault_ha_deadman_path | regex_replace('^secret/', '') }}"

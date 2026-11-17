@@ -131,7 +131,7 @@
         "responseFormat": "json",
         "sendBody": true,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/api/generate"
+        "url": "http://10.10.30.50:11434/api/generate"
       },
       "position": [
         1100,

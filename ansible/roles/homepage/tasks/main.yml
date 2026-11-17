@@ -19,7 +19,7 @@
 - name: "[homepage] Fetch widget secrets from Vault"
   when: homepage_widgets_vault_enabled | bool
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "{{ vault_homepage_widgets_path | regex_replace('^secret/', '') }}"

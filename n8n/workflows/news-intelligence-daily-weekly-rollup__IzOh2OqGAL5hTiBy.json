@@ -432,7 +432,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/%21CxjkhySGFQnfuphsZl%3Ahome.example.org/send/m.room.message/{{ $json.txn_id }}"
+        "url": "=http://10.10.30.45:8448/_matrix/client/v3/rooms/%21CxjkhySGFQnfuphsZl%3Ahome.example.org/send/m.room.message/{{ $json.txn_id }}"
       },
       "position": [
         1400,
@@ -460,7 +460,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "=http://10.0.30.45:8448/_matrix/client/v3/rooms/%21CxjkhySGFQnfuphsZl%3Ahome.example.org/send/m.room.message/{{ $json.txn_id }}"
+        "url": "=http://10.10.30.45:8448/_matrix/client/v3/rooms/%21CxjkhySGFQnfuphsZl%3Ahome.example.org/send/m.room.message/{{ $json.txn_id }}"
       },
       "position": [
         3320,
@@ -583,7 +583,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/api/generate"
+        "url": "http://10.10.30.50:11434/api/generate"
       },
       "position": [
         920,
@@ -614,7 +614,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "url": "http://10.0.30.50:11434/api/generate"
+        "url": "http://10.10.30.50:11434/api/generate"
       },
       "position": [
         2840,

@@ -33,7 +33,7 @@ the window is cleared so Pulse alerts show the real state.
 
 ```mermaid
 flowchart LR
-  subgraph IaC["IaC VM (10.0.0.15)"]
+  subgraph IaC["IaC VM (10.10.0.15)"]
     T[patch-window.timer<br/>05:00] --> W[patch_window.sh]
     W -->|1| RU[rolling_update.yml]
     W -->|2| CU[container_update.yml]

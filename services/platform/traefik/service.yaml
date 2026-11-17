@@ -5,7 +5,7 @@
 #
 # Role in the stack:
 #   Single entry-point for ALL internal HTTPS traffic.
-#   Runs on web-01 (10.0.30.10) as a Docker container with:
+#   Runs on web-01 (10.10.30.10) as a Docker container with:
 #     - Docker provider  → auto-discovers containers on web-01 via Docker socket
 #     - File provider    → hot-reloadable YAML files for cross-VM backends
 #                          (gpu-01, vpn-01, etc.)
@@ -25,7 +25,7 @@ metadata:
   version: "3.1"
   tier: platform
   hosts_on: web-01
-  ip: "10.0.30.10"
+  ip: "10.10.30.10"
   vlan: vlan30
 
 tags:

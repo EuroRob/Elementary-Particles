@@ -5,9 +5,9 @@ web UI. Last verified against the real running system: **2026-09-04**.
 
 
 > **Moved to studio-01 (2026-11-01):** the whole stack (six containers) now runs on studio-01
-> (VM 283 on pve-03, 10.0.30.59), compose dir `/opt/music-studio`, deployed by
+> (VM 283 on pve-03, 10.10.30.59), compose dir `/opt/music-studio`, deployed by
 > `deploy_studio01.yml --tags music_studio`. gpu-01 runs none of it. Where this page says gpu-01 /
-> `10.0.30.50` / `/opt/docker/music-studio` below, read studio-01 / `10.0.30.59` / `/opt/music-studio`.
+> `10.10.30.50` / `/opt/docker/music-studio` below, read studio-01 / `10.10.30.59` / `/opt/music-studio`.
 > See `STUDIO01_MIGRATION.md`.
 
 > **Studio partner (2026-10-24):** DOMO in the studio. A Live-set chronicle, ideas and to-dos,
@@ -16,13 +16,13 @@ web UI. Last verified against the real running system: **2026-09-04**.
 ## Overview
 
 A personal-assistant-grade catalog for original recordings — the "Immich for
-music" the homelab didn't have. Three containers on `gpu-01` (10.0.30.50),
+music" the homelab didn't have. Three containers on `gpu-01` (10.10.30.50),
 Postgres on `pg-01`, and the actual audio files never leave `nasty.internal`
 (the legacy SMB NAS) — nothing is copied or duplicated, matching Immich's
 "external library" philosophy.
 
 ```
-nasty.internal (SMB, 10.0.40.30)              gpu-01 (10.0.30.50)
+nasty.internal (SMB, 10.10.40.30)              gpu-01 (10.10.30.50)
   Multimedia/Music/My Recordings/                music-catalog :8200 ---+
     MP3'd, Recordings, Rekorder,      (ro mount)  music-assistant :8201 |  both talk to
     WaveLab'd, FieldRecordings,      ------------>  music-beets :8337  |  pg-01 (Postgres)
@@ -48,7 +48,7 @@ nasty.internal (SMB, 10.0.40.30)              gpu-01 (10.0.30.50)
 | `music-catalog` (Docker) | studio-01, `/opt/music-studio/` | FastAPI — sessions/songs/tracks/plugins/annotations/track_engagement, proxies+merges Beets' own API |
 | `music-assistant` (Docker) | studio-01, same compose project | FastAPI — natural-language query intents (`/music/query`) **and** the Studio Assistant web UI (`/ui/*`) |
 | `music-beets` (Docker) | studio-01, same compose project | Beets — library tagging, MusicBrainz fingerprinting, the actual audio-serving endpoint (`/item/{id}/file`) |
-| Postgres `elementary_particles` / `music.*` schema | pg-01 (10.0.40.10:5432) | Sessions, songs, tracks, clips, plugins, instruments, references, field recordings, annotations, track_engagement |
+| Postgres `elementary_particles` / `music.*` schema | pg-01 (10.10.40.10:5432) | Sessions, songs, tracks, clips, plugins, instruments, references, field recordings, annotations, track_engagement |
 | Beets SQLite `beets.db` | studio-01, `/mnt/music-studio/beets-config/` (NFS, nas-01) | The actual per-track catalog (artist/title/tags/path) — **separate store from Postgres**, see "Two separate catalogs" below |
 | NASTY SMB mount | gpu-01, `/mnt/nasty-music` → containers' `/import/nasty` | Read-only, PERMANENT — canonical audio storage, Beets streams playback directly from here |
 | Traefik route (web-01) | `music.home.example.org`, `studio.home.example.org`, `beets.home.example.org` | Cross-VM routes registered by `deploy_gpu.yml` post_tasks, real Let's Encrypt wildcard cert (not `.internal`/self-signed) |
@@ -184,8 +184,8 @@ ansible-playbook -i inventory/services.yml playbooks/deploy_studio01.yml \
   auto-overwritten** after the first deploy, so a config change (like the
   `ignore:` list) needs a manual push:
   ```bash
-  scp integration/music_beets_config.yaml ansible@10.0.30.59:/tmp/config.yaml.new
-  ssh ansible@10.0.30.59 "sudo cp /mnt/music-studio/beets-config/config.yaml{,.bak-\$(date +%Y%m%d%H%M%S)} && \
+  scp integration/music_beets_config.yaml ansible@10.10.30.59:/tmp/config.yaml.new
+  ssh ansible@10.10.30.59 "sudo cp /mnt/music-studio/beets-config/config.yaml{,.bak-\$(date +%Y%m%d%H%M%S)} && \
     sudo cp /tmp/config.yaml.new /mnt/music-studio/beets-config/config.yaml && \
     sudo chown 1000:1000 /mnt/music-studio/beets-config/config.yaml"
   ```
@@ -240,14 +240,14 @@ bootstrap operation, not something to repeat. Two real reasons:
 
 ```bash
 # One new file:
-ssh ansible@10.0.30.59 "sudo docker exec music-beets bash /etc/beets/beet_import_safe.sh \
+ssh ansible@10.10.30.59 "sudo docker exec music-beets bash /etc/beets/beet_import_safe.sh \
   \"/import/nasty/<path to the new file>\""
 
 # A new folder (recurses, one file at a time — see beet_scan.py docstring
 # for why per-file matters: untagged files with blank artist/title all
 # collide as false "duplicates" if a whole folder goes through beets' own
 # batch duplicate-detection in one pass):
-ssh ansible@10.0.30.59 "sudo docker exec music-beets bash /etc/beets/beet_import_safe.sh \
+ssh ansible@10.10.30.59 "sudo docker exec music-beets bash /etc/beets/beet_import_safe.sh \
   \"/import/nasty/<new subfolder>\""
 ```
 
@@ -302,7 +302,7 @@ song links — keys on `music.audio_files.id` instead. See
 - **Run by hand** after importing new recordings, so they get an identity
   before the next night:
   ```bash
-  ssh ansible@10.0.30.59 'sudo docker exec music-catalog python3 /app/audio_identity_sync.py'
+  ssh ansible@10.10.30.59 'sudo docker exec music-catalog python3 /app/audio_identity_sync.py'
   # re-seed from a fresh labcat export (first run / after a big import):
   #   ... audio_identity_sync.py --seed /beets/labcat_seed.tsv [--dry-run]
   ```

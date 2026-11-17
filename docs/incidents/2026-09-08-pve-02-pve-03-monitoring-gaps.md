@@ -14,7 +14,7 @@ status: resolved for pve-02; pve-03 blocked on a missing WoL MAC
 # Incident: pve-02/pve-03 Were Never Actually Monitored — Four Stacked Gaps Found Live
 
 **Date:** 2026-09-08
-**Hosts:** pve-02 (pve-02, 10.0.0.12), pve-03 (pve-03, 10.0.0.13)
+**Hosts:** pve-02 (pve-02, 10.10.0.12), pve-03 (pve-03, 10.10.0.13)
 **Severity:** Medium — no data loss, but two of three Proxmox hosts had
 zero storage/host-level observability this whole time, discovered only
 because they were asked for by name.
@@ -40,7 +40,7 @@ user/pve-exporter.service`.
 
 **2. `pve.yml`'s auth config only ever had pve-01's credentials.**
 Prometheus's scrape config already listed all three PVE hosts as targets
-(`10.0.0.11/.12/.13:8006`), and had for a while — but every request used
+(`10.10.0.11/.12/.13:8006`), and had for a while — but every request used
 one hardcoded `module: [default]` param, and `default` in `pve.yml` only
 had pve-01's Proxmox API token. pve-02 and pve-03 are standalone (non-
 clustered) nodes with their own separately Vault-provisioned tokens

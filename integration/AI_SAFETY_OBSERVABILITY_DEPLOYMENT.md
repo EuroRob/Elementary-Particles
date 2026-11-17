@@ -10,7 +10,7 @@ store, interaction metrics, and a 30-45 day automated retraining cycle.
 ## Architecture Overview
 
 ```
-┌─────────────────── web-01 (10.0.30.20) ──────────────────────────┐
+┌─────────────────── web-01 (10.10.30.20) ──────────────────────────┐
 │                                                                    │
 │  rag-ingestor  :5250  ──► Qdrant  :6333/:6334                     │
 │  guardrails    :5210  ──► PostgreSQL guardrails schema             │
@@ -50,16 +50,16 @@ Run each schema file against the `elementary_particles` database on pg-01.
 Order does not matter — schemas are independent.
 
 ```bash
-PGPASSWORD="$DB_PASSWORD" psql -h 10.0.40.10 -U postgres -d elementary_particles \
+PGPASSWORD="$DB_PASSWORD" psql -h 10.10.40.10 -U postgres -d elementary_particles \
   -f integration/postgres/rag_store_schema.sql
 
-PGPASSWORD="$DB_PASSWORD" psql -h 10.0.40.10 -U postgres -d elementary_particles \
+PGPASSWORD="$DB_PASSWORD" psql -h 10.10.40.10 -U postgres -d elementary_particles \
   -f integration/postgres/guardrails_schema.sql
 
-PGPASSWORD="$DB_PASSWORD" psql -h 10.0.40.10 -U postgres -d elementary_particles \
+PGPASSWORD="$DB_PASSWORD" psql -h 10.10.40.10 -U postgres -d elementary_particles \
   -f integration/postgres/prompt_store_schema.sql
 
-PGPASSWORD="$DB_PASSWORD" psql -h 10.0.40.10 -U postgres -d elementary_particles \
+PGPASSWORD="$DB_PASSWORD" psql -h 10.10.40.10 -U postgres -d elementary_particles \
   -f integration/postgres/ai_monitor_schema.sql
 ```
 
@@ -102,7 +102,7 @@ sudo chown 1000:1000 /opt/qdrant/storage
 
 **Verify Qdrant is running:**
 ```bash
-curl http://10.0.30.20:6333/health
+curl http://10.10.30.20:6333/health
 # → {"title":"qdrant - vector search engine","version":"1.9.2"}
 ```
 
@@ -113,7 +113,7 @@ curl http://10.0.30.20:6333/health
 The RAG ingestor uses `nomic-embed-text` for 768-dimension embeddings.
 
 ```bash
-# On gpu-01 (10.0.30.50)
+# On gpu-01 (10.10.30.50)
 ollama pull nomic-embed-text
 
 # Verify
@@ -147,30 +147,30 @@ Store all service credentials in Vault under `secret/elementary-particles/`:
 ```bash
 # RAG Ingestor
 vault kv put secret/elementary-particles/rag-ingestor \
-  db_dsn="postgresql://n8n:CHANGE@10.0.40.10:5432/elementary_particles" \
-  qdrant_url="http://10.0.30.20:6333" \
-  ollama_url="http://10.0.30.50:11434" \
+  db_dsn="postgresql://n8n:CHANGE@10.10.40.10:5432/elementary_particles" \
+  qdrant_url="http://10.10.30.20:6333" \
+  ollama_url="http://10.10.30.50:11434" \
   nextcloud_url="https://nextcloud.home.arpa" \
   nextcloud_user="admin" \
   nextcloud_password="CHANGE"
 
 # Guardrails
 vault kv put secret/elementary-particles/guardrails \
-  db_dsn="postgresql://n8n:CHANGE@10.0.40.10:5432/elementary_particles" \
-  ollama_url="http://10.0.30.50:11434" \
+  db_dsn="postgresql://n8n:CHANGE@10.10.40.10:5432/elementary_particles" \
+  ollama_url="http://10.10.30.50:11434" \
   ollama_model="llama3.2:3b-instruct-q4_K_M" \
   confidence_threshold="0.60" \
   toxicity_threshold="0.70"
 
 # Prompt Store
 vault kv put secret/elementary-particles/prompt-store \
-  db_dsn="postgresql://n8n:CHANGE@10.0.40.10:5432/elementary_particles" \
+  db_dsn="postgresql://n8n:CHANGE@10.10.40.10:5432/elementary_particles" \
   stale_days="30"
 
 # AI Monitor
 vault kv put secret/elementary-particles/ai-monitor \
-  db_dsn="postgresql://n8n:CHANGE@10.0.40.10:5432/elementary_particles" \
-  ollama_url="http://10.0.30.50:11434" \
+  db_dsn="postgresql://n8n:CHANGE@10.10.40.10:5432/elementary_particles" \
+  ollama_url="http://10.10.30.50:11434" \
   nextcloud_talk_url="https://nextcloud.home.arpa" \
   nextcloud_talk_token="YOUR_TALK_TOKEN" \
   nextcloud_bot_secret="YOUR_BOT_SECRET"
@@ -225,7 +225,7 @@ done
 
 # Verify health
 for port in 5210 5220 5230 5250; do
-  curl -s "http://10.0.30.20:$port/health" | python3 -m json.tool
+  curl -s "http://10.10.30.20:$port/health" | python3 -m json.tool
 done
 ```
 
@@ -292,7 +292,7 @@ The project already has `integration/prometheus_scrape_config.yml`. Add the
 # Add to the existing scrape_configs in integration/prometheus_scrape_config.yml
   - job_name: 'ai-monitor'
     static_configs:
-      - targets: ['10.0.30.20:5220']
+      - targets: ['10.10.30.20:5220']
     metrics_path: /metrics
     scrape_interval: 30s
     labels:
@@ -333,7 +333,7 @@ import httpx
 
 async def get_system_prompt(service: str, profile: str) -> str:
     async with httpx.AsyncClient(timeout=5) as client:
-        r = await client.get(f"http://10.0.30.20:5230/prompt/{service}/{profile}")
+        r = await client.get(f"http://10.10.30.20:5230/prompt/{service}/{profile}")
         if r.status_code == 200:
             return r.json()["prompt"]
     return DEFAULT_PROMPT  # fallback
@@ -345,7 +345,7 @@ async def get_system_prompt(service: str, profile: str) -> str:
 async def safe_ollama_response(prompt: str, response: str, context_chunks: list,
                                 profile: str, service: str) -> str:
     async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.post("http://10.0.30.20:5210/validate", json={
+        r = await client.post("http://10.10.30.20:5210/validate", json={
             "prompt": prompt,
             "response": response,
             "context_chunks": context_chunks,
@@ -363,7 +363,7 @@ async def safe_ollama_response(prompt: str, response: str, context_chunks: list,
 async def log_interaction(profile: str, service: str, latency_ms: int,
                            guardrails_action: str = "pass") -> None:
     async with httpx.AsyncClient(timeout=5) as client:
-        await client.post("http://10.0.30.20:5220/event", json={
+        await client.post("http://10.10.30.20:5220/event", json={
             "profile_name": profile,
             "service": service,
             "latency_ms": latency_ms,
@@ -375,19 +375,19 @@ async def log_interaction(profile: str, service: str, latency_ms: int,
 
 ## 11. Post-Deployment Verification Checklist
 
-- [ ] `curl http://10.0.30.20:5210/health` → `{"status":"ok","service":"guardrails"}`
-- [ ] `curl http://10.0.30.20:5220/health` → `{"status":"ok","service":"ai-monitor"}`
-- [ ] `curl http://10.0.30.20:5230/health` → `{"status":"ok","service":"prompt-store"}`
-- [ ] `curl http://10.0.30.20:5250/health` → `{"status":"ok","service":"rag-ingestor"}`
-- [ ] `curl http://10.0.30.20:6333/health` → Qdrant health JSON
-- [ ] `curl http://10.0.30.20:5230/prompts/stale` → returns array (may be empty)
-- [ ] `curl http://10.0.30.20:5220/metrics` → Prometheus text output
-- [ ] Qdrant collections: `curl http://10.0.30.20:6333/collections` → 3 collections seeded
+- [ ] `curl http://10.10.30.20:5210/health` → `{"status":"ok","service":"guardrails"}`
+- [ ] `curl http://10.10.30.20:5220/health` → `{"status":"ok","service":"ai-monitor"}`
+- [ ] `curl http://10.10.30.20:5230/health` → `{"status":"ok","service":"prompt-store"}`
+- [ ] `curl http://10.10.30.20:5250/health` → `{"status":"ok","service":"rag-ingestor"}`
+- [ ] `curl http://10.10.30.20:6333/health` → Qdrant health JSON
+- [ ] `curl http://10.10.30.20:5230/prompts/stale` → returns array (may be empty)
+- [ ] `curl http://10.10.30.20:5220/metrics` → Prometheus text output
+- [ ] Qdrant collections: `curl http://10.10.30.20:6333/collections` → 3 collections seeded
 - [ ] n8n RAG workflow activated — check execution log after 15 min
 - [ ] n8n Monthly workflow: trigger manually and verify NextCloud Talk post
 - [ ] Grafana: `ai_assistant_interactions_total` panel shows data after first test event
-- [ ] Guardrails rules seeded: `curl http://10.0.30.20:5210/rules` → 6+ rules
-- [ ] Prompt store seeded: `curl http://10.0.30.20:5230/prompt/proactive-intelligence` → CRISPE prompt
+- [ ] Guardrails rules seeded: `curl http://10.10.30.20:5210/rules` → 6+ rules
+- [ ] Prompt store seeded: `curl http://10.10.30.20:5230/prompt/proactive-intelligence` → CRISPE prompt
 
 ---
 
@@ -396,7 +396,7 @@ async def log_interaction(profile: str, service: str, latency_ms: int,
 ### Qdrant collection not created on first ingest
 The ingestor auto-creates missing collections. If it fails, check:
 ```bash
-curl -s http://10.0.30.20:5250/collections
+curl -s http://10.10.30.20:5250/collections
 ```
 Collections are created with `distance: Cosine` and 768 dimensions
 (nomic-embed-text output size).
@@ -404,9 +404,9 @@ Collections are created with `distance: Cosine` and 768 dimensions
 ### Guardrails blocking all responses
 Check if block rules are too aggressive:
 ```bash
-curl http://10.0.30.20:5210/rules | python3 -m json.tool
+curl http://10.10.30.20:5210/rules | python3 -m json.tool
 # Toggle a rule off:
-curl -X PUT http://10.0.30.20:5210/rules/{id}/toggle
+curl -X PUT http://10.10.30.20:5210/rules/{id}/toggle
 ```
 
 ### Prompt Store returning 404
@@ -414,11 +414,11 @@ The seed prompts are inserted by `prompt_store_schema.sql` but not activated.
 Activate the seed prompts:
 ```bash
 # Get IDs
-psql -h 10.0.40.10 -U n8n elementary_particles \
+psql -h 10.10.40.10 -U n8n elementary_particles \
   -c "SELECT id, service, version FROM prompt_store.prompts ORDER BY id;"
 
 # Activate each (replace IDs)
-curl -X PUT "http://10.0.30.20:5230/prompt/1/activate?reason=initial+seed"
+curl -X PUT "http://10.10.30.20:5230/prompt/1/activate?reason=initial+seed"
 ```
 
 ### ai-monitor drift cron not firing
@@ -426,4 +426,4 @@ The scheduler requires the service to be continuously running. Check:
 ```bash
 sudo journalctl -u ai-monitor -n 50
 ```
-Manually trigger: `curl -X POST http://10.0.30.20:5220/drift/compute`
+Manually trigger: `curl -X POST http://10.10.30.20:5220/drift/compute`

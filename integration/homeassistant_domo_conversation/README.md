@@ -1,6 +1,6 @@
 # DOMO conversation agent for Home Assistant
 
-Lets Apple Watch Assist (HA companion app) talk to DOMO. Live 2026-10-30 on the main HA (10.0.30.14)
+Lets Apple Watch Assist (HA companion app) talk to DOMO. Live 2026-10-30 on the main HA (10.10.30.14)
 as `custom_components/domo_conversation`, entity `conversation.domo`, Assist pipeline **"DOMO"**.
 
 ```
@@ -31,7 +31,7 @@ Watch -> iPhone (HA app) -> stt.gpu02_whisper (Wyoming bridge on gpu-02:10300
   `stt.faster_whisper`.
 
 Setup used (repeatable): copy this folder to `/config/custom_components/domo_conversation`,
-restart HA Core, create the entry via the config-flow API (url `http://10.0.30.20:5140` +
+restart HA Core, create the entry via the config-flow API (url `http://10.10.30.20:5140` +
 key), then create the pipeline over the websocket (`assist_pipeline/pipeline/create`,
 same STT/TTS as "Mixtra-Ollama", `conversation_engine: conversation.domo`,
 `prefer_local_intents: true`). On the watch: HA app -> Assist -> pipeline "DOMO".

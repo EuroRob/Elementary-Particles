@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Derived config ─────────────────────────────────────────────────────────
-PVE_HOST="${PVE_HOST:-10.0.0.11}"     # pve-01 / pve-01 management IP
+PVE_HOST="${PVE_HOST:-10.10.0.11}"     # pve-01 / pve-01 management IP
 PVE_USER="${PVE_USER:-root}"
 PVE_NODE="${PVE_NODE:-pve-01}"
 SSH_KEY="${SSH_KEY:-${HOME}/.ssh/id_ansible}"
@@ -295,9 +295,9 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════
 # CHECK 4 — Vault health
 # ═══════════════════════════════════════════════════════════════════════════
-section "Vault (${VAULT_ADDR:-http://10.0.0.15:8200})"
+section "Vault (${VAULT_ADDR:-http://10.10.0.15:8200})"
 
-VAULT_URL="${VAULT_ADDR:-http://10.0.0.15:8200}"
+VAULT_URL="${VAULT_ADDR:-http://10.10.0.15:8200}"
 vault_health="$(curl -sf "${VAULT_URL}/v1/sys/health" 2>/dev/null || echo '{}')"
 
 initialized="$(echo "$vault_health" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('initialized','?'))" 2>/dev/null || echo '?')"

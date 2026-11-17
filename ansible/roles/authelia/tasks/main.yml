@@ -19,7 +19,7 @@
 # ── Fetch secrets from Vault ──────────────────────────────────────────────────
 - name: "[authelia] Fetch core secrets from Vault"
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "{{ vault_authelia_path | regex_replace('^secret/', '') }}"
@@ -31,7 +31,7 @@
 
 - name: "[authelia] Fetch OIDC issuer key + client secrets from Vault"
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "{{ vault_authelia_oidc_path | regex_replace('^secret/', '') }}"
@@ -43,7 +43,7 @@
 
 - name: "[authelia] Fetch initial admin user from Vault"
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "{{ vault_authelia_users_path | regex_replace('^secret/', '') }}"
@@ -55,7 +55,7 @@
 
 - name: "[authelia] Fetch SMTP secrets from Vault (optional)"
   community.hashi_vault.vault_kv2_get:
-    url: "{{ vault_addr | default('http://10.0.0.15:8200') }}"
+    url: "{{ vault_addr | default('http://10.10.0.15:8200') }}"
     auth_method: token
     token: "{{ lookup('env', 'VAULT_TOKEN') }}"
     path: "{{ vault_authelia_smtp_path | regex_replace('^secret/', '') }}"

@@ -100,7 +100,7 @@ The practice page is LIVE (studio-partner + music-assistant), verified 2026-10-3
 | Chromatone image + compose | `IaC/services/assistant/music-studio/chromatone/` (Dockerfile, nginx.conf, docker-compose.yml) |
 | Chromatone deploy | `IaC/Ansible/playbooks/deploy_studio01.yml` (studio-01) |
 
-- **Chromatone runs on studio-01** (VM 283 on pve-03, 10.0.30.59), LIVE 2026-10-31.
+- **Chromatone runs on studio-01** (VM 283 on pve-03, 10.10.30.59), LIVE 2026-10-31.
   - Its first build on gpu-01 was OOM-killed in a 2 GB cap (gpu-01 had ~3 GB free), so it got
     its own VM, the start of moving the whole music stack there: STUDIO01_MIGRATION.md.
   - Built on studio-01 with no cap (the 4 GB VM is the fence); the build took a few minutes.
@@ -113,7 +113,7 @@ The practice page is LIVE (studio-partner + music-assistant), verified 2026-10-3
   - Cover images still load from `db.chromatone.center` (cosmetic only).
   - nginx on studio-01 :8204, 64 MB cap (uses ~5 MB); Traefik `theory.home.example.org`, no Authelia,
     like studio.home.example.org.
-- **DNS:** Pi-hole host `10.0.30.20 theory.home.example.org`, added live via the v6 REST API.
+- **DNS:** Pi-hole host `10.10.30.20 theory.home.example.org`, added live via the v6 REST API.
 
 Deploy: practice page = `deploy_studio01.yml --tags music_studio` (see MUSIC_STUDIO.md);
 Chromatone = `deploy_studio01.yml --tags chromatone`.

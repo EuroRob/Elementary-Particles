@@ -7,39 +7,39 @@
         icon: proxmox.png
         href: "{{ homepage_services.pve01_url }}"
         description: "Primary hypervisor — always on"
-        ping: "{{ hostvars['pve-01'].ansible_host | default('10.0.0.11') }}"
+        ping: "{{ hostvars['pve-01'].ansible_host | default('10.10.0.11') }}"
     - Proxmox pve-02:
         icon: proxmox.png
         href: "{{ homepage_services.pve02_url }}"
         description: "Burst GPU host (WoL)"
-        ping: "{{ hostvars['pve-02'].ansible_host | default('10.0.0.12') }}"
+        ping: "{{ hostvars['pve-02'].ansible_host | default('10.10.0.12') }}"
     - Proxmox pve-03:
         icon: proxmox.png
         href: "{{ homepage_services.pve03_url }}"
         description: "Burst media host (WoL)"
-        ping: "{{ hostvars['pve-03'].ansible_host | default('10.0.0.13') }}"
+        ping: "{{ hostvars['pve-03'].ansible_host | default('10.10.0.13') }}"
     - NAS-01:
         icon: openmediavault.png
         href: "{{ homepage_services.nas01_url }}"
         description: "OpenMediaVault NAS — NFS shares"
-        ping: "{{ hostvars['nas-01'].ansible_host | default('10.0.40.20') }}"
+        ping: "{{ hostvars['nas-01'].ansible_host | default('10.10.40.20') }}"
 
 - Network:
     - OPNSense:
         icon: opnsense.png
         href: "{{ homepage_services.opnsense_url }}"
         description: "Firewall & router (fw-01)"
-        ping: "10.0.99.2"
+        ping: "10.10.99.2"
     - Pi-hole:
         icon: pi-hole.png
         href: "{{ homepage_services.pihole_url }}/admin"
         description: "DNS ad-blocking (dns-01)"
-        ping: "{{ hostvars['dns-01'].ansible_host | default('10.0.30.10') }}"
+        ping: "{{ hostvars['dns-01'].ansible_host | default('10.10.30.10') }}"
     - WireGuard:
         icon: wireguard.png
         href: "{{ homepage_services.wireguard_url }}"
         description: "VPN admin UI (vpn-01)"
-        ping: "10.0.10.5"
+        ping: "10.10.10.5"
 
 - Platform:
     - Vault:
@@ -50,24 +50,24 @@
         icon: traefik.png
         href: "{{ homepage_services.traefik_url }}/dashboard/"
         description: "Reverse proxy (web-01)"
-        ping: "{{ ansible_host | default('10.0.30.20') }}"
+        ping: "{{ ansible_host | default('10.10.30.20') }}"
     - NetBox:
         icon: netbox.png
         href: "{{ homepage_services.netbox_url }}"
         description: "DCIM / IPAM inventory"
-        ping: "{{ ansible_host | default('10.0.30.20') }}"
+        ping: "{{ ansible_host | default('10.10.30.20') }}"
     - Grafana:
         icon: grafana.png
         href: "{{ homepage_services.grafana_url }}"
         description: "Metrics & alerting"
-        ping: "{{ ansible_host | default('10.0.30.20') }}"
+        ping: "{{ ansible_host | default('10.10.30.20') }}"
 
 - Automation:
     - n8n:
         icon: n8n.png
         href: "{{ homepage_services.n8n_url }}"
         description: "Workflow orchestration"
-        ping: "{{ ansible_host | default('10.0.30.20') }}"
+        ping: "{{ ansible_host | default('10.10.30.20') }}"
     - IaC API:
         icon: mdi-api
         href: "{{ homepage_services.iac_api_url }}"

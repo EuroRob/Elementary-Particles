@@ -1,6 +1,6 @@
 # Code partner: DOMO at the workbench
 
-**Status (2026-11-05): LIVE** on code-01 (VM 252, pve-01, 10.0.30.32) at code.home.example.org and by voice
+**Status (2026-11-05): LIVE** on code-01 (VM 252, pve-01, 10.10.30.32) at code.home.example.org and by voice
 through DOMO. Tested end to end through domo-router: a sentence became a diff, a commit and a draft PR
 opened by `domo-coder`. That was test PR #60, closed and its branch deleted. 88 unit tests.
 
@@ -64,7 +64,7 @@ iPhone DOMO app ──WebRTC──▶ domo-gateway (gpu-02: Whisper, Piper)
 Browser ──▶ code.home.example.org ──▶ Traefik + Authelia two_factor (web-01)
                                │ Remote-User
                                ▼
-                   code-partner (code-01, 10.0.30.32:8210, systemd)
+                   code-partner (code-01, 10.10.30.32:8210, systemd)
                      ├─ policy (read-only)       ├─ audit.jsonl (paths, sizes, outcomes; never content)
                      ├─ repo clone + one git worktree per session, branch domo/<date>-<topic>
                      ├─▶ gpu-01 Ollama :11434  gpu01-primary, num_ctx 16384 (the resident copy)
@@ -201,7 +201,7 @@ Generated values go straight into Vault; nothing is printed.
 |---|---|---|
 | 1 | `scripts/forgejo_domo_coder.py --apply` | `domo-coder` restricted user, write on owner/GitOps (404 on private repos), master: push and merge only by owner, keys in Vault |
 | 2 | `terraform apply` in `Terraform/envs/code-01/` | VM 252 on pve-01, 2 cores, 3 GB, 24 GB |
-| 3 | Pi-hole `10.0.30.20 code.home.example.org` (REST, no restart) | resolves; Authelia two_factor in front |
+| 3 | Pi-hole `10.10.30.20 code.home.example.org` (REST, no restart) | resolves; Authelia two_factor in front |
 | 4 | `deploy_code01.yml` | service active, ~48 MB; from the IaC VM (not allowed) it doesn't answer, from web-01 it does |
 | 5 | domo-router: narrow live update (backups `*.bak-20261105202026` on web-01): `domo_router.py` from this branch (= live ha-home-scenes + `code_route`), 3 compose lines, `CODE_PARTNER_KEY` appended to `.env`, `up -d --no-deps domo-router` | healthy |
 

@@ -70,7 +70,7 @@ HOT_EVERY_S = int(os.environ.get("HOT_EVERY_S", "20"))
 ACTIVE_HOURS = 3
 PEOPLE: list[str] = json.loads(os.environ.get("STUDIO_PEOPLE_JSON", '["owner"]'))
 NAMES = {"owner": "owner", "partner": "Partner"}
-LLM_URL = os.environ.get("OLLAMA_URL", "http://10.0.30.50:11434").rstrip("/")
+LLM_URL = os.environ.get("OLLAMA_URL", "http://10.10.30.50:11434").rstrip("/")
 LLM_MODEL = os.environ.get("STUDIO_LLM_MODEL", "gpu01-primary")
 LLM_NUM_CTX = int(os.environ.get("STUDIO_LLM_NUM_CTX", "16384"))     # = the resident copy; another value reloads it
 TALK_IDLE_MIN = int(os.environ.get("TALK_IDLE_MIN", "30"))

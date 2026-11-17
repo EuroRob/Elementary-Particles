@@ -8,7 +8,7 @@ on the PR head; a PR comment is posted only when the verdict changes.
 
 Runs on the Forgejo runner (code-01) with the job's ephemeral token: nothing here
 needs or stores a credential. Environment:
-    FORGEJO_API   e.g. http://10.0.30.31:3000/api/v1
+    FORGEJO_API   e.g. http://10.10.30.31:3000/api/v1
     TOKEN         the job token (${{ github.token }})
     REPO          owner/repo
     BASE          base branch name (default master)

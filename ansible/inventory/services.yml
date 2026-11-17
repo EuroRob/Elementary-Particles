@@ -19,9 +19,9 @@ all:
     firewall:
       hosts:
         fw-01:
-          ansible_host: 10.0.0.1           # Current IP (pre-VLAN migration). Target: 10.0.10.1 after VLAN10 is configured.
+          ansible_host: 10.10.0.1           # Current IP (pre-VLAN migration). Target: 10.10.10.1 after VLAN10 is configured.
           ansible_connection: local         # All tasks use uri module → OPNSense REST API
-          opnsense_host: 10.0.0.1
+          opnsense_host: 10.10.0.1
           opnsense_api_port: 443
           proxmox_node: pve-01
           proxmox_vm_id: 100
@@ -56,7 +56,7 @@ all:
           # match the SSH config alias / doc references already using that
           # name for this same machine (macbook_bootstrap.sh, IAC_ORCHESTRATION
           # docs) -- this comment is the cross-reference.
-          ansible_host: 10.0.0.15
+          ansible_host: 10.10.0.15
           ansible_connection: local
           proxmox_node: pve-01
           proxmox_vm_id: 103
@@ -71,21 +71,21 @@ all:
     tier1_core:
       hosts:
         dns-01:
-          ansible_host: 10.0.30.10
+          ansible_host: 10.10.30.10
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           # Bootstrap proxy: route via Proxmox until OPNSense has VLAN30 routing.
           # Remove after: opnsense role configures vtnet0 VLAN30 interface + fw rules.
           ansible_ssh_common_args: >-
             -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_ansible
-            -o StrictHostKeyChecking=no root@10.0.0.11"
+            -o StrictHostKeyChecking=no root@10.10.0.11"
             -o StrictHostKeyChecking=no
           vm_tier: core
           vm_vlan: vlan30
           proxmox_node: pve-01
           proxmox_vm_id: 220
           health_check_port: 80        # Pihole web UI
-          health_check_url: "http://10.0.30.10/admin/"
+          health_check_url: "http://10.10.30.10/admin/"
           docker_enabled: "true"
           docker_compose_dirs:
             - /opt/pihole
@@ -99,31 +99,31 @@ all:
           # Pi-hole intercepts these before they hit public DNS.
           pihole_dns_records:
             # Legacy .internal records (needed by Ansible/Terraform/services)
-            - { ip: "10.0.0.15",  name: "vault.internal" }
-            - { ip: "10.0.0.15",  name: "iac.internal" }
+            - { ip: "10.10.0.15",  name: "vault.internal" }
+            - { ip: "10.10.0.15",  name: "iac.internal" }
             # home.example.org services → web-01 (Traefik)
-            - { ip: "10.0.30.20", name: "auth.home.example.org" }
-            - { ip: "10.0.30.20", name: "home.home.example.org" }
-            - { ip: "10.0.30.20", name: "traefik.home.example.org" }
-            - { ip: "10.0.30.20", name: "n8n.home.example.org" }
-            - { ip: "10.0.30.20", name: "grafana.home.example.org" }
-            - { ip: "10.0.30.20", name: "netbox.home.example.org" }
-            - { ip: "10.0.30.20", name: "git.home.example.org" }
-            - { ip: "10.0.30.20", name: "wiki.home.example.org" }
-            - { ip: "10.0.30.20", name: "jira.home.example.org" }
-            - { ip: "10.0.30.20", name: "photos.home.example.org" }
-            - { ip: "10.0.30.20", name: "vpn.home.example.org" }
-            - { ip: "10.0.30.20", name: "chat.home.example.org" }
-            - { ip: "10.0.30.20", name: "media.home.example.org" }
-            - { ip: "10.0.30.20", name: "recipes.home.example.org" }
-            - { ip: "10.0.30.20", name: "outline.home.example.org" }
-            - { ip: "10.0.30.20", name: "travel.home.example.org" }
-            - { ip: "10.0.30.20", name: "hike.home.example.org" }
-            - { ip: "10.0.0.15",  name: "vault.home.example.org" }
-            - { ip: "10.0.30.10", name: "pihole.home.example.org" }
+            - { ip: "10.10.30.20", name: "auth.home.example.org" }
+            - { ip: "10.10.30.20", name: "home.home.example.org" }
+            - { ip: "10.10.30.20", name: "traefik.home.example.org" }
+            - { ip: "10.10.30.20", name: "n8n.home.example.org" }
+            - { ip: "10.10.30.20", name: "grafana.home.example.org" }
+            - { ip: "10.10.30.20", name: "netbox.home.example.org" }
+            - { ip: "10.10.30.20", name: "git.home.example.org" }
+            - { ip: "10.10.30.20", name: "wiki.home.example.org" }
+            - { ip: "10.10.30.20", name: "jira.home.example.org" }
+            - { ip: "10.10.30.20", name: "photos.home.example.org" }
+            - { ip: "10.10.30.20", name: "vpn.home.example.org" }
+            - { ip: "10.10.30.20", name: "chat.home.example.org" }
+            - { ip: "10.10.30.20", name: "media.home.example.org" }
+            - { ip: "10.10.30.20", name: "recipes.home.example.org" }
+            - { ip: "10.10.30.20", name: "outline.home.example.org" }
+            - { ip: "10.10.30.20", name: "travel.home.example.org" }
+            - { ip: "10.10.30.20", name: "hike.home.example.org" }
+            - { ip: "10.10.0.15",  name: "vault.home.example.org" }
+            - { ip: "10.10.30.10", name: "pihole.home.example.org" }
 
         vpn-01:
-          ansible_host: 10.0.10.5
+          ansible_host: 10.10.10.5
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
@@ -148,7 +148,7 @@ all:
     proxmox_hosts:
       hosts:
         pve-01:
-          ansible_host: 10.0.0.11    # Current: client VLAN. Will move to 10.0.10.11 (MGMT VLAN10) later.
+          ansible_host: 10.10.0.11    # Current: client VLAN. Will move to 10.10.10.11 (MGMT VLAN10) later.
           ansible_user: root
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           proxmox_node: pve-01
@@ -156,23 +156,23 @@ all:
           nic_10g: true
           role: primary
         pve-02:
-          ansible_host: 10.0.0.12
+          ansible_host: 10.10.0.12
           ansible_user: root
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           proxmox_node: pve-02
           always_on: false            # WoL-managed — not kept running
           wol_enabled: true
           wol_mac: ""                 # auto-populated by wol_setup.yml → host_vars/pve-02.yml
-          wol_broadcast: "10.0.0.255"
+          wol_broadcast: "10.10.0.255"
         pve-03:
-          ansible_host: 10.0.0.13
+          ansible_host: 10.10.0.13
           ansible_user: root
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           proxmox_node: pve-03          # real Proxmox node name — see IaC/CLAUDE.md
           always_on: false            # WoL-managed — not kept running
           wol_enabled: true
           wol_mac: ""                 # auto-populated by wol_setup.yml → host_vars/pve-03.yml
-          wol_broadcast: "10.0.0.255"
+          wol_broadcast: "10.10.0.255"
           comment: >-
             Dedicated media host. Kept powered off when idle.
             Wake-on-LAN before media-vm start.
@@ -200,7 +200,7 @@ all:
     nas:
       hosts:
         nas-01:
-          ansible_host: 10.0.40.20
+          ansible_host: 10.10.40.20
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           ansible_python_interpreter: /usr/bin/python3
@@ -216,7 +216,7 @@ all:
           # IaC/Terraform/envs/nas-02/ (VM 233), matching nas-01's exact
           # shape (raw disk passthrough, ZFS mirror built inside the guest).
           # See project_nas02_zfs_storage_architecture memory.
-          ansible_host: 10.0.40.21
+          ansible_host: 10.10.40.21
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           ansible_python_interpreter: /usr/bin/python3
@@ -226,7 +226,7 @@ all:
           # Role: Roles/backrest, playbook: deploy_backrest.yml, plan: docs/BACKREST_DEPLOYMENT.md.
           # Listens on the storage-VLAN IP; only web-01 (Traefik) may reach :9898 (fw rule, tag backrest).
           # Repos are reached via rest-server --append-only on VLAN 399, never the local path.
-          backrest_listen: "10.0.40.21:9898"
+          backrest_listen: "10.10.40.21:9898"
           backrest_repos:
             - id: timemachine          # BKP-TM dock drive (pve-03) — offline most of the time
               uri: "rest:http://172.31.98.2:8000/timemachine/"
@@ -258,7 +258,7 @@ all:
     #########################################
     # IOT SENSORS — bare-metal Raspberry Pi hardware on VLAN20, NOT Proxmox
     # VMs (no proxmox_node/proxmox_vm_id, same reason as ionos_vps above).
-    # Distinct from the remote-HA Pis (10.0.20.24 etc) - those run their own
+    # Distinct from the remote-HA Pis (10.10.20.24 etc) - those run their own
     # full HAOS Supervisor and are managed via `ha` CLI over SSH directly,
     # never through Ansible. Hosts here are plain Debian and Ansible-managed
     # like any other fleet member.
@@ -274,7 +274,7 @@ all:
           # Pi 3 B, bootstrap creds were a one-time PI3_USER/PI3_PASSWORD in
           # /opt/vault/.env, now retired -- see secret/pi3-photosensor/ssh
           # for the still-needed bootstrap creds if this Pi is ever re-imaged.
-          ansible_host: 10.0.20.91
+          ansible_host: 10.10.20.91
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           ansible_python_interpreter: /usr/bin/python3
@@ -288,7 +288,7 @@ all:
       hosts:
         pg-01:
           # FROM: config/vms/pg-01.yaml
-          ansible_host: 10.0.40.10
+          ansible_host: 10.10.40.10
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
@@ -366,7 +366,7 @@ all:
           postgres_archive_timeout: "15min"   # worst-case loss on a quiet DB
           postgres_pgbackrest_enabled: true
           postgres_pgbackrest_stanza: pg-01
-          postgres_pgbackrest_nfs_source: "10.0.40.20:/backups/pgbackrest"   # nas-01 ETBs/backups/pgbackrest (uid 104:110)
+          postgres_pgbackrest_nfs_source: "10.10.40.20:/backups/pgbackrest"   # nas-01 ETBs/backups/pgbackrest (uid 104:110)
           # pgBackRest covers every day (+ PITR), so the logical dump is a weekly
           # extra copy in plain SQL (2026-10-23, after the first verified full backup).
           postgres_simple_backup_weekday: "0"
@@ -425,7 +425,7 @@ all:
           # as of the 2026-09-19 GPU host migration (was RTX 2070 8GB —
           # see project_gpu_host_migration_2026-09-18 memory); this VM
           # itself never moved hosts, only the physical card changed.
-          ansible_host: 10.0.30.50
+          ansible_host: 10.10.30.50
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -452,7 +452,7 @@ all:
 
           # rolling_update.yml wiring
           health_check_port: 11434              # Ollama
-          health_check_url: "http://10.0.30.50:8080/health"  # open-webui (host network, listens on 8080 not open_webui_port)
+          health_check_url: "http://10.10.30.50:8080/health"  # open-webui (host network, listens on 8080 not open_webui_port)
           docker_enabled: "true"
           gpu_passthrough: true
           gpu_docker_containers:
@@ -541,7 +541,7 @@ all:
           open_webui_image: "ghcr.io/open-webui/open-webui:main"
           open_webui_data_dir: /opt/open-webui/data
           open_webui_extra_ollama_urls:
-            - "http://10.0.30.51:11434"   # gpu-02 — silently drops when stopped
+            - "http://10.10.30.51:11434"   # gpu-02 — silently drops when stopped
           immich_ml_enabled: false   # moved to gpu-02 2026-09-28 (co-located with immich-01 on pve-03)
           yolo_enabled: true
 
@@ -582,7 +582,7 @@ all:
           # pve-02 — see project_gpu_host_migration_2026-09-18 memory).
           # This VM's whole disk moved hosts via nas-01 backup/restore,
           # unlike gpu-01 which stayed put and just got a card swap.
-          ansible_host: 10.0.30.51
+          ansible_host: 10.10.30.51
           ansible_user: deploy   # cloud-init user_account.username is "deploy", not "ansible" (see Terraform/envs/gpu-02/main.tf)
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -728,13 +728,13 @@ all:
       hosts:
         web-01:
           # FROM: config/vms/web-01.yaml
-          ansible_host: 10.0.30.20
+          ansible_host: 10.10.30.20
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           # Bootstrap proxy: route via Proxmox until OPNSense has VLAN30 routing.
           ansible_ssh_common_args: >-
             -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_ansible
-            -o StrictHostKeyChecking=no root@10.0.0.11"
+            -o StrictHostKeyChecking=no root@10.10.0.11"
             -o StrictHostKeyChecking=no
 
           # VM specs
@@ -832,7 +832,7 @@ all:
           traefik_log_dir: /var/log/traefik
           traefik_compose_dir: /opt/traefik
           traefik_host: "web-01"
-          traefik_host_ip: "10.0.30.20"
+          traefik_host_ip: "10.10.30.20"
           traefik_domains:
             - traefik.home.example.org
           vault_traefik_certs_path: secret/traefik/certs
@@ -880,7 +880,7 @@ all:
 
         web-02:
           # FROM: config/vms/web-02.yaml
-          ansible_host: 10.0.30.11
+          ansible_host: 10.10.30.11
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -907,7 +907,7 @@ all:
               health: ["http://localhost:8095/"]
               db: tandoor          # pg_dump on pg-01 before each update
           health_check_port: 3000     # 2026-10-16 audit: Jira (8080) is gone; Outline listens here
-          health_check_url: "http://10.0.30.11:3000/_health"   # 2026-10-16 audit: the 8080 check rolled web-02 back on its canary
+          health_check_url: "http://10.10.30.11:3000/_health"   # 2026-10-16 audit: the 8080 check rolled web-02 back on its canary
           docker_enabled: "true"
           docker_compose_dirs:
             - /opt/jira
@@ -1012,7 +1012,7 @@ all:
 
         git-01:
           # CORRECTED 2026-08-17: this whole block was still the pre-cutover GitLab CE
-          # config, three weeks after the 2026-07-29 Forgejo cutover — wrong IP (10.0.30.30
+          # config, three weeks after the 2026-07-29 Forgejo cutover — wrong IP (10.10.30.30
           # is git-01-gitlab-decommissioned, not this host), wrong proxmox_vm_id (106 is
           # OSemSearch, confirmed live via the Proxmox API — real git-01 is VMID 251,
           # confirmed both by its Proxmox VM *name* and by NetBox independently carrying
@@ -1021,7 +1021,7 @@ all:
           # values below reconfirmed live via SSH before writing. Found while auditing the
           # patch pipeline (rolling_update.yml) before activating it — this bug would have
           # silently snapshotted/patched VM 106 (OSemSearch) while believing it was git-01.
-          ansible_host: 10.0.30.31
+          ansible_host: 10.10.30.31
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -1034,7 +1034,7 @@ all:
           proxmox_node: pve-01
           proxmox_vm_id: 251
           health_check_port: 3000       # Forgejo web (confirmed live: docker port mapping 3000->3000)
-          health_check_url: "http://10.0.30.31:3000/api/healthz"    # confirmed live: HTTP 200
+          health_check_url: "http://10.10.30.31:3000/api/healthz"    # confirmed live: HTTP 200
           docker_enabled: "true"
           docker_compose_dirs:
             - /opt/forgejo    # confirmed live via docker inspect + find
@@ -1093,7 +1093,7 @@ all:
           sla: high
 
         immich-01:
-          ansible_host: 10.0.30.46
+          ansible_host: 10.10.30.46
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -1126,7 +1126,7 @@ all:
           proxmox_node: pve-03
           proxmox_vm_id: 280     # 271 taken by comms-01; next free in the 21x/24x/27x service-VM sequence
           health_check_port: 2283     # Immich API
-          health_check_url: "http://10.0.30.46:2283/api/server/ping"
+          health_check_url: "http://10.10.30.46:2283/api/server/ping"
 
           # Docker
           docker_enabled: "true"
@@ -1155,14 +1155,14 @@ all:
           # ONLY on the immich database — see deploy_immich.yml. pg-01's existing
           # nightly pg_dumpall (Roles/postgres/tasks/backup.yml) covers this DB
           # automatically; no per-app Restic job needed.
-          immich_db_host: "10.0.40.10"
+          immich_db_host: "10.10.40.10"
           immich_db_port: 5432
           immich_db_name: immich
 
           # ---- Machine Learning — gpu-02 (NOT bundled) ------------------------
           # immich-ml runs on gpu-02 (Roles/gpu/tasks/immich_ml.yml, immich_ml_enabled
           # on gpu-02) since 2026-09-28; was gpu-01 before. Same host (pve-03) as immich-01.
-          immich_ml_url: "http://10.0.30.51:3003"
+          immich_ml_url: "http://10.10.30.51:3003"
 
           # ---- NASTY (legacy SMB NAS) — External Library source ----------------
           # 2TB+ existing library — pointed at directly (no import) per user
@@ -1173,7 +1173,7 @@ all:
           # already has them ready) — nothing else in this config should need
           # to change.
           #
-          # nasty.internal (Pi-hole, added 2026-08-10) resolves to 10.0.40.30 —
+          # nasty.internal (Pi-hole, added 2026-08-10) resolves to 10.10.40.30 —
           # NASTY's real, live VLAN40 address. Cutover completed 2026-08-11
           # (was previously reserved-but-not-live; corrected 2026-08-17 — see
           # [[project_nasty_nas_migration]]). deploy_immich.yml has already
@@ -1234,7 +1234,7 @@ all:
           # this is a separate, deliberate build, not a relocation of
           # that one). See [[project_nasty_nas_migration]] for the
           # Plex-era context.
-          ansible_host: 10.0.30.53
+          ansible_host: 10.10.30.53
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -1248,7 +1248,7 @@ all:
           proxmox_node: pve-03
           proxmox_vm_id: 281
           health_check_port: 8096
-          health_check_url: "http://10.0.30.53:8096/health"
+          health_check_url: "http://10.10.30.53:8096/health"
 
           # Docker
           docker_enabled: "true"
@@ -1329,7 +1329,7 @@ all:
 
         es-01:
           # Relocated from pve-01 to pve-02 2026-07-24 — see IaC/docs/OSEMSEARCH_MIGRATION.md
-          ansible_host: 10.0.30.52
+          ansible_host: 10.10.30.52
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           # No ProxyCommand needed — pve-02 VMs are directly reachable, same as gpu-02
@@ -1343,7 +1343,7 @@ all:
           proxmox_node: pve-02
           proxmox_vm_id: 231
           health_check_port: 9200
-          health_check_url: "http://10.0.30.52:9200/_cluster/health"
+          health_check_url: "http://10.10.30.52:9200/_cluster/health"
           docker_enabled: "true"
           docker_compose_dirs:
             - /opt/elasticsearch
@@ -1376,7 +1376,7 @@ all:
           # are tightly coupled). Kept separate from es-01, which serves only
           # the news-intelligence pipeline. See project_pending_work item 9
           # and project_nas02_zfs_storage_architecture memory.
-          ansible_host: 10.0.30.54
+          ansible_host: 10.10.30.54
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -1389,7 +1389,7 @@ all:
           proxmox_node: pve-02
           proxmox_vm_id: 234
           health_check_port: 9200
-          health_check_url: "http://10.0.30.54:9200/_cluster/health"
+          health_check_url: "http://10.10.30.54:9200/_cluster/health"
           docker_enabled: "true"
           docker_compose_dirs:
             - /opt/elasticsearch
@@ -1433,7 +1433,7 @@ all:
           # backup section -- the only state that matters (scout.tasks/
           # findings/findings_clean) lives in pg-01's own backup routine;
           # this VM itself is stateless/rebuildable from this repo.
-          ansible_host: 10.0.30.58
+          ansible_host: 10.10.30.58
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -1453,7 +1453,7 @@ all:
           # the only state that matters (reference_items) lives in pg-01's
           # own backup routine; this VM itself is stateless/rebuildable from
           # this repo + cards.yaml.
-          ansible_host: 10.0.30.55
+          ansible_host: 10.10.30.55
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           # No ProxyCommand needed — pve-02 VMs are directly reachable, same as gpu-02/es-01/es-02
@@ -1467,7 +1467,7 @@ all:
           proxmox_node: pve-02
           proxmox_vm_id: 302
           health_check_port: 8090
-          health_check_url: "http://10.0.30.55:8090/health"
+          health_check_url: "http://10.10.30.55:8090/health"
           docker_enabled: "true"
           docker_compose_dirs:
             - /opt/grid-portal
@@ -1475,7 +1475,7 @@ all:
           # Postgres — reuses the shared elementary_particles credential
           # (secret/postgres/pg-01), same one catalog-api/music_studio use.
           # reference_items table created out-of-band directly against pg-01.
-          grid_postgres_host: "10.0.40.10"
+          grid_postgres_host: "10.10.40.10"
           grid_postgres_db: "elementary_particles"
           vault_postgres_path: "postgres/pg-01"
 
@@ -1496,7 +1496,7 @@ all:
           # (theory.home.example.org) and, since 2026-11-01, the music-studio stack moved
           # from gpu-01 (docs/STUDIO01_MIGRATION.md). Stateless: NFS (nas-01, nas-02)
           # and pg-01 hold everything; rebuildable from Terraform + deploy_studio01.yml.
-          ansible_host: 10.0.30.59
+          ansible_host: 10.10.30.59
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -1566,7 +1566,7 @@ all:
           # Holds no infrastructure or household credential: its own Forgejo key
           # (bot user domo-coder, push to domo/* only) and the router key, nothing else.
           # NOT in docker_hosts: a systemd service in a venv, egress pinned by the unit.
-          ansible_host: 10.0.30.32
+          ansible_host: 10.10.30.32
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -1586,13 +1586,13 @@ all:
           code_partner_port: 8210
           # Who it may talk to (systemd IPAddressAllow): gpu-01 Ollama, gpu-02 Whisper (browser
           # mic), git-01 Forgejo, web-01 (Traefik for code.home.example.org + domo-router). Nothing else.
-          code_partner_allowed_ips: ["10.0.30.50", "10.0.30.51", "10.0.30.31", "10.0.30.20"]
+          code_partner_allowed_ips: ["10.10.30.50", "10.10.30.51", "10.10.30.31", "10.10.30.20"]
           vault_code_partner_forgejo_path: secret/code-partner/forgejo   # forgejo_key (bot domo-coder)
           vault_code_partner_router_path: secret/code-partner/router     # router_key (shared with domo-router)
 
           # Monitoring
           node_exporter_port: 9100
-          health_check_url: "http://10.0.30.32:8210/health"
+          health_check_url: "http://10.10.30.32:8210/health"
 
           # Tags
           tier: application
@@ -1608,7 +1608,7 @@ all:
           # the ONLY host with mailbox logins (secret/mail/<person>). Read-only IMAP into
           # pg-01's mail schema; mail-desk on web-01 sorts it. No SMTP anywhere.
           # Design: IaC/docs/MAIL_AGENT.md.
-          ansible_host: 10.0.30.56
+          ansible_host: 10.10.30.56
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           vm_tier: application
@@ -1629,7 +1629,7 @@ all:
           # 101 "HomeAss", Debian 11 bullseye) — see IaC/docs/HOME_ASSISTANT_MIGRATION.md.
           # CUTOVER DONE 2026-08-17: old VM 101 powered off (kept, not deleted, for a
           # rollback window), this VM (282) now live on the real production IP.
-          ansible_host: 10.0.30.14
+          ansible_host: 10.10.30.14
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
 
@@ -1647,7 +1647,7 @@ all:
           proxmox_node: pve-01   # must stay pve-01 — the Zigbee USB dongle is physically attached there
           proxmox_vm_id: 282    # next free after jellyfin-01 (281), confirmed live 2026-08-16
           health_check_port: 8123
-          health_check_url: "http://10.0.30.14:8123/"
+          health_check_url: "http://10.10.30.14:8123/"
           # HA Core needs 2-4 min after a reboot (Supervisor starts it after Docker);
           # the fleet default of 12 x 10s would roll a healthy patch back.
           rolling_update_health_retries: 36
@@ -1671,7 +1671,7 @@ all:
           # 2026-09-29: removed the obsolete YAML `spotify:` block (Spotify is
           # UI-configured; backup configuration.yaml.bak-20260929-spotify).
           # 2026-10-23: removed the dead AskMixtral intent_script + the first
-          # `rest_command:` block (ask_open_webui -> 10.0.0.12:3000, gone) that
+          # `rest_command:` block (ask_open_webui -> 10.10.0.12:3000, gone) that
           # duplicated the key; backup configuration.yaml.bak-20261023005439.
           ha_config_dir: /var/lib/homeassistant/homeassistant
 
@@ -1713,12 +1713,12 @@ all:
     tier3_messaging:
       hosts:
         comms-01:
-          ansible_host: 10.0.30.45
+          ansible_host: 10.10.30.45
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           ansible_ssh_common_args: >-
             -o ProxyCommand="ssh -W %h:%p -i ~/.ssh/id_ansible
-            -o StrictHostKeyChecking=no root@10.0.0.11"
+            -o StrictHostKeyChecking=no root@10.10.0.11"
             -o StrictHostKeyChecking=no
 
           # VM specs
@@ -1774,8 +1774,8 @@ all:
     # Run wol_setup.yml once while hosts are on to discover and store MAC addresses.
     proxmox_wol:
       hosts:
-        pve-02: {}    # 10.0.0.12 — all vars from proxmox_hosts above
-        pve-03: {}    # 10.0.0.13 — all vars from proxmox_hosts above
+        pve-02: {}    # 10.10.0.12 — all vars from proxmox_hosts above
+        pve-03: {}    # 10.10.0.13 — all vars from proxmox_hosts above
     
     # Elasticsearch cluster
     search_hosts:
@@ -1802,7 +1802,7 @@ all:
     media_hosts:
       hosts:
         media-vm:
-          ansible_host: 10.0.30.60
+          ansible_host: 10.10.30.60
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           vm_tier: application
@@ -1813,7 +1813,7 @@ all:
           proxmox_node: pve-03          # real Proxmox node name — see IaC/CLAUDE.md
           proxmox_vm_id: 300
           health_check_port: 8096     # Jellyfin
-          health_check_url: "http://10.0.30.60:8096/health"
+          health_check_url: "http://10.10.30.60:8096/health"
           docker_enabled: "true"
           docker_compose_dirs:
             - /opt/jellyfin
@@ -1869,7 +1869,7 @@ all:
           # wired up) -- real /data/downloads now lives on a proper 250GB
           # disk on pve-02's new zfs-sata-vms pool. See
           # incident_n8n_outage_and_pve-03_shutdown_risk_2026-09-19 memory.
-          ansible_host: 10.0.60.5
+          ansible_host: 10.10.60.5
           ansible_user: ubuntu
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           vm_tier: application
@@ -1880,7 +1880,7 @@ all:
           proxmox_node: pve-02          # real Proxmox node name — see IaC/CLAUDE.md
           proxmox_vm_id: 301
           health_check_port: 8989     # Sonarr
-          health_check_url: "http://10.0.60.5:8989/"
+          health_check_url: "http://10.10.60.5:8989/"
           docker_enabled: "true"
           docker_compose_dirs:
             - /opt/downloads
@@ -1931,7 +1931,7 @@ all:
           # Solr-based search for news intelligence (queries from n8n via SSH tunnel)
           # Moved to VLAN60 (NordLynx Guest) 2026-09-25; now with static IP
           # Awaiting Proxmox static IP config + Ansible host deployment
-          ansible_host: 10.0.60.9
+          ansible_host: 10.10.60.9
           ansible_user: ansible
           ansible_ssh_private_key_file: ~/.ssh/id_ansible
           vm_tier: application
@@ -1942,7 +1942,7 @@ all:
           proxmox_node: pve-02
           proxmox_vm_id: 106
           always_on: true
-          health_check_url: "http://10.0.60.9/search/"   # 2026-10-16 audit: Solr listens on 127.0.0.1 only; Apache serves /search/
+          health_check_url: "http://10.10.60.9/search/"   # 2026-10-16 audit: Solr listens on 127.0.0.1 only; Apache serves /search/
           tier: application
           criticality: medium
           service: osemearch
@@ -2158,7 +2158,7 @@ all:
           vault_nc_path: secret/nextcloud/dmz
 
           # Backup (Restic → MinIO on nas-01)
-          # NOTE: DMZ VMs need a VLAN-routed path to nas-01 (10.0.40.20).
+          # NOTE: DMZ VMs need a VLAN-routed path to nas-01 (10.10.40.20).
           # OPNSense rule: VLAN200 → VLAN40:9000 ALLOW (add to opnsense role).
           backup_type: restic
           backup_destination: "s3:http://nas-01.internal:9000/restic/dmz-nc-01"
@@ -2363,7 +2363,7 @@ group_vars:
     vault_skip_verify: false
     
     # DNS
-    nameserver_primary: "10.0.30.10"      # Pi-hole on vlan30 (dns-01)
+    nameserver_primary: "10.10.30.10"      # Pi-hole on vlan30 (dns-01)
     nameserver_fallback: "8.8.8.8"
     
     # NTP

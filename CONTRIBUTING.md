@@ -23,16 +23,9 @@ Your commit will therefore not appear here as-is; you will be credited in the co
 
 ## Contributor License Agreement
 
-By submitting a contribution you confirm that:
+Contributions need a signed Contributor License Agreement, [CLA.md](CLA.md). It lets the
+maintainer keep the project available under more than one licence; you keep your copyright.
 
-1. You wrote it, or have the right to submit it, and it is not subject to terms that conflict
-   with this agreement.
-2. You license it under the AGPL-3.0 **and** grant Rob Carroll (and any company
-   they assign the project to) a perpetual, worldwide, non-exclusive, royalty-free, irrevocable
-   license to use, modify, sublicense and distribute it under other terms, including
-   commercial licenses.
-3. You keep the copyright of your contribution and may use it in any way you like.
-
-Add this line to your pull request description to agree:
-
-> I have read the Contributor License Agreement in CONTRIBUTING.md and agree to it.
+How it works: open a pull request, and the CLA bot comments with the text to post to sign
+(one comment, once, for all your later pull requests). Until you have signed, the pull request
+shows a failing `CLA` check and cannot be merged.

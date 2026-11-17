@@ -80,11 +80,11 @@ services:
       # Musician platform: songbook repo (Forgejo, token from Vault
       # secret/music-studio/forgejo via .env) and the local LLM used by
       # song_suggest.py.
-      FORGEJO_URL:                  ${FORGEJO_URL:-http://10.0.30.31:3000}
+      FORGEJO_URL:                  ${FORGEJO_URL:-http://10.10.30.31:3000}
       FORGEJO_TOKEN:                ${FORGEJO_TOKEN:-}
       SONGBOOK_OWNER:               ${SONGBOOK_OWNER:-owner}
       SONGBOOK_REPO:                ${SONGBOOK_REPO:-songbook}
-      OLLAMA_URL:                   ${OLLAMA_URL:-http://10.0.30.50:11434}
+      OLLAMA_URL:                   ${OLLAMA_URL:-http://10.10.30.50:11434}
     command: >
       bash -c "apt-get update -qq && apt-get install -qq -y --no-install-recommends chordpro >/dev/null &&
                pip install --quiet fastapi uvicorn asyncpg httpx python-multipart xxhash &&
@@ -250,8 +250,8 @@ services:
     environment:
       DATABASE_URL:          ${MUSIC_DATABASE_URL}
       # Phase 3 (draft lead sheets): GPU work runs on gpu-02
-      STEM_API_URL:          ${STEM_API_URL:-http://10.0.30.51:8020}
-      WHISPER_URL:           ${WHISPER_URL:-http://10.0.30.51:5000}
+      STEM_API_URL:          ${STEM_API_URL:-http://10.10.30.51:8020}
+      WHISPER_URL:           ${WHISPER_URL:-http://10.10.30.51:5000}
       STEMS_DIR:             /music/stems
       ANALYSIS_VERSION:      ${ANALYSIS_VERSION:-v1}
       ANALYSIS_CONCURRENCY:  ${ANALYSIS_CONCURRENCY:-2}
@@ -287,7 +287,7 @@ services:
       STUDIO_ROOT:           /import/nasty
       STUDIO_DATAGRID_PATH:  "/DATAGRID/Multimedia/Music/My Recordings"
       STUDIO_PEOPLE_JSON:    '["owner"]'
-      OLLAMA_URL:            ${OLLAMA_URL:-http://10.0.30.50:11434}
+      OLLAMA_URL:            ${OLLAMA_URL:-http://10.10.30.50:11434}
       STUDIO_LLM_MODEL:      gpu01-primary
       STUDIO_LLM_NUM_CTX:    "16384"
       TZ:                    Europe/Berlin
@@ -336,7 +336,7 @@ services:
       RECORDINGS_ROOT:  /import/nasty
       FIELD_DIR:        "Field Recordings"
       TRIGGER_DIR:      /triggers
-      WHISPER_URL:      ${WHISPER_URL:-http://10.0.30.51:5000}
+      WHISPER_URL:      ${WHISPER_URL:-http://10.10.30.51:5000}
       SESSION_GAP_MIN:  "30"
       TZ:               Europe/Berlin
     command: >

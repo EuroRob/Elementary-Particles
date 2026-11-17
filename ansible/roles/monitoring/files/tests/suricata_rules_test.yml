@@ -9,11 +9,11 @@ evaluation_interval: 1m
 tests:
 - interval: 1m
   input_series:
-  - series: suricata_suspect_host_alerts_total{src_ip="172.16.0.30",category="ATTACK_RESPONSE",signature="GPL ATTACK_RESPONSE id check returned root",job="suricata_alert_exporter",instance="10.0.0.15:9752"}
+  - series: suricata_suspect_host_alerts_total{src_ip="172.16.0.30",category="ATTACK_RESPONSE",signature="GPL ATTACK_RESPONSE id check returned root",job="suricata_alert_exporter",instance="10.10.0.15:9752"}
     values: _x20 1x40
-  - series: suricata_suspect_host_alerts_total{src_ip="10.0.20.55",category="MALWARE",signature="ET MALWARE x",job="suricata_alert_exporter",instance="10.0.0.15:9752"}
+  - series: suricata_suspect_host_alerts_total{src_ip="10.10.20.55",category="MALWARE",signature="ET MALWARE x",job="suricata_alert_exporter",instance="10.10.0.15:9752"}
     values: 3x29 4x30
-  - series: suricata_suspect_host_alerts_total{src_ip="10.0.30.99",category="CNC",signature="ET CNC y",job="suricata_alert_exporter",instance="10.0.0.15:9752"}
+  - series: suricata_suspect_host_alerts_total{src_ip="10.10.30.99",category="CNC",signature="ET CNC y",job="suricata_alert_exporter",instance="10.10.0.15:9752"}
     values: 5x60
   alert_rule_test:
   - eval_time: 22m
@@ -34,18 +34,18 @@ tests:
     - *id001
     - exp_labels:
         severity: critical
-        src_ip: 10.0.20.55
+        src_ip: 10.10.20.55
         category: MALWARE
         signature: ET MALWARE x
       exp_annotations:
-        summary: 'Suricata: 10.0.20.55 may be compromised (MALWARE)'
-        description: 'fw-01 saw internal host 10.0.20.55 as the SOURCE of ''ET MALWARE x'' in the last 15 min. Details: on the IaC VM `journalctl --user -u suricata-alert-exporter -o cat | grep 10.0.20.55`, or OPNsense -> Services -> Intrusion Detection -> Alerts.'
+        summary: 'Suricata: 10.10.20.55 may be compromised (MALWARE)'
+        description: 'fw-01 saw internal host 10.10.20.55 as the SOURCE of ''ET MALWARE x'' in the last 15 min. Details: on the IaC VM `journalctl --user -u suricata-alert-exporter -o cat | grep 10.10.20.55`, or OPNsense -> Services -> Intrusion Detection -> Alerts.'
   - eval_time: 55m
     alertname: SuricataSuspectHost
     exp_alerts: []
 - interval: 1m
   input_series:
-  - series: suricata_rules_installed{job="suricata_alert_exporter",instance="10.0.0.15:9752"}
+  - series: suricata_rules_installed{job="suricata_alert_exporter",instance="10.10.0.15:9752"}
     values: '0x40'
   alert_rule_test:
   - eval_time: 35m
@@ -54,7 +54,7 @@ tests:
     - exp_labels:
         severity: critical
         job: suricata_alert_exporter
-        instance: 10.0.0.15:9752
+        instance: 10.10.0.15:9752
       exp_annotations:
         summary: Suricata on fw-01 is running blind (0 rules)
         description: Fewer than 1000 rules installed. Re-run the opnsense role with --tags suricata (enables opnsense_suricata_rulesets + update_rules) and check the Suricata log for 'rule reload complete'.

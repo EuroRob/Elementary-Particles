@@ -3,7 +3,7 @@
 # window container pass (images: {traefik:v3.1: traefik:v3.7.15}).
 traefik_image: "traefik:v3.7.15"
 traefik_host: "web-01"
-traefik_ip: "10.0.30.10"
+traefik_ip: "10.10.30.10"
 
 # Directories on the Traefik host
 traefik_config_dir: /etc/traefik
