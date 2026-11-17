@@ -92,13 +92,3 @@ pitch:
   a monitoring stack designed to survive the failure of its own primary
   path.
 
-## Licensing considerations (for Fable to work through, not decided here)
-
-- The platform composes many independently-licensed third-party
-  open-source applications (Nextcloud, Immich, Jellyfin, Home Assistant,
-  Paperless-ngx, etc.) — those keep their own licenses regardless of
-  what's chosen for this project. A dual-license decision here would
-  apply to the **original integration work**: the Ansible roles,
-  Terraform modules, the MCP tool servers, the alerting/monitoring
-  glue, the Echo voice app, and the overall architecture — not to the
-  third-party apps being orchestrated.
