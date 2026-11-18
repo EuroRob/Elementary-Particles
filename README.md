@@ -4,37 +4,30 @@
 
 # Elementary Particles
 
-Infrastructure as code for a self-hosted family cloud and household assistant: photos, files,
-calendars, media, music, podcasts, home automation and a local voice assistant, all on hardware you own,
+Infrastructure as code for a self-hosted family cloud and household assistant, all on hardware you own,
 with no cloud service needed for daily use.
-
-This is the public, sanitized edition of a homelab that runs every day on three Proxmox hosts and
-about 30 VMs. Names, domains and credentials have been replaced (`home.example.org`, `owner`,
-`Partner`, `Child1`, `Child2`); the structure, code and decisions are the real ones.
 
 ## Why this exists
 
-I run a homelab because it is fun, especially wiring several open source projects into one
-system and creating my own custom ones. Keeping that system healthy is the part that is not fun. Every project has its own
-updates, its own disk that fills up at the wrong moment, and its own way of failing quietly. I
-have a full-time job and a family, as well as other hobbies, so I cannot watch it all the time. It has to keep working when
-I am not looking.
+My photos, my music, my family's calendar, our health data, our documents: I want them on hardware I own, under rules I set. That is the r/selfhosted mantra. No one else can change the price on it, mine it, discontinue it or lose it in a breach.
 
-Two things shaped how this is built. AI keeps getting better at finding vulnerabilities and attack
-surfaces, so a neglected service is a bigger risk every month, and patching has to be routine and
-not heroic. And as the system grew, I needed to see trouble coming, like a container running out of
-space and taking something down.
+Owning your data also means guarding it. When you self-host, nobody else is on call, so security has to be built into how the system runs, not added at the end. Also, AI keeps getting better at finding vulnerabilities, making a neglected service a bigger risk every month. So everything here is designed around a few habits:
 
-The other reason is the people who use it. A feature that makes my wife's day easier and less
-stressful is worth more than a clever dashboard, and it is the reason I keep going late at night.
-It also gets my oldest ready for school: the time, the weather forecast and whether he should wear
-a jacket, even when he does not want to.
+- **Patching is routine, not heroic.** Updates run on a schedule, with snapshots first, health checks after and an automatic rollback.
+- **Nothing is exposed that doesn't need to be.** Services sit behind single sign-on, networks are split into VLANs, and the firewall blocks traffic between them by default.
+- **Secrets live in a vault, not in config files.** Access to those secrets are gated.
+- **Backups are tested.** A backup you've never restored is a hope, not a backup.
+- **Trouble shows up before it's an outage.** Monitoring warns me about a filling disk or a database that stops answering before my family notices.
 
-Beyond reliability, the goal is an AI concierge with individualized agents for the household. It curates my photos, my music recordings, automates the
-house, watches for bad weather, helps with workouts, cooking recipes and warns me when it predicts a problem. It boils the news down to what is useful, keeps me company with music or podcasts and helps plan trips, even looks for exciting new job opportunities and the latest tech trends. It is built to grow one small piece at a time and there is more in the pipeline.
+I have a full-time job, a family and other hobbies, so I can't watch it all the time. It has to keep working when I am not looking. That turns a homelab into what r/homelab half-jokingly calls "homeprod": the moment the family depends on it, it is production.
 
-I build this with Claude Code and a local code partner. I decide what gets built, and I review and
-merge every change. The sections below show how the agents are kept in check.
+And that's the real reason I keep going late at night. A feature which makes my wife's day easier and less stressful beats any clever dashboard. It also gets my oldest ready for school: the time, the forecast, and whether he needs a jacket, even when he insists he doesn't.
+
+The other half is the joy of building. Wiring a dozen open source projects into one system, writing the missing pieces myself, breaking things and learning why: that's the r/homelab spirit, and AI has made it more fun than ever. Local models take care of the household AI work, so my family's data stays at home and I can now build in an evening what used to take a month of weekends.
+
+Where it's heading is a full-blown private AI concierge, with a separate agent for each person in the household. It curates my photos and music recordings, automates the house, watches for bad weather, helps with workouts and recipes, and warns me when it predicts a problem. It boils the neww down to what's useful, keeps me company while creating music, and helps plan trips. It even scouts for job opportunities and the latest tech trends. It grows one small piece at a time, and there's always more in the pipeline.
+
+I build this with Claude Code and a local code partner. I decide what gets built, and I review and merge every change. The sections below show how the agents are kept in check.
 
 ## What it runs
 
@@ -76,6 +69,10 @@ Longer versions: [solution overview](docs/SOLUTION_OVERVIEW.md) ·
 
 ## What's in this repository
 
+This is the public, sanitized edition of a homelab that runs every day on three Proxmox hosts and
+about 30 VMs. Names, domains and credentials have been replaced (`home.example.org`, `owner`,
+`Partner`, `Child1`, `Child2`); the structure, code and decisions are the real ones.
+
 | Folder | What's in it |
 | --- | --- |
 | [`services/`](services) | Service particles (`service.yaml`) and the [templates](services/_templates) to write your own |
@@ -98,7 +95,7 @@ access model rather than as a chat window:
 
 | | Claude Code (cloud) | Code partner (on premise) |
 | --- | --- | --- |
-| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 437 of the 928 commits on the main branch (67 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
+| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 437 of the 930 commits on the main branch (67 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
 | **May never touch** | Secrets outside its Vault lane; see [agent access lanes](docs/AGENT_ACCESS_LANES.md), [`vault/lanes.yml`](vault/lanes.yml) and the generated [policies](vault/policies). | `.env`, state files, keys, its own code and policy, CI, `CLAUDE.md`. No tool to apply, commit, push or run anything; no network beyond three hosts. See [code partner](docs/CODE_PARTNER.md) and [`code_partner_policy.yml`](integration/code_partner_policy.yml). |
 | **A person approves** | Every change lands as a pull request on a protected main branch. A `checks` job ([`.forgejo/workflows/ci.yml`](.forgejo/workflows/ci.yml) running [`scripts/ci/check.sh`](scripts/ci/check.sh): YAML, Python, shell, `terraform fmt`, Ansible syntax, the offline tests, gitleaks) must be green before a person reviews and merges. | Apply, push and "open the pull request" are fixed phrases or buttons a person uses; merging is not in the code at all. |
 
