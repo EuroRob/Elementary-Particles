@@ -9,7 +9,7 @@ with no cloud service needed for daily use.
 
 ## Why this exists
 
-My photos, my music, my family's calendar, our health data, our documents: I want them on hardware I own, under rules I set. That is the r/selfhosted mantra. No one else can change the price on it, mine it, discontinue it or lose it in a breach.
+Photos, music, the family calendars, our health data, our documents: I want them on hardware I own, under rules I set. That is the r/selfhosted mantra. No one else can change the price on it, pilfer and mine it, discontinue it or lose it in a breach.
 
 Owning your data also means guarding it. When you self-host, nobody else is on call, so security has to be built into how the system runs, not added at the end. Also, AI keeps getting better at finding vulnerabilities, making a neglected service a bigger risk every month. So everything here is designed around a few habits:
 
@@ -95,7 +95,7 @@ access model rather than as a chat window:
 
 | | Claude Code (cloud) | Code partner (on premise) |
 | --- | --- | --- |
-| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 437 of the 930 commits on the main branch (67 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
+| **Does** | Builds the infrastructure: Terraform, Ansible, docs, scripts. Co-author of 438 of the 932 commits on the main branch (67 % since it started in July 2026). | Turns a spoken or typed request into a diff on its own branch and a draft pull request. Runs on a local model. |
 | **May never touch** | Secrets outside its Vault lane; see [agent access lanes](docs/AGENT_ACCESS_LANES.md), [`vault/lanes.yml`](vault/lanes.yml) and the generated [policies](vault/policies). | `.env`, state files, keys, its own code and policy, CI, `CLAUDE.md`. No tool to apply, commit, push or run anything; no network beyond three hosts. See [code partner](docs/CODE_PARTNER.md) and [`code_partner_policy.yml`](integration/code_partner_policy.yml). |
 | **A person approves** | Every change lands as a pull request on a protected main branch. A `checks` job ([`.forgejo/workflows/ci.yml`](.forgejo/workflows/ci.yml) running [`scripts/ci/check.sh`](scripts/ci/check.sh): YAML, Python, shell, `terraform fmt`, Ansible syntax, the offline tests, gitleaks) must be green before a person reviews and merges. | Apply, push and "open the pull request" are fixed phrases or buttons a person uses; merging is not in the code at all. |
 
