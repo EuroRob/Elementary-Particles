@@ -1,1 +1,12 @@
-{"signedContributors": []}
+{
+  "signedContributors": [
+    {
+      "name": "EuroRob",
+      "id": 204623984,
+      "comment_id": 6992249394,
+      "created_at": "2026-11-18T21:32:34Z",
+      "repoId": 1458000450,
+      "pullRequestNo": 1
+    }
+  ]
+}
