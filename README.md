@@ -153,7 +153,7 @@ This is a homelab that is hardened in the open, not a finished product. Open ite
 - **GitHub Actions only runs the CLA check.** The pipeline described above is a Forgejo Actions workflow
   (`.forgejo/`); it does not run on GitHub.
 
-## License
+## License - CLA
 
 Copyright © 2026 Rob Carroll.
 Licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).
