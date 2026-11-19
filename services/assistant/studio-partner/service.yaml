@@ -34,8 +34,8 @@ deployment:
   deployment_target: "studio-01"
   compose: "IaC/services/assistant/music-studio/docker-compose.yml (service studio-partner)"
   ansible:
-    playbook: "IaC/Ansible/playbooks/deploy_gpu.yml --tags music_studio"
-    role: "IaC/Ansible/Roles/music_studio"
+    playbook: "ansible/playbooks/deploy_gpu.yml --tags music_studio"
+    role: "ansible/Roles/music_studio"
   resources:
     memory: "384m"
 

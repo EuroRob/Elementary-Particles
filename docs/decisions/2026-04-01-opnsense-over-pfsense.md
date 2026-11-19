@@ -46,7 +46,7 @@ automation.
 ## Consequences
 
 - All OPNSense configuration lives in Ansible roles under
-  `IaC/Ansible/Roles/opnsense/`
+  `ansible/Roles/opnsense/`
 - Static route `10.8.0.0/24 → vpn-01` added by `static_routes.yml` — this was
   the missing piece causing WireGuard return-path failures (see
   `incidents/` for context)

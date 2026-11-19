@@ -413,7 +413,7 @@ SECRET_MAP: dict[str, dict[str, tuple[str, bool, str]]] = {
     },
 
     # ── Restic backup client (all VMs) ─────────────────────────────────────────
-    # The Restic Ansible role (IaC/Ansible/Roles/restic/) reads from:
+    # The Restic Ansible role (ansible/Roles/restic/) reads from:
     #   secret/restic/primary  — MinIO S3 service account + restic repo password
     #   secret/restic/offsite  — Optional: IONOS/Backblaze S3 for offsite copy
     #

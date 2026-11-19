@@ -188,7 +188,7 @@ networking:
 
 ### Playbook Structure
 
-Each service has a dedicated playbook in `IaC/Ansible/playbooks/`:
+Each service has a dedicated playbook in `ansible/playbooks/`:
 
 ```
 deploy_gpu.yml
@@ -200,7 +200,7 @@ deploy_elementary_particles.yml (master orchestrator)
 
 ### Ansible Roles
 
-Supporting roles in `IaC/Ansible/Roles/`:
+Supporting roles in `ansible/Roles/`:
 
 ```
 gpu/
@@ -666,17 +666,17 @@ done
 - `IaC/services/search/elasticsearch/service.yaml`
 
 ### Ansible Playbooks
-- `IaC/Ansible/playbooks/deploy_gpu.yml`
-- `IaC/Ansible/playbooks/deploy_nas.yml`
-- `IaC/Ansible/playbooks/deploy_dns.yml`
-- `IaC/Ansible/playbooks/deploy_elasticsearch.yml`
-- `IaC/Ansible/playbooks/deploy_elementary_particles.yml` (orchestrator)
+- `ansible/playbooks/deploy_gpu.yml`
+- `ansible/playbooks/deploy_nas.yml`
+- `ansible/playbooks/deploy_dns.yml`
+- `ansible/playbooks/deploy_elasticsearch.yml`
+- `ansible/playbooks/deploy_elementary_particles.yml` (orchestrator)
 
 ### Ansible Roles
-- `IaC/Ansible/Roles/gpu/`
-- `IaC/Ansible/Roles/openmediavault/`
-- `IaC/Ansible/Roles/pihole_dns/`
-- `IaC/Ansible/Roles/elasticsearch/`
+- `ansible/Roles/gpu/`
+- `ansible/Roles/openmediavault/`
+- `ansible/Roles/pihole_dns/`
+- `ansible/Roles/elasticsearch/`
 
 ### Orchestration
 - `IaC/orchestration/elementary_particles_vm_deployment.yaml` (n8n workflow)

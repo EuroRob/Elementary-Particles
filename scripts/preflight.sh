@@ -24,12 +24,12 @@ set -uo pipefail   # -e intentionally omitted: preflight must continue past fail
 # ── Paths (resolved relative to this script's location) ───────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IAC_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ANSIBLE_DIR="${IAC_DIR}/Ansible"
+ANSIBLE_DIR="${IAC_DIR}/ansible"
 INVENTORY="${ANSIBLE_DIR}/inventory/services.yml"
 
 # Ensure Ansible finds the right config + roles regardless of cwd
 export ANSIBLE_CONFIG="${ANSIBLE_DIR}/ansible.cfg"
-export ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/Roles"
+export ANSIBLE_ROLES_PATH="${ANSIBLE_DIR}/roles"
 HOST_VARS_PVE01="${ANSIBLE_DIR}/inventory/host_vars/pve-01.yml"
 ANSIBLE_REQUIREMENTS="${ANSIBLE_DIR}/requirements.yml"
 PY_REQUIREMENTS="${SCRIPT_DIR}/requirements.txt"
@@ -444,7 +444,7 @@ declare -A LAYER_ENVS=(
 for layer in "${!LAYER_ENVS[@]}"; do
   [[ "$layer" -lt "$START_LAYER" ]] && continue
   env="${LAYER_ENVS[$layer]}"
-  env_dir="${IAC_DIR}/Terraform/envs/${env}"
+  env_dir="${IAC_DIR}/terraform/envs/${env}"
   if [[ -d "$env_dir" ]] && [[ -f "${env_dir}/main.tf" ]]; then
     # Check proxmox_node default in variables.tf
     bad_node="$(grep -c '"pve-01"' "${env_dir}/variables.tf" 2>/dev/null || true)"

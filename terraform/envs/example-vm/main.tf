@@ -11,7 +11,7 @@
 # Pre-flight:
 #   1. Ubuntu 24.04 cloud-init template must exist on pve-03 (VM ID 9002).
 #   2. pg-01 must have the relevant app databases/users created.
-#      See: IaC/Ansible/playbooks/deploy_web02.yml (db_setup tasks)
+#      See: ansible/playbooks/deploy_web02.yml (db_setup tasks)
 #   3. If Jira/Confluence are ever revived, their license keys live in Vault:
 #      secret/atlassian/jira/license, secret/atlassian/confluence/license
 # =============================================================================
@@ -92,7 +92,7 @@ locals {
 }
 
 # Docker install, directories, networks, and Postgres db/user setup are all
-# handled by IaC/Ansible/playbooks/deploy_web02.yml — no custom cloud-init
+# handled by ansible/playbooks/deploy_web02.yml — no custom cloud-init
 # needed here. (A custom cloud-init snippet would require SSH file upload to
 # the Proxmox host, which isn't authorized — see IaC/CLAUDE.md "Proxmox
 # Access". Use the `user_account` block below instead, same as web-01/git-01.)

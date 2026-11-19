@@ -1,9 +1,9 @@
 # Homelab IaC — Claude Context
 <!--
   SCOPE HINTS — read the sub-directory CLAUDE.md for the task you are doing:
-  Ansible work  → IaC/Ansible/CLAUDE.md
+  Ansible work  → ansible/CLAUDE.md
   Terraform work → IaC/Terraform/CLAUDE.md
-  OPNSense/FW   → IaC/Ansible/Roles/opnsense/CLAUDE.md
+  OPNSense/FW   → ansible/Roles/opnsense/CLAUDE.md
   Do NOT read IaC/docs/Iac_Chat*.md — those are conversation archives.
   Do NOT read IaC/docs/ unless asked. Reference IaC/docs/ARCHITECTURE_INDEX.md instead.
 -->
@@ -148,8 +148,8 @@ bash IaC/bootstrap.sh --start-layer 3         # resume from layer 3
 bash IaC/bootstrap.sh --dry-run               # plan only
 
 # Ansible — run one host/tag
-ansible-playbook -i IaC/Ansible/inventory/services.yml \
-  IaC/Ansible/playbooks/deploy_all.yml \
+ansible-playbook -i ansible/inventory/services.yml \
+  ansible/playbooks/deploy_all.yml \
   --tags <tag> --limit <host>
 
 # Ansible — check mode
@@ -397,9 +397,9 @@ of truth; the snapshot is a sanitized copy.
 ## Sub-context files (load these instead of scanning docs/)
 | Task | Read this file |
 |---|---|
-| Ansible plays, roles, inventory | `IaC/Ansible/CLAUDE.md` |
+| Ansible plays, roles, inventory | `ansible/CLAUDE.md` |
 | Terraform envs, modules, state | `IaC/Terraform/CLAUDE.md` |
-| OPNSense firewall, NordLynx | `IaC/Ansible/Roles/opnsense/CLAUDE.md` |
+| OPNSense firewall, NordLynx | `ansible/Roles/opnsense/CLAUDE.md` |
 | Bootstrap layer-by-layer debug | `IaC/bootstrap.sh` lines 1-50 (header) only |
 | Architecture deep-dive | `IaC/docs/ARCHITECTURE_INDEX.md` |
 | Vault secret map | `IaC/vault_preflight.py` `SECRET_MAP` dict |
@@ -468,7 +468,7 @@ claude "what files are in IaC/?" --print   # non-interactive test
 
 # Change to repo root or a specific sub-layer
 cd ~/repo/IaC                       # loads IaC/CLAUDE.md
-cd ~/repo/IaC/Ansible               # loads IaC/CLAUDE.md + IaC/Ansible/CLAUDE.md
+cd ~/repo/IaC/Ansible               # loads IaC/CLAUDE.md + ansible/CLAUDE.md
 cd ~/repo/IaC/Ansible/Roles/opnsense # loads all three CLAUDE.md files up the tree
 
 # Start Claude Code interactive session
@@ -484,11 +484,11 @@ claude "resume bootstrap from layer 3 — pg-01 failed, show me the error"
 
 ### Token-efficiency rules when prompting Claude Code
 
-1. **Always `cd` into the sub-layer before starting.** Claude Code loads CLAUDE.md files from cwd upward — starting in `IaC/Ansible/` loads only Ansible context, not Terraform or opnsense details.
+1. **Always `cd` into the sub-layer before starting.** Claude Code loads CLAUDE.md files from cwd upward — starting in `ansible/` loads only Ansible context, not Terraform or opnsense details.
 
 2. **Name the exact files you want read** in your first prompt when debugging a specific layer:
    ```
-   "Read bootstrap.sh layers 3-4 and IaC/Ansible/CLAUDE.md only. pg-01 Terraform apply failed with..."
+   "Read bootstrap.sh layers 3-4 and ansible/CLAUDE.md only. pg-01 Terraform apply failed with..."
    ```
 
 3. **Never ask broad questions** like "explain the whole repo" — that triggers a full scan. Instead ask scoped questions:
@@ -504,7 +504,7 @@ claude "resume bootstrap from layer 3 — pg-01 failed, show me the error"
 
 5. **Reference sub-context files by name** to pre-scope Claude's attention:
    ```
-   "Using IaC/Ansible/Roles/opnsense/CLAUDE.md as context, add a firewall rule to VLAN30..."
+   "Using ansible/Roles/opnsense/CLAUDE.md as context, add a firewall rule to VLAN30..."
    ```
 
 ---
@@ -517,8 +517,8 @@ Claude Code walks **from cwd upward to the git root** and reads every `CLAUDE.md
 |---|---|
 | `~/repo` | `IaC/CLAUDE.md` (none at root level) |
 | `~/repo/IaC` | `IaC/CLAUDE.md` |
-| `~/repo/IaC/Ansible` | `IaC/CLAUDE.md` + `IaC/Ansible/CLAUDE.md` |
-| `~/repo/IaC/Ansible/Roles/opnsense` | `IaC/CLAUDE.md` + `IaC/Ansible/CLAUDE.md` + `IaC/Ansible/Roles/opnsense/CLAUDE.md` |
+| `~/repo/IaC/Ansible` | `IaC/CLAUDE.md` + `ansible/CLAUDE.md` |
+| `~/repo/IaC/Ansible/Roles/opnsense` | `IaC/CLAUDE.md` + `ansible/CLAUDE.md` + `ansible/Roles/opnsense/CLAUDE.md` |
 | `~/repo/IaC/Terraform/envs/pg-01` | `IaC/CLAUDE.md` + `IaC/Terraform/CLAUDE.md` |
 
 Total context loaded at the deepest path ≈ 3 focused files (~15 KB) instead of scanning 1.4 MB of docs.

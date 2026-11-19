@@ -229,6 +229,6 @@ Next up, in order (live progress, undo, checks that run, LiteLLM): [CODE_PARTNER
 | `integration/test_code_partner.py` | tests |
 | `integration/DOMO_IOS_App/domo_router.py` | `code_route` |
 | `IaC/Terraform/envs/code-01/` | the VM |
-| `IaC/Ansible/playbooks/deploy_code01.yml`, `Roles/code_partner/` | deploy |
+| `ansible/playbooks/deploy_code01.yml`, `Roles/code_partner/` | deploy |
 | `IaC/services/assistant/code-partner/service.yaml` | the particle |
 | `IaC/scripts/forgejo_domo_coder.py` | Forgejo setup |

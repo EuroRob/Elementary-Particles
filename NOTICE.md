@@ -24,7 +24,8 @@ detail, please report it as described in [SECURITY.md](SECURITY.md).
 
 Some files bundle third-party code under their own licenses, for example the minified
 JavaScript libraries in `integration/music_studio_ui/static/` (ChordSheetJS, wavesurfer.js).
-Their licenses apply to those files.
+Their licenses apply to those files, and the license text of wavesurfer.js sits next to them. The full list, with licenses
+and how each component is used, is in [THIRD_PARTY.md](THIRD_PARTY.md).
 
 **Not included: ChordSheetJS.** It is licensed GPL-2.0-only, which cannot be combined with this project's
 license, so it is not part of this repository. The music studio UI loads it from

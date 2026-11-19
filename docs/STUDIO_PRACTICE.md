@@ -98,7 +98,7 @@ The practice page is LIVE (studio-partner + music-assistant), verified 2026-10-3
 | Wind-down tick | `integration/DOMO_IOS_App/domo_winddown.py` (`practised`) |
 | Tests | `integration/test_practice.py`, `DOMO_IOS_App/test_domo_winddown.py` |
 | Chromatone image + compose | `IaC/services/assistant/music-studio/chromatone/` (Dockerfile, nginx.conf, docker-compose.yml) |
-| Chromatone deploy | `IaC/Ansible/playbooks/deploy_studio01.yml` (studio-01) |
+| Chromatone deploy | `ansible/playbooks/deploy_studio01.yml` (studio-01) |
 
 - **Chromatone runs on studio-01** (VM 283 on pve-03, 10.10.30.59), LIVE 2026-10-31.
   - Its first build on gpu-01 was OOM-killed in a 2 GB cap (gpu-01 had ~3 GB free), so it got
